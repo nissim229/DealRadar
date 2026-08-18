@@ -216,7 +216,18 @@ def _render_users_tab_body(current_role):
                                   help="Only a super_admin can change someone else's role.")
             with prof_col3:
                 new_plan = st.selectbox("Plan", plan_limits.PLAN_ORDER, index=plan_limits.PLAN_ORDER.index(u_plan) if u_plan in plan_limits.PLAN_ORDER else 0, key=f"user_plan_field_{u_id}")
-            if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", use_container_width=True):
+
+            # Disabled until a field actually differs from what's on file -
+            # compared against the freshly-fetched DB values (u_*), not a
+            # separately-tracked "original" snapshot, so the button greys
+            # back out on its own right after a save (the next rerun's u_*
+            # already reflects the just-saved values).
+            profile_has_changes = (
+                new_first.strip() != _default_first or new_middle.strip() != (u_middle_name or "") or
+                new_last.strip() != _default_last or new_email.strip() != u_email or
+                (can_edit_role and new_role != u_role) or new_plan != u_plan
+            )
+            if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", use_container_width=True, disabled=not profile_has_changes):
                 if not new_email.strip():
                     st.error("Email can't be empty.")
                 elif db.update_user_profile_admin(u_id, new_first.strip(), new_middle.strip(), new_last.strip(), new_email.strip()):
@@ -240,7 +251,7 @@ def _render_users_tab_body(current_role):
             new_cred = st.number_input("Credits", min_value=0, value=u_credits, key=f"user_cred_field_{u_id}")
         with col_u3:
             st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-            if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True):
+            if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True, disabled=new_cred == u_credits):
                 db.update_user_credits_admin(u_id, new_cred)
                 st.toast(f"Updated credits for {u_email}.", icon=":material/check_circle:")
                 if u_id == st.session_state.user_id:
