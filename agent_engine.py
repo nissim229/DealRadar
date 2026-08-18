@@ -1,0 +1,638 @@
+import os
+import random
+import sqlite3
+import urllib.parse
+import database as db
+from dotenv import load_dotenv
+from openai import OpenAI
+from firecrawl import FirecrawlApp
+
+# Load environment variables securely
+load_dotenv()
+
+# Initialize API Clients
+# Guard against missing keys so the app can still start and use the local
+# mock fallback - the OpenAI SDK now validates the key immediately on
+# client creation, not just when a call is made, so a missing key would
+# otherwise crash the entire app on import.
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
+
+firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+firecrawl_app = FirecrawlApp(api_key=firecrawl_api_key) if firecrawl_api_key else None
+
+google_maps_api_key = os.getenv("GOOGLE_MAPS_API_KEY")
+
+rentcast_api_key = os.getenv("RENTCAST_API_KEY")
+
+# Fallback only - the real, admin-editable limit lives in
+# db.get_rentcast_config()["monthly_limit"] (Admin Controls > Pricing),
+# so upgrading to a paid RentCast plan with a higher quota takes effect
+# immediately without a code change. This constant is used only if that
+# config read somehow fails.
+RENTCAST_MONTHLY_LIMIT = 50
+
+# Maps this app's property type labels (what the UI shows) to RentCast's
+# own enum values (what its API expects) - the two vocabularies are close
+# but not identical ("Single Family Home" here vs. "Single Family" there).
+RENTCAST_PROPERTY_TYPE_MAP = {
+    "Single Family Home": "Single Family",
+    "Condo": "Condo",
+    "Multi-Family": "Multi-Family",
+    "Townhouse": "Townhouse",
+}
+
+
+def is_rentcast_configured():
+    # os.getenv returns "" (not None) for a key present in .env with nothing
+    # after the "=", so checking truthiness here (not just "is not None")
+    # matters - otherwise an empty RENTCAST_API_KEY= line would still read
+    # as "configured" and burn a real API call before failing.
+    return bool(rentcast_api_key)
+
+
+def get_street_view_status(latitude, longitude):
+    """Checks whether real Street View imagery exists at these coordinates,
+    using Google's metadata endpoint (free - doesn't count against the paid
+    image quota). Returns 'OK' if imagery exists, or a status string like
+    'ZERO_RESULTS' if not. Returns None if no key is configured.
+
+    IMPORTANT: this only controls what photo (if any) gets displayed - it
+    must never be used to filter out or hide a property from results. A
+    property with no available photo is still a real match and should still
+    appear, just with the placeholder icon instead of a broken image."""
+    if not google_maps_api_key or latitude is None or longitude is None:
+        return None
+    try:
+        import requests
+        url = "https://maps.googleapis.com/maps/api/streetview/metadata"
+        params = {"location": f"{latitude},{longitude}", "key": google_maps_api_key}
+        response = requests.get(url, params=params, timeout=5)
+        return response.json().get("status")
+    except Exception:
+        return None
+
+
+def get_street_view_image_url(latitude, longitude, width=400, height=300, heading=0):
+    """Builds a Google Street View Static API image URL for the given coordinates,
+    looking in the direction specified by heading (0-360 degrees, compass-style:
+    0=North, 90=East, 180=South, 270=West). Returns None if no API key is
+    configured, so callers can gracefully fall back to a placeholder icon."""
+    if not google_maps_api_key or latitude is None or longitude is None:
+        return None
+    return (
+        "https://maps.googleapis.com/maps/api/streetview"
+        f"?size={width}x{height}&location={latitude},{longitude}&heading={heading}&key={google_maps_api_key}"
+    )
+
+
+def get_street_view_gallery_urls(latitude, longitude, width=400, height=300, angle_count=4):
+    """Returns a list of Street View image URLs at evenly spaced compass headings
+    around the same coordinates - a simple 'look around' gallery from one spot,
+    since real per-listing photos (interior, etc.) aren't legally available without
+    an MLS/IDX data partnership. Returns an empty list if no API key is configured."""
+    if not google_maps_api_key or latitude is None or longitude is None:
+        return []
+    step = 360 // angle_count
+    return [
+        get_street_view_image_url(latitude, longitude, width=width, height=height, heading=i * step)
+        for i in range(angle_count)
+    ]
+
+def build_zillow_search_url(address, mls_number=None):
+    """Deep-links to Zillow's own search (confirmed working pattern:
+    zillow.com/homes/{query}_rb/ - not an official Zillow partnership or
+    API, just their public search page). Neither RentCast nor this app has
+    real listing photos (see _fetch_rentcast_listings' note above), so this
+    is the escape hatch for a user who wants to see actual listing photos
+    for a real match.
+
+    Deliberately address-only, mls_number accepted only for call-site
+    symmetry with build_redfin_search_url. An MLS number is NOT a globally
+    unique identifier - it's only unique within the MLS board that issued
+    it, and different regional boards independently reuse the same numbers
+    (confirmed live: searching Redfin for one MLS# alone surfaced unrelated
+    properties in five different states - see build_redfin_search_url).
+    There's no confirmed working format for combining address + MLS# in
+    this specific _rb/ slug, so rather than guess at one and risk breaking
+    the one pattern that IS confirmed to work, this stays address-only."""
+    if not address:
+        return None
+    slug = address.strip().replace(" ", "-")
+    return f"https://www.zillow.com/homes/{urllib.parse.quote(slug, safe='-,')}_rb/"
+
+
+def build_redfin_search_url(address, mls_number=None):
+    """Redfin has no confirmed public 'raw address/MLS# -> search results'
+    URL the way Zillow does (its own search bar resolves queries through an
+    internal autocomplete API before navigating, so a bare URL can't
+    reliably reproduce that) - rather than guess and risk shipping a broken
+    deep link, this routes through a site-scoped Google search instead.
+
+    mls_number alone is NOT enough to disambiguate - confirmed live: a
+    Google search for site:redfin.com "MLS# 1065651" (a real number from
+    this app) returned five real Redfin listings in five different states,
+    since MLS numbers are only unique per-MLS-board, not nationally. The
+    address is what anchors the search to the right city/region; the
+    quoted MLS# (when known) then narrows further within that to the exact
+    listing - so both are always included together, never MLS# alone."""
+    if not address and not mls_number:
+        return None
+    query_parts = [p for p in [address, f'"MLS# {mls_number}"' if mls_number else None] if p]
+    search_text = "site:redfin.com " + " ".join(query_parts)
+    return f"https://www.google.com/search?q={urllib.parse.quote(search_text)}"
+
+
+def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b, radius=25, user_id=None):
+    """Calls RentCast's real active-listings API (v1/listings/sale) and maps
+    the response into this app's internal listing shape. Returns None on
+    any failure (no key, network error, bad response, unexpected shape) so
+    the caller can fall back to the local simulator - this should never
+    raise, since a flaky external API degrading gracefully beats crashing a
+    scan. Filters server-side by location/property type, then re-checks
+    price/beds client-side too, since RentCast's exact range-query syntax
+    for those fields isn't something to bet a silent wrong-results bug on.
+
+    Note: RentCast doesn't return listing photos in this response - so
+    property cards for real listings still fall back to Street View
+    exterior imagery, exactly like they already do for simulated ones."""
+    usage_this_month = db.get_rentcast_usage_this_month()
+    monthly_limit = db.get_rentcast_config().get("monthly_limit", RENTCAST_MONTHLY_LIMIT)
+    if usage_this_month >= monthly_limit:
+        print(f"[Agent] RentCast monthly limit reached ({usage_this_month}/{monthly_limit}) - skipping the real API call and using the local simulator instead.")
+        return None
+
+    try:
+        import requests
+        url = "https://api.rentcast.io/v1/listings/sale"
+        params = {
+            "latitude": center_lat,
+            "longitude": center_lon,
+            "radius": radius,
+            "status": "Active",
+            "limit": 50,
+        }
+        rc_property_type = RENTCAST_PROPERTY_TYPE_MAP.get(property_type)
+        if rc_property_type:
+            params["propertyType"] = rc_property_type
+
+        response = requests.get(url, params=params, headers={"X-Api-Key": rentcast_api_key}, timeout=10)
+        # A response means this request counted against the plan's monthly
+        # quota regardless of what it contains (RentCast bills per request
+        # sent, not per useful result) - log it now, before any further
+        # parsing that could itself raise and skip the log call below.
+        if response.status_code != 200:
+            db.log_rentcast_call(success=False, user_id=user_id)
+            print(f"[Agent] RentCast API returned status {response.status_code}.")
+            return None
+
+        raw_results = response.json()
+        if not isinstance(raw_results, list):
+            db.log_rentcast_call(success=False, user_id=user_id)
+            return None
+
+        listings = []
+        for item in raw_results:
+            price = item.get("price")
+            beds = item.get("bedrooms")
+            lat = item.get("latitude")
+            lon = item.get("longitude")
+            if price is None or beds is None or lat is None or lon is None:
+                continue
+            if price > max_p or beds < min_b:
+                continue
+            listings.append({
+                "title": item.get("addressLine1") or item.get("formattedAddress", "Property"),
+                "address": item.get("formattedAddress", ""),
+                "price": int(price),
+                "beds": int(beds),
+                "baths": float(item.get("bathrooms") or 0),
+                "sqft": item.get("squareFootage"),
+                "property_type": item.get("propertyType", property_type),
+                "url": "#",
+                "latitude": lat,
+                "longitude": lon,
+                # Kept alongside formattedAddress specifically so callers can
+                # exact-match filter results down to one searched city -
+                # RentCast's radius search alone can't do that (see
+                # fetch_live_listings_for_targets).
+                "city": item.get("city"),
+                # RentCast includes these directly in a real listing's own
+                # response - legitimately licensed data, safe to display and
+                # to use for a more precise Zillow/Redfin search (see
+                # build_zillow_search_url/build_redfin_search_url), no
+                # scraping needed. None for a mock/preview listing, which
+                # has no real MLS record behind it.
+                "mls_number": item.get("mlsNumber"),
+                "mls_name": item.get("mlsName"),
+            })
+        db.log_rentcast_call(success=True, user_id=user_id)
+        return listings
+    except Exception as e:
+        # An exception here (timeout, connection error, JSON parse failure)
+        # means we can't be sure RentCast's server actually processed the
+        # request, so it's deliberately NOT logged as a used call - only a
+        # request that got an HTTP response back (success or not, above)
+        # counts against the monthly quota.
+        print(f"[Agent] RentCast API call failed: {e}")
+        return None
+
+
+def fetch_live_listings(location, property_type, max_price, min_beds, allow_live=True, radius=25, override_coords=None, user_id=None):
+    """
+    Dynamically routes coordinates and simulates property matches
+    based on target location, price ceilings, and unit sizing.
+
+    allow_live=False skips the real RentCast call even if a key is configured
+    (used for anonymous/guest searches, which shouldn't spend metered quota
+    on unauthenticated traffic - see RENTCAST_MONTHLY_LIMIT).
+
+    radius (miles) is passed straight through to the real RentCast search -
+    left at the original 25mi default for every existing caller, but
+    fetch_live_listings_for_targets calls this with a much tighter radius
+    per selected city instead of one wide sweep.
+
+    override_coords=(lat, lon), when given, skips the city_directory/geocode
+    lookup below entirely and searches exactly that point - used by
+    fetch_live_listings_for_targets, which already resolved coordinates via
+    the city_coords_cache (itself backed by validate_and_geocode_location),
+    so there's no reason to re-geocode `location` as a string here too.
+    """
+    # Safe handling: if location arrives as a tuple or row object, extract clean string
+    if isinstance(location, (tuple, list)) and len(location) > 0:
+        loc_str = str(location[0]).lower()
+        loc_display = str(location[0])
+    else:
+        loc_str = str(location).lower()
+        loc_display = str(location)
+
+    # Clean up tuple artifacts or parentheses from display string if passed raw from DB
+    loc_display = loc_display.replace("('", "").replace("',)", "").replace("'", "")
+
+    # Safe data type formatting for numeric boundaries calculations
+    try:
+        max_p = int(max_price[0]) if isinstance(max_price, (tuple, list)) else int(max_price)
+    except:
+        max_p = 750000
+
+    try:
+        min_b = int(min_beds[0]) if isinstance(min_beds, (tuple, list)) else int(min_beds)
+    except:
+        min_b = 3
+
+    # --- ADVANCED GEOGRAPHIC ROUTING MATRIX ---
+    # Dictionary structure mapping location keys to a center point plus street
+    # name options used to generate a varied, randomized set of matches.
+    city_directory = {
+        "denver": {
+            "lat": 39.7392, "lon": -104.9903,
+            "streets": ["Market Street", "Larimer Street", "Blake Street", "Wynkoop Street", "Capital Avenue"],
+        },
+        "boulder": {
+            "lat": 40.0205, "lon": -105.2764,
+            "streets": ["Pearl Street", "Pine Street", "Mapleton Avenue", "Canyon Boulevard", "Broadway"],
+        },
+        "austin": {
+            "lat": 30.2672, "lon": -97.7431,
+            "streets": ["Congress Avenue", "Rainey Street", "South Lamar Boulevard", "6th Street", "Silicon Hills Drive"],
+        },
+        "miami": {
+            "lat": 25.7617, "lon": -80.1918,
+            "streets": ["Brickell Avenue", "Biscayne Boulevard", "Ocean Drive", "Collins Avenue", "Flagler Street"],
+        },
+    }
+
+    if override_coords is not None:
+        center_lat, center_lon = override_coords
+        street_options = ["Main Street", "Market Street", "Central Avenue", "Pipeline Drive", "Strategic Way"]
+    else:
+        # Find matching city key using a clean loop check string layout lookups
+        matched_city = None
+        for city_key in city_directory:
+            if city_key in loc_str:
+                matched_city = city_directory[city_key]
+                break
+
+        # If the location isn't one of our 4 hardcoded cities, try to geocode it for
+        # real so the mock listings (and Street View photos) land somewhere sensible,
+        # instead of always defaulting to one generic rural point with no imagery.
+        if matched_city is None:
+            geo_result = validate_and_geocode_location(loc_display)
+            if geo_result:
+                center_lat, center_lon = geo_result["latitude"], geo_result["longitude"]
+            else:
+                center_lat, center_lon = 39.8283, -98.5795  # Geographic Center of the US (Lebanon, Kansas)
+            street_options = ["Main Street", "Market Street", "Central Avenue", "Pipeline Drive", "Strategic Way"]
+        else:
+            center_lat, center_lon = matched_city["lat"], matched_city["lon"]
+            street_options = matched_city["streets"]
+
+    # If a RentCast API key is configured, try real listings first - falls
+    # through to the local simulator below on any failure (no key, network
+    # error, bad response), so this never breaks the app before a key has
+    # been set up or if RentCast has a bad moment.
+    if allow_live and is_rentcast_configured():
+        real_listings = _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b, radius=radius, user_id=user_id)
+        if real_listings is not None:
+            return real_listings
+        print("[Agent] RentCast lookup failed - falling back to local simulator.")
+
+    # Randomized match count each scan - feels more realistic than a fixed
+    # number, since real searches rarely return the exact same count twice.
+    listing_count = random.randint(3, 7)
+
+    # Bias the price spread so at least one listing is a clear bargain and one
+    # is a stretch near the max budget - under default underwriting assumptions
+    # this reliably produces a mix of deal grades (green/yellow/red) to look at,
+    # rather than leaving it to chance whether any listing clears the target yield.
+    price_factors = [random.uniform(0.72, 0.98) for _ in range(listing_count)]
+    price_factors[0] = random.uniform(0.35, 0.50)
+    if listing_count > 1:
+        price_factors[-1] = random.uniform(0.95, 0.99)
+
+    listings = []
+    for i in range(listing_count):
+        jitter_lat = center_lat + random.uniform(-0.012, 0.012)
+        jitter_lon = center_lon + random.uniform(-0.012, 0.012)
+        street_name = random.choice(street_options)
+        street_number = random.randint(100, 9999)
+        listing_beds = min_b + random.choice([0, 0, 1, 1, 2])
+        listing_baths = round(random.uniform(1.5, 3.5) * 2) / 2
+        listing_sqft = int((900 + listing_beds * 400) * random.uniform(0.85, 1.25))
+
+        listings.append({
+            "title": f"{loc_display} Asset #{i + 1}",
+            "address": f"{street_number} {street_name}, {loc_display}",
+            "price": int(max_p * price_factors[i]),
+            "beds": int(listing_beds),
+            "baths": listing_baths,
+            "sqft": listing_sqft,
+            "property_type": property_type,
+            "url": "#",
+            "latitude": jitter_lat,
+            "longitude": jitter_lon,
+        })
+
+    return listings
+
+
+def resolve_city_coords(city, state):
+    """City/state -> (lat, lon), backed by database.py's city_coords_cache
+    so a given city is only ever geocoded once. Returns None if the
+    geocoder can't resolve it (bad city name, Nominatim down, etc.)."""
+    cached = db.get_cached_city_coords(city, state)
+    if cached is not None:
+        return cached
+    geo_result = validate_and_geocode_location(f"{city}, {state}")
+    if geo_result is None:
+        return None
+    lat, lon = geo_result["latitude"], geo_result["longitude"]
+    db.cache_city_coords(city, state, lat, lon)
+    return (lat, lon)
+
+
+def fetch_live_listings_for_targets(targets, property_type, max_price, min_beds, allow_live=True, user_id=None):
+    """
+    Runs a scan across one or more resolved points instead of a single
+    wide-radius search - this is the fix for searches like "Boulder, CO"
+    pulling in Thornton/Denver: each target gets its own tight 8-mile
+    RentCast search (instead of one flat 25-mile sweep from the old
+    single-point fetch_live_listings), and results are filtered down to
+    listings actually inside the searched city when the target names one.
+
+    `targets` is a list of dicts: {"lat", "lon", "label" (used for the
+    listing's display address/title), "city_name" (the specific city being
+    searched, for the exact-match filter - None for a state-wide "Any city"
+    or ZIP-only search, which has nothing narrower to filter results against)}.
+
+    Cost note: each target is its own real RentCast request when
+    allow_live - selecting N cities spends N requests against the 50/month
+    quota for one scan, not 1. Callers should cap how many targets they
+    allow per search (the location picker caps it at 5) to keep this bounded.
+    """
+    seen_addresses = set()
+    combined = []
+    for target in targets:
+        target_listings = fetch_live_listings(
+            target["label"], property_type, max_price, min_beds,
+            allow_live=allow_live, radius=8, override_coords=(target["lat"], target["lon"]), user_id=user_id,
+        )
+        city_name = target.get("city_name")
+        for listing in target_listings:
+            if city_name and listing.get("city") and listing["city"].strip().lower() != city_name.strip().lower():
+                continue
+            dedupe_key = listing.get("address") or listing.get("title")
+            if dedupe_key in seen_addresses:
+                continue
+            seen_addresses.add(dedupe_key)
+            combined.append(listing)
+    return combined
+
+
+def generate_offline_mock_report(profile_name, location, property_type, max_price, min_beds, listings):
+    """Generates a high-fidelity local markdown mockup if OpenAI API limits are met."""
+    if not listings:
+        return f"""
+# 📊 Real Estate Investment Report: {profile_name}
+**Target Market:** {location} | **Asset Class:** {property_type} | *(Simulated Local Analysis due to API Quota Limit)*
+
+---
+
+### No Matching Properties Found
+No active `{property_type}` listings under **${max_price:,}** with at least {min_beds} bed(s) were found in **{location}** for this scan. Try widening your price range, lowering the minimum bedrooms, or broadening the target area.
+"""
+
+    deal_rows = ""
+    for item in listings:
+        est_rent = int(item['price'] * 0.007)
+        est_coc = "7.8%" if item['price'] < (max_price * 0.9) else "6.2%"
+        deal_rows += f"| {item['address']} | ${item['price']:,} | {item['beds']} | ${est_rent}/mo | {est_coc} |\n"
+
+    return f"""
+# 📊 Real Estate Investment Report: {profile_name}
+**Target Market:** {location} | **Asset Class:** {property_type} | *(Simulated Local Analysis due to API Quota Limit)*
+
+---
+
+### 1. Executive Market Summary
+The real estate landscape in **{location}** continues to demonstrate robust baseline demand and strong macroeconomic indicators. Inventory for `{property_type}` assets under **${max_price:,}** remains highly competitive, requiring investors to target micro-markets aggressively. 
+
+### 2. Structured Property Evaluation Matrix
+Below is a comparative data model summarizing filtered pipeline properties meeting your exact criteria (Min Bedrooms: {min_beds}):
+
+| Property Address | Purchase Price | Beds | Est. Market Rent | Est. Cash-on-Cash |
+| :--- | :--- | :--- | :--- | :--- |
+{deal_rows}
+
+### 3. Investment Strategy & Underwriting Metrics
+* **Financing Strategy:** Projections assume a 25% down payment structural architecture at market interest rates.
+* **Cap Rate Environment:** Average compressed cap rates for the `{location}` perimeter hover between 4.8% and 5.5%.
+* **Value-Add Potential:** Multi-bedroom layout adjustments represent the fastest mechanism to optimize gross yield metrics.
+
+### 4. Next Steps & Tactical Recommendation
+Property **`{listings[0]['address']}`** represents the optimal operational target. It offers a defensive margin below your maximum threshold budget of **${max_price:,}**, while presenting structural upside to scale monthly yield metrics. 
+"""
+
+def run_agent_workflow(profile_name, user_id, raw_listings=None):
+    """Orchestration engine with dynamic automatic failover to local simulator.
+    Scoped by user_id + profile_name together, since the reports table only
+    guarantees uniqueness per (user_id, profile_name) pair - looking up by
+    profile_name alone risked pulling another tenant's saved criteria.
+
+    raw_listings: pass the already-fetched listings for this scan (the caller
+    typically needs them anyway, e.g. for map coordinates) to avoid a second
+    live RentCast call for the same profile - each real API call spends
+    metered quota, so fetching twice per scan would silently halve the
+    effective monthly limit. Only fetched here if the caller didn't already."""
+    conn = sqlite3.connect(db.DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT location, max_price, min_beds, property_type FROM reports WHERE profile_name=? AND user_id=?",
+            (str(profile_name), int(user_id))
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        raise ValueError(f"Profile configuration '{profile_name}' not found.")
+
+    location, max_price, min_beds, property_type = row
+    if raw_listings is None:
+        raw_listings = fetch_live_listings(location, property_type, max_price, min_beds)
+
+    if openai_client is None:
+        print(f"[Agent] No OpenAI API key configured. Using local simulator for {profile_name}...")
+        return generate_offline_mock_report(profile_name, location, property_type, max_price, min_beds, raw_listings)
+
+    # Unlike RentCast, every scan used to call OpenAI unconditionally
+    # (live, mock, even anonymous guest previews) with no monthly cap at
+    # all - a real, unbounded cost-risk. Mirrors the RentCast quota pattern:
+    # once the admin-editable monthly limit is hit, fall back to the same
+    # local mock report generator used for a missing key/exhausted OpenAI
+    # quota, instead of placing another real call.
+    openai_usage_this_month = db.get_openai_usage_this_month()
+    openai_limit = db.get_openai_config().get("monthly_limit", 500)
+    if openai_usage_this_month >= openai_limit:
+        print(f"[Agent] OpenAI monthly limit reached ({openai_usage_this_month}/{openai_limit}) - using the local simulator instead.")
+        return generate_offline_mock_report(profile_name, location, property_type, max_price, min_beds, raw_listings)
+
+    try:
+        print(f"[Agent] Contacting OpenAI API for {profile_name}...")
+        prompt = f"Analyze: {location}, Budget: {max_price}, Listings: {str(raw_listings)}"
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a professional investment analyst asset."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        db.log_openai_call(user_id=user_id)
+        return response.choices[0].message.content
+
+    except Exception as e:
+        # Check if the error is due to insufficient credit quota balance
+        if "insufficient_quota" in str(e) or "429" in str(e):
+            print("[Warning] OpenAI Quota Exhausted. Transitioning to local analytical simulator pipeline...")
+            return generate_offline_mock_report(profile_name, location, property_type, max_price, min_beds, raw_listings)
+        else:
+            # Re-raise error if it's a structural syntax bug instead of a billing problem
+            raise e
+
+from geopy.geocoders import Nominatim
+from geopy.exc import GeocoderTimedOut
+from geopy.distance import geodesic
+
+
+def calculate_distance_miles(lat1, lon1, lat2, lon2):
+    """Straight-line ('as the crow flies') distance in miles between two
+    coordinates, using geopy's geodesic calculation. Not a driving distance -
+    that would need a separate routing API - but useful as a quick reference
+    (e.g. distance from a property to downtown, or to your workplace)."""
+    if None in (lat1, lon1, lat2, lon2):
+        return None
+    try:
+        return geodesic((lat1, lon1), (lat2, lon2)).miles
+    except Exception:
+        return None
+
+
+def is_places_api_configured():
+    """Returns True if a Google Maps key is present (best-effort check - doesn't
+    verify the Places API specifically is enabled/allowed on it, since that would
+    require an extra network call). Used by the UI to distinguish 'not set up'
+    from 'genuinely no results found nearby'."""
+    return bool(google_maps_api_key)
+
+
+def get_nearby_places(latitude, longitude, place_type, radius_meters=1500):
+    """Looks up nearby points of interest (schools, transit stations, etc.) using
+    Google's Places API Nearby Search. Requires the Places API to be enabled on
+    your Google Cloud project AND added to your API key's allowed-APIs list
+    (separate from the Street View Static API you already set up) - see setup
+    notes. Returns an empty list (not an error) if the key/API isn't configured,
+    so callers can gracefully skip the neighborhood section instead of crashing."""
+    if not google_maps_api_key or latitude is None or longitude is None:
+        return []
+    try:
+        import requests
+        url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+        params = {
+            "location": f"{latitude},{longitude}",
+            "radius": radius_meters,
+            "type": place_type,
+            "key": google_maps_api_key,
+        }
+        response = requests.get(url, params=params, timeout=5)
+        data = response.json()
+        if data.get("status") not in ("OK", "ZERO_RESULTS"):
+            print(f"[Places API] {data.get('status')}: {data.get('error_message', '')}")
+            return []
+        results = []
+        for place in data.get("results", [])[:5]:
+            place_lat = place.get("geometry", {}).get("location", {}).get("lat")
+            place_lon = place.get("geometry", {}).get("location", {}).get("lng")
+            distance = calculate_distance_miles(latitude, longitude, place_lat, place_lon)
+            results.append({
+                "name": place.get("name", "Unknown"),
+                "rating": place.get("rating"),
+                "distance_miles": distance,
+            })
+        return sorted(results, key=lambda r: r["distance_miles"] if r["distance_miles"] is not None else 999)
+    except Exception as e:
+        print(f"[Places API] Lookup failed: {e}")
+        return []
+
+
+def validate_and_geocode_location(location_input_string):
+    """
+    Connects to OpenStreetMap to verify if a text location string exists.
+    Returns a dictionary with clean strings and coordinates if valid, or None if fake.
+    """
+    if not location_input_string or len(str(location_input_string).strip()) < 3:
+        return None
+        
+    # Initialize the open-source geolocator with a custom unique user-agent string identifier
+    geolocator = Nominatim(user_agent="dealradar_property_scanner_v1")
+    
+    try:
+        # Search the user's string text, restricting search parameters to the US for speed
+        location_match = geolocator.geocode(location_input_string, country_codes="us", timeout=5)
+        
+        if location_match:
+            return {
+                "display_name": location_match.address,
+                "latitude": location_match.latitude,
+                "longitude": location_match.longitude
+            }
+        return None
+    except (GeocoderTimedOut, Exception):
+        # Fail-safety fallback: if internet lags or connection times out, pass the text through safely
+        return {
+            "display_name": str(location_input_string),
+            "latitude": 39.8283,
+            "longitude": -98.5795
+        }

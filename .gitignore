@@ -1,0 +1,18 @@
+# Secrets - never commit
+.env
+client_secret_*.json
+
+# Databases - contain real user data/password hashes, and don't belong in
+# source control (binary, grows every run, would leak PII into history)
+*.db
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# User-uploaded files (lease/contract documents - sensitive)
+portfolio_uploads/
+
+# Editor/IDE
+.vs/
