@@ -17,6 +17,7 @@ import streamlit as st
 import agent_engine as engine
 from underwriting import compute_deal_metrics, render_deal_badge
 from photo_carousel import render_photo_carousel_html
+from icons import icon as svg_icon
 import streamlit.components.v1 as components
 
 # Sensible fixed defaults for the guest demo - matches the app's own "Simple
@@ -51,18 +52,18 @@ def render_guest_landing():
     st.markdown("""
         <style>
         div.st-key-guest_topbar {
-            background-color: #0f172a;
+            background-color: var(--radar-navy);
             padding: 14px 28px;
             margin-bottom: 24px;
         }
         div.st-key-guest_topbar button {
-            background-color: #2563eb !important;
+            background-color: var(--radar-primary) !important;
             color: white !important;
             border: none !important;
             font-weight: 600 !important;
         }
         div.st-key-guest_topbar button:hover {
-            background-color: #1d4ed8 !important;
+            background-color: var(--radar-primary-dark) !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -72,7 +73,7 @@ def render_guest_landing():
         with col_logo:
             st.markdown("""
                 <div style='display: flex; align-items: center; gap: 10px;'>
-                    <div style='background: linear-gradient(135deg, #2563eb, #1d4ed8); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;'>
+                    <div style='background: var(--radar-gradient-brand); width: 34px; height: 34px; border-radius: var(--radar-radius-md); display: flex; align-items: center; justify-content: center;'>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="9" />
                             <circle cx="12" cy="12" r="5" />
@@ -92,61 +93,65 @@ def render_guest_landing():
     st.markdown("""
         <style>
         div.st-key-guest_hero {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            background: var(--radar-gradient-hero);
             padding: 48px 40px 64px 40px;
             margin-bottom: -40px;
-            border-radius: 0 0 20px 20px;
+            border-radius: 0 0 var(--radar-radius-xl) var(--radar-radius-xl);
         }
         div.st-key-guest_search_card {
-            background: white;
-            border-radius: 14px;
+            background: var(--radar-surface);
+            border-radius: var(--radar-radius-lg);
             padding: 20px 24px;
-            box-shadow: 0 12px 32px rgba(15,23,42,0.18);
+            box-shadow: var(--radar-shadow-lg);
             max-width: 900px;
             margin: 0 auto;
         }
         div.st-key-guest_search_card button {
-            background-color: #2563eb !important;
+            background-color: var(--radar-primary) !important;
             color: white !important;
             border: none !important;
             font-weight: 700 !important;
         }
         div.st-key-guest_search_card button:hover {
-            background-color: #1d4ed8 !important;
+            background-color: var(--radar-primary-dark) !important;
         }
         div.st-key-guest_benefit {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
+            background: var(--radar-surface);
+            border: 1px solid var(--radar-border);
+            border-radius: var(--radar-radius-md);
             padding: 16px 14px;
             text-align: center;
             height: 100%;
         }
         div.st-key-guest_chip button {
             background-color: transparent !important;
-            color: #94a3b8 !important;
-            border: 1px solid #475569 !important;
+            color: var(--radar-text-on-dark-muted) !important;
+            border: 1px solid var(--radar-navy-light) !important;
             font-weight: 500 !important;
             font-size: 12px !important;
-            border-radius: 16px !important;
+            border-radius: var(--radar-radius-pill) !important;
             padding: 4px 12px !important;
             min-height: 0 !important;
         }
         div.st-key-guest_chip button:hover {
             background-color: rgba(37,99,235,0.15) !important;
             color: white !important;
-            border-color: #2563eb !important;
+            border-color: var(--radar-primary) !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container(key="guest_hero"):
-        st.markdown("""
-            <div style='text-align:center; max-width:700px; margin:0 auto 28px auto;'>
-                <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>
-                    Find your next great deal in seconds
+        st.markdown(f"""
+            <div style='text-align:center; max-width:760px; margin:0 auto 28px auto;'>
+                <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
+                    <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
+                                border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
+                        {svg_icon("radar", size=24, color="white")}
+                    </div>
+                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Find your next great deal in seconds</div>
                 </div>
-                <div style='font-size:15px; color:#94a3b8; margin-top:10px;'>
+                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>
                     Search any city for a free instant preview - real property matches, real numbers,
                     graded by cash flow. No account required to try it.
                 </div>
@@ -168,7 +173,7 @@ def render_guest_landing():
                     search_clicked = st.form_submit_button(":material/travel_explore: Search", use_container_width=True)
 
         st.markdown("<div style='text-align:center; margin-top:14px;'>", unsafe_allow_html=True)
-        st.markdown("<span style='color:#64748b; font-size:12px; margin-right:8px;'>Popular:</span>", unsafe_allow_html=True)
+        st.markdown("<span style='color:var(--radar-text-on-dark-muted); font-size:12px; margin-right:8px;'>Popular:</span>", unsafe_allow_html=True)
         chip_cols = st.columns([1, 1, 1, 1, 1, 3])
         chip_clicked_city = None
         for i, chip_city in enumerate(QUICK_SEARCH_CITIES):
@@ -181,21 +186,21 @@ def render_guest_landing():
     st.markdown("<div style='height:56px;'></div>", unsafe_allow_html=True)
 
     # --- Benefits strip: what signing in actually unlocks ---
-    st.markdown("<div style='text-align:center; font-weight:700; color:#1e293b; font-size:15px; margin-bottom:14px;'>What you get with a free account</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align:center; font-weight:700; color:var(--radar-text); font-size:15px; margin-bottom:14px;'>What you get with a free account</div>", unsafe_allow_html=True)
     benefits = [
-        ("🎛️", "Full Pro Calculator", "DSCR, GRM, MAO, and a Suggested Max Offer for every property"),
-        ("⭐", "Save & Track Deals", "Star properties across scans, add your own notes"),
-        ("📄", "Export Reports", "Download a clean PDF for any property or full scan"),
-        ("🔔", "Saved Searches", "Set up hunt profiles and re-run them anytime"),
+        ("chart", "Full Pro Calculator", "DSCR, GRM, MAO, and a Suggested Max Offer for every property"),
+        ("star-filled", "Save & Track Deals", "Star properties across scans, add your own notes"),
+        ("download", "Export Reports", "Download a clean PDF for any property or full scan"),
+        ("crosshair", "Saved Searches", "Set up hunt profiles and re-run them anytime"),
     ]
     benefit_cols = st.columns(4)
-    for (icon, title, desc), bcol in zip(benefits, benefit_cols):
+    for (icon_name, title, desc), bcol in zip(benefits, benefit_cols):
         with bcol:
             with st.container(key=f"guest_benefit_{title.replace(' ', '_')}"):
                 st.markdown(f"""
-                    <div style='font-size:26px; margin-bottom:6px;'>{icon}</div>
-                    <div style='font-weight:700; color:#1e293b; font-size:13.5px; margin-bottom:4px;'>{title}</div>
-                    <div style='font-size:11.5px; color:#64748b; line-height:1.4;'>{desc}</div>
+                    <div style='margin-bottom:8px;'>{svg_icon(icon_name, size=24, color="var(--radar-primary)")}</div>
+                    <div style='font-weight:700; color:var(--radar-text); font-size:13.5px; margin-bottom:4px;'>{title}</div>
+                    <div style='font-size:11.5px; color:var(--radar-text-muted); line-height:1.4;'>{desc}</div>
                 """, unsafe_allow_html=True)
 
     st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
@@ -233,13 +238,14 @@ def render_guest_landing():
         best_listing = results[best_idx]
         if best_metrics["coc"] > 0:
             st.markdown(f"""
-                <div style='background:#d1fae5; border:1px solid #6ee7b7; border-radius:10px; padding:12px 16px; margin-bottom:16px;'>
-                    <span style='font-weight:700; color:#065f46;'>🏆 Best deal found:</span>
+                <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;'>
+                    {svg_icon("trophy", size=16, color="#065f46")}
+                    <span style='font-weight:700; color:#065f46;'>Best deal found:</span>
                     <span style='color:#065f46;'>{best_metrics['coc']:.1f}% cash-on-cash return at {best_listing.get('address', '')}</span>
                 </div>
             """, unsafe_allow_html=True)
 
-        st.caption("💡 Showing basic numbers only. Sign in for the full Pro calculator (DSCR, GRM, Suggested Max Offer), saving, and notes.")
+        st.caption(":material/lightbulb: Showing basic numbers only. Sign in for the full Pro calculator (DSCR, GRM, Suggested Max Offer), saving, and notes.")
 
         cols_per_row = 3
         for row_start in range(0, len(results), cols_per_row):
@@ -255,14 +261,14 @@ def _render_pro_calculator_teaser():
     with a lock overlay - shows concretely what signing in unlocks instead
     of just describing it in text."""
     st.markdown("""
-        <div style='position:relative; max-width:640px; margin:0 auto; border-radius:12px; overflow:hidden;
-                    border:1px solid #e2e8f0;'>
-            <div style='filter: blur(3px); opacity:0.55; background:#0f172a; padding:18px 20px;
+        <div style='position:relative; max-width:640px; margin:0 auto; border-radius:var(--radar-radius-lg); overflow:hidden;
+                    border:1px solid var(--radar-border);'>
+            <div style='filter: blur(3px); opacity:0.55; background:var(--radar-navy); padding:18px 20px;
                         display:grid; grid-template-columns:repeat(4,1fr); gap:12px; font-family:monospace;'>
-                <div style='color:#94a3b8; font-size:10px;'>CAP RATE<br><span style='color:white; font-size:16px; font-weight:800;'>7.24%</span></div>
-                <div style='color:#94a3b8; font-size:10px;'>DSCR<br><span style='color:white; font-size:16px; font-weight:800;'>1.42</span></div>
-                <div style='color:#94a3b8; font-size:10px;'>GRM<br><span style='color:white; font-size:16px; font-weight:800;'>9.8</span></div>
-                <div style='color:#94a3b8; font-size:10px;'>MAO<br><span style='color:white; font-size:16px; font-weight:800;'>$412K</span></div>
+                <div style='color:var(--radar-text-on-dark-muted); font-size:10px;'>CAP RATE<br><span style='color:white; font-size:16px; font-weight:800;'>7.24%</span></div>
+                <div style='color:var(--radar-text-on-dark-muted); font-size:10px;'>DSCR<br><span style='color:white; font-size:16px; font-weight:800;'>1.42</span></div>
+                <div style='color:var(--radar-text-on-dark-muted); font-size:10px;'>GRM<br><span style='color:white; font-size:16px; font-weight:800;'>9.8</span></div>
+                <div style='color:var(--radar-text-on-dark-muted); font-size:10px;'>MAO<br><span style='color:white; font-size:16px; font-weight:800;'>$412K</span></div>
             </div>
             <div style='position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
                         justify-content:center; background:rgba(15,23,42,0.35);'>

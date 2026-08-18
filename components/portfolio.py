@@ -307,7 +307,7 @@ def _render_schedule_section(p):
         table_df = sched_df.copy()
         for col in ["Payment", "Principal Paid", "Interest Paid", "Ending Balance", "Cumulative Interest", "Cumulative Principal"]:
             table_df[col] = table_df[col].apply(lambda v: f"${v:,.0f}")
-        st.dataframe(table_df, use_container_width=True, hide_index=True)
+        st.dataframe(table_df, use_container_width=True, hide_index=True, height=min(len(table_df), 12) * 35 + 38)
 
 
 # --- ADD-PROPERTY FORM (used only by the "Add a Property" tab - a fresh
@@ -921,7 +921,7 @@ def _render_summary_tab(properties):
     display_df = df[["Address", "Type", "Current Value", "Equity", "Rented", "Monthly Rent", "Monthly Costs", "Monthly Cash Position"]].copy()
     for col in ["Current Value", "Equity", "Monthly Rent", "Monthly Costs", "Monthly Cash Position"]:
         display_df[col] = display_df[col].apply(lambda v: f"${v:,.0f}")
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(display_df, use_container_width=True, hide_index=True, height=len(display_df) * 35 + 38)
 
 
 def render_portfolio_page():

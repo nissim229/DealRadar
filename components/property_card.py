@@ -15,6 +15,7 @@ from pdf_export import generate_single_property_pdf_link
 from whatif_calculator import render_whatif_calculator_html
 from photo_carousel import render_photo_carousel_html
 from components import pricing
+from icons import icon as svg_icon
 
 
 def render_grade_explanation(metrics, calc_target_yield):
@@ -42,7 +43,7 @@ def render_grade_explanation(metrics, calc_target_yield):
         rows.append(("🛑 Vs. your target", "N/A", "Cash flow is negative - the mortgage costs more than the property brings in"))
 
     breakdown_df = pd.DataFrame(rows, columns=["Metric", "Value", "What it means"])
-    st.dataframe(breakdown_df, hide_index=True, use_container_width=True)
+    st.dataframe(breakdown_df, hide_index=True, use_container_width=True, height=len(breakdown_df) * 35 + 38)
 
     st.caption(
         "**Quick glossary** — "
@@ -86,7 +87,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
                 components.html(tour_html, height=440)
                 st.caption("Drag/swipe or use the arrows to look around - views looking in each compass direction from this location, not interior listing photos, which require a licensed MLS/IDX data partnership.")
         else:
-            st.caption("📷 Google Street View hasn't photographed this exact spot - this happens on some streets even in valid, real locations. The property is still a legitimate match, just without a street-level photo.")
+            st.caption(":material/photo_camera: Google Street View hasn't photographed this exact spot - this happens on some streets even in valid, real locations. The property is still a legitimate match, just without a street-level photo.")
 
         if address:
             mls_number = row_item.get("mls_number")
@@ -131,7 +132,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             dist = engine.calculate_distance_miles(row_item.get("latitude"), row_item.get("longitude"),
                                                      reference_point["latitude"], reference_point["longitude"])
             if dist is not None:
-                st.markdown(f"##### 📏 Distance")
+                st.markdown("##### :material/straighten: Distance")
                 st.caption(f"{dist:.1f} miles from {reference_point['label']}")
                 st.markdown("---")
 
@@ -139,7 +140,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         not_configured_msg = "Requires a Google Maps API key with Places API enabled - see setup notes."
         no_results_msg = "No results found within 1.5km of this location."
 
-        st.markdown("##### 🏫 Nearby Schools")
+        st.markdown("##### :material/school: Nearby Schools")
         schools = engine.get_nearby_places(row_item.get("latitude"), row_item.get("longitude"), "school")
         if schools:
             for s in schools:
@@ -149,7 +150,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         else:
             st.caption(no_results_msg if places_configured else not_configured_msg)
 
-        st.markdown("##### 🚉 Nearby Transit")
+        st.markdown("##### :material/directions_transit: Nearby Transit")
         transit = engine.get_nearby_places(row_item.get("latitude"), row_item.get("longitude"), "transit_station")
         if transit:
             for t in transit:
@@ -162,8 +163,8 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         pdf_uri = generate_single_property_pdf_link(row_item, metrics, note_text)
         st.markdown(f"""
             <a href="{pdf_uri}" download="DealRadar_{row_item['title'].replace(' ', '_')}.html" style="text-decoration: none;">
-                <div style="background-color: var(--radar-neutral); color: white; text-align: center; padding: 8px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; font-size: 13px;">
-                    📄 Export This Property to PDF / Print
+                <div style="background-color: var(--radar-neutral); color: white; text-align: center; padding: 8px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; font-size: 13px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    {svg_icon("download", size=14, color="white")} Export This Property to PDF / Print
                 </div>
             </a>
         """, unsafe_allow_html=True)

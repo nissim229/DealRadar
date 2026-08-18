@@ -20,7 +20,7 @@ def _show_signups_dialog():
                 [{"Name": name or "-", "Email": email, "Plan": plan, "Joined": (created_at or "")[:10]}
                  for email, name, plan, created_at in recent]
             ),
-            use_container_width=True, hide_index=True,
+            use_container_width=True, hide_index=True, height=len(recent) * 35 + 38,
         )
     st.caption("Full list with credits, scans, and spend is in the Users tab.")
 
@@ -52,7 +52,7 @@ def _show_revenue_dialog(revenue_stats):
                 [{"User": f"{name} ({email})" if name else email, "Package": pkg, "Amount": f"${amt:,.0f}", "Date": purchased_at}
                  for email, name, pkg, amt, credits, purchased_at in recent_tx]
             ),
-            use_container_width=True, hide_index=True,
+            use_container_width=True, hide_index=True, height=len(recent_tx) * 35 + 38,
         )
     st.caption("Full transaction ledger and plan breakdown is in the Revenue tab.")
 
@@ -69,7 +69,7 @@ def _show_credits_dialog():
                 [{"Name": name or "-", "Email": email, "Credits": credits, "Plan": plan}
                  for email, name, credits, plan in top_holders]
             ),
-            use_container_width=True, hide_index=True,
+            use_container_width=True, hide_index=True, height=len(top_holders) * 35 + 38,
         )
     st.caption("Users at 0 credits (upsell targets) are listed below the stat cards on the main dashboard.")
 
@@ -660,7 +660,7 @@ def render_admin_control_panel():
                  "RentCast Calls": row["call_count"]}
                 for row in usage_by_user
             ])
-            st.dataframe(usage_df, use_container_width=True, hide_index=True)
+            st.dataframe(usage_df, use_container_width=True, hide_index=True, height=len(usage_df) * 35 + 38)
 
     with tab_map[":material/payments: Revenue"]:
         st.markdown("### Revenue (Simulated)")
@@ -708,7 +708,7 @@ def render_admin_control_panel():
                  "Amount": f"${amt:,.0f}", "Credits": credits, "Date": purchased_at}
                 for email, name, pkg, amt, credits, purchased_at in recent_tx
             ])
-            st.dataframe(tx_df, use_container_width=True, hide_index=True)
+            st.dataframe(tx_df, use_container_width=True, hide_index=True, height=len(tx_df) * 35 + 38)
 
     if roles.is_super_admin(current_role):
         with tab_map[":material/sell: Pricing"]:

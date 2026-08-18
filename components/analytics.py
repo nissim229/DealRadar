@@ -153,7 +153,7 @@ def _show_deals_meeting_target_dialog(pts, metrics):
             {"Address": p.get("address") or p.get("title", "-"), "Price": f"${p['price']:,.0f}", "CoC Return": f"{m['coc']:.1f}%"}
             for p, m in matches
         ]),
-        use_container_width=True, hide_index=True,
+        use_container_width=True, hide_index=True, height=min(len(matches), 10) * 35 + 38,
     )
     st.caption("Full results with map and filters are in the 'Execute Live Scan' tab below.")
 
@@ -180,7 +180,7 @@ def _show_total_value_dialog(pts):
             {"City": city, "Properties": info["count"], "Total Value": f"${info['total']:,.0f}"}
             for city, info in rows
         ]),
-        use_container_width=True, hide_index=True,
+        use_container_width=True, hide_index=True, height=min(len(rows), 10) * 35 + 38,
     )
     st.caption(f"{len(pts)} propert{'y' if len(pts) == 1 else 'ies'} scanned across {len(by_city)} location{'s' if len(by_city) != 1 else ''} in this scan.")
 
@@ -451,14 +451,14 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
         with st.expander(":material/description: Full Written Report", expanded=True):
             st.markdown(report_body)
     else:
-        st.info("💡 Simple mode is showing you deal cards below. Switch to Pro mode in the sidebar for the full written analyst report and detailed underwriting.")
+        st.info("Simple mode is showing you deal cards below. Switch to Pro mode in the sidebar for the full written analyst report and detailed underwriting.", icon=":material/lightbulb:")
 
     try:
         _header_count = len(json.loads(coords_json))
     except Exception:
         _header_count = 0
     match_word = "Match" if _header_count == 1 else "Matches"
-    st.markdown(f"### 🏢 {profile_name} — {_header_count} {match_word}")
+    st.markdown(f"### :material/apartment: {profile_name} — {_header_count} {match_word}")
 
     if show_preview_notice and st.session_state.get("last_scan_was_preview"):
         if st.session_state.get("last_scan_was_test"):
@@ -761,7 +761,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                         st.rerun()
 
                 with map_col:
-                    st.markdown("##### 🌍 Map")
+                    st.markdown("##### :material/map: Map")
                     map_zoom_level = 12
                     df_map_filtered = df_listings_grid.copy()
 
@@ -861,14 +861,14 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                 clicked = cluster_df.iloc[point_index]
                                 st.markdown("---")
                                 if clicked["is_cluster"]:
-                                    st.markdown(f"#### 📍 {clicked['count']} properties in this area")
+                                    st.markdown(f"#### :material/location_on: {clicked['count']} properties in this area")
                                     st.caption("Zoom in on the map or narrow your filters above to click an individual property.")
                                     member_rows = df_listings_grid.iloc[clicked["member_indices"]]
                                     summary_df = member_rows[["title", "address", "price", "beds", "baths"]].copy()
                                     summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
-                                    st.dataframe(summary_df, hide_index=True, use_container_width=True)
+                                    st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
                                 else:
-                                    st.markdown("#### 📍 Selected Property")
+                                    st.markdown("#### :material/location_on: Selected Property")
                                     sel_idx = clicked["member_indices"][0]
                                     sel_row = df_listings_grid.iloc[sel_idx]
                                     sel_metrics = compute_deal_metrics(
@@ -881,7 +881,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                                           {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
                                                            "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
                         else:
-                            st.info("💡 Click a pin above to see that property's price, deal grade, and full details.")
+                            st.info("Click a pin above to see that property's price, deal grade, and full details.", icon=":material/lightbulb:")
             except Exception:
                 st.caption("Unable to load the map for this scan.")
 
@@ -954,7 +954,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     table_df = pd.DataFrame(table_rows)
 
                     st.dataframe(
-                        table_df, use_container_width=True, hide_index=True, height=460,
+                        table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
                         key=f"{key_prefix}_table_view_grid",
                         column_config={
                             "Price": st.column_config.NumberColumn(format="$%d"),
@@ -991,7 +991,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     table_selected_idx = st.session_state.get(f"{key_prefix}_table_selected_idx")
                     if table_selected_idx is not None and table_selected_idx < len(df_listings_page):
                         st.markdown("---")
-                        st.markdown("#### 📍 Selected Property")
+                        st.markdown("#### :material/location_on: Selected Property")
                         sel_row = df_listings_page.iloc[table_selected_idx]
                         sel_metrics = compute_deal_metrics(
                             float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
@@ -1012,7 +1012,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
             df_listings_grid = pd.DataFrame(parsed_points)
 
             st.markdown("---")
-            st.markdown("### 🏢 Full Underwriting Breakdown")
+            st.markdown("### :material/apartment: Full Underwriting Breakdown")
             st.caption("Click a property's tab below to see its full underwriting numbers and deal grade.")
 
             property_titles_list = [row_item["title"] for idx, row_item in df_listings_grid.iterrows()]
@@ -1031,7 +1031,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     with asset_sub_tabs[idx]:
                         col_b1, col_b2 = st.columns([2.5, 1])
                         with col_b1:
-                            st.markdown(f"#### 📍 {prop_title}")
+                            st.markdown(f"#### :material/location_on: {prop_title}")
                             st.caption(f"Address: {prop_address}")
                         with col_b2:
                             st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
@@ -1044,7 +1044,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                       delta=f"-${metrics['mao_delta']:,.2f}" if metrics['mao_delta'] > 0 else None,
                                       delta_color="inverse")
                         with col_mao2:
-                            st.info(f"💡 **Suggested Offer:** This price targets a **{calc_target_yield:.2f}% cash-on-cash return**.")
+                            st.info(f"**Suggested Offer:** This price targets a **{calc_target_yield:.2f}% cash-on-cash return**.", icon=":material/lightbulb:")
                         st.markdown("---")
 
                         c1, c2, c3, c4 = st.columns(4)
@@ -1067,8 +1067,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     pdf_data_uri = generate_pdf_download_link(profile_name, report_body)
     st.markdown(f"""
         <a href="{pdf_data_uri}" download="{pdf_filename_prefix}_{profile_name.replace(' ', '_')}.html" style="text-decoration: none;">
-            <div style="background-color: var(--radar-primary); color: white; text-align: center; padding: 12px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; margin-top: 15px; margin-bottom: 20px;">
-                📄 {pdf_button_label}
+            <div style="background-color: var(--radar-primary); color: white; text-align: center; padding: 12px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; margin-top: 15px; margin-bottom: 20px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                {svg_icon("download", size=15, color="white")} {pdf_button_label}
             </div>
         </a>
     """, unsafe_allow_html=True)
@@ -1400,7 +1400,7 @@ def render_analytics_dashboard():
             # a confusing hour this morning.
             _user_tz = st.session_state.user_settings.get("timezone")
             df_hist["Generation Date"] = df_hist["Generation Date"].apply(lambda d: format_local_datetime(d, _user_tz))
-            search_hist = st.text_input("🔍 Search History Log", placeholder="Start typing...", key="hist_search_field_unique")
+            search_hist = st.text_input(":material/search: Search History Log", placeholder="Start typing...", key="hist_search_field_unique")
             if search_hist:
                 df_hist = df_hist[df_hist["Profile Name"].str.contains(search_hist, case=False, na=False)]
 
@@ -1480,6 +1480,7 @@ def render_analytics_dashboard():
             df_hist_display["Delete"] = ":material/delete:"
             selected_log_grid = st.dataframe(
                 df_hist_display, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="history_log_grid",
+                height=len(df_hist_display) * 35 + 38,
                 column_config={
                     "Matches": st.column_config.TextColumn(width="small"),
                     "Price Range": st.column_config.TextColumn(width="small"),
@@ -1538,7 +1539,7 @@ def render_analytics_dashboard():
                     pdf_filename_prefix="DealRadar_Archive",
                 )
             else:
-                st.info("💡 Click any row above to view that scan's full report.")
+                st.info("Click any row above to view that scan's full report.", icon=":material/lightbulb:")
         else:
             render_empty_state(
                 "clock", "No scans yet",

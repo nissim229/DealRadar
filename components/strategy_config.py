@@ -286,11 +286,35 @@ def render_strategy_configuration():
             if search_query:
                 df = df[df["Profile Name"].str.contains(search_query, case=False, na=False) | df["Location"].str.contains(search_query, case=False, na=False)]
 
-            df_paginated = df.head(page_size)
+            modify_total_rows = len(df)
+            modify_total_pages = max(1, (modify_total_rows + page_size - 1) // page_size)
+            modify_current_page = min(st.session_state.get("modify_searches_current_page", 1), modify_total_pages)
+
             st.markdown("##### Your Searches")
+            modify_nav1, modify_nav2, modify_nav3 = st.columns([1, 2, 1])
+            with modify_nav1:
+                if st.button(":material/chevron_left: Previous", disabled=modify_current_page <= 1, use_container_width=True, key="modify_searches_prev_page_btn"):
+                    st.session_state.modify_searches_current_page = modify_current_page - 1
+                    st.rerun()
+            with modify_nav2:
+                st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {modify_current_page} of {modify_total_pages} · {modify_total_rows} total searches</div>", unsafe_allow_html=True)
+            with modify_nav3:
+                if st.button("Next :material/chevron_right:", disabled=modify_current_page >= modify_total_pages, use_container_width=True, key="modify_searches_next_page_btn"):
+                    st.session_state.modify_searches_current_page = modify_current_page + 1
+                    st.rerun()
+
+            df_paginated = df.iloc[(modify_current_page - 1) * page_size: modify_current_page * page_size]
             visible_columns = ["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time"]
-            selected_row_data = st.dataframe(df_paginated, use_container_width=True, hide_index=True, on_select="rerun",
-                                              selection_mode="single-row", key="modify_profiles_ledger_grid", column_order=visible_columns)
+            # Key includes the page number so a page change starts with a
+            # clean selection instead of a stale row index from the
+            # previous page's row count potentially pointing at the wrong
+            # search (same page-relative-indexing risk documented for the
+            # Table View / admin Users table selections).
+            selected_row_data = st.dataframe(
+                df_paginated, use_container_width=True, hide_index=True, on_select="rerun",
+                selection_mode="single-row", key=f"modify_profiles_ledger_grid_p{modify_current_page}",
+                column_order=visible_columns, height=len(df_paginated) * 35 + 38,
+            )
             selected_rows_indices = selected_row_data.get("selection", {}).get("rows", [])
 
             edit_name, edit_loc, edit_type, edit_price, edit_beds, edit_email, edit_time, form_disabled_state = "", "", "Multi-Family", 750000, 3, st.session_state.user_email, "08:00", True
@@ -369,19 +393,43 @@ def render_strategy_configuration():
             
         if rows:
             df_del = pd.DataFrame(rows, columns=["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time"])
-            search_query_del = st.text_input("Search", placeholder="Type a search name or location...", key="purge_search_input_unique_key")
+            del_grid_control1, del_grid_control2 = st.columns([2.5, 1])
+            with del_grid_control1:
+                search_query_del = st.text_input("Search", placeholder="Type a search name or location...", key="purge_search_input_unique_key")
+            with del_grid_control2:
+                del_page_size = st.selectbox("Rows per page", options=[10, 20, 50], index=1, key="decommission_page_size")
 
             if search_query_del:
                 df_del = df_del[df_del["Profile Name"].str.contains(search_query_del, case=False, na=False) | df_del["Location"].str.contains(search_query_del, case=False, na=False)]
 
+            del_total_rows = len(df_del)
+            del_total_pages = max(1, (del_total_rows + del_page_size - 1) // del_page_size)
+            del_current_page = min(st.session_state.get("decommission_current_page", 1), del_total_pages)
+
             st.markdown("##### Your Searches")
-            selected_row_del = st.dataframe(df_del, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="decommission_grid")
+            del_nav1, del_nav2, del_nav3 = st.columns([1, 2, 1])
+            with del_nav1:
+                if st.button(":material/chevron_left: Previous", disabled=del_current_page <= 1, use_container_width=True, key="decommission_prev_page_btn"):
+                    st.session_state.decommission_current_page = del_current_page - 1
+                    st.rerun()
+            with del_nav2:
+                st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {del_current_page} of {del_total_pages} · {del_total_rows} total searches</div>", unsafe_allow_html=True)
+            with del_nav3:
+                if st.button("Next :material/chevron_right:", disabled=del_current_page >= del_total_pages, use_container_width=True, key="decommission_next_page_btn"):
+                    st.session_state.decommission_current_page = del_current_page + 1
+                    st.rerun()
+
+            df_del_paginated = df_del.iloc[(del_current_page - 1) * del_page_size: del_current_page * del_page_size]
+            selected_row_del = st.dataframe(
+                df_del_paginated, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row",
+                key=f"decommission_grid_p{del_current_page}", height=len(df_del_paginated) * 35 + 38,
+            )
             selected_rows_indices_del = selected_row_del.get("selection", {}).get("rows", [])
 
             if selected_rows_indices_del:
                 row_index_del = selected_rows_indices_del[0]
-                target_delete_name = df_del.iloc[row_index_del]["Profile Name"]
-                target_delete_loc = df_del.iloc[row_index_del]["Location"]
+                target_delete_name = df_del_paginated.iloc[row_index_del]["Profile Name"]
+                target_delete_loc = df_del_paginated.iloc[row_index_del]["Location"]
 
                 st.markdown(f"""
                     <div style='background-color: var(--radar-danger-bg); padding: var(--radar-space-4); border-radius: var(--radar-radius-md); border: 1px solid var(--radar-danger); margin-top: var(--radar-space-4); margin-bottom: var(--radar-space-4); display:flex; align-items:flex-start; gap:8px;'>
