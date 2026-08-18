@@ -153,6 +153,25 @@ def _build_css_rules(t):
             background: {t['accent_hover']};
         }}
 
+        /* Disabled buttons (e.g. "Save" before any field has actually
+        changed) - overrides kind="primary"'s hardcoded accent color, which
+        otherwise renders identically whether the button is clickable or
+        not. This is the one visual cue that a Save button is "live". */
+        .stButton button:disabled, .stButton button[kind="primary"]:disabled {{
+            background: {t['panel']} !important;
+            color: {t['text_dim']} !important;
+            border: 1px solid {t['panel_border']};
+            opacity: 0.6;
+            cursor: not-allowed;
+        }}
+        .stButton button:disabled p, .stButton button[kind="primary"]:disabled p {{
+            color: {t['text_dim']} !important;
+        }}
+        .stButton button:disabled:hover, .stButton button[kind="primary"]:disabled:hover {{
+            border-color: {t['panel_border']} !important;
+            color: {t['text_dim']} !important;
+        }}
+
         /* Text / number inputs, selects, textareas */
         .stTextInput input, .stNumberInput input, .stTextArea textarea,
         [data-baseweb="select"] > div {{

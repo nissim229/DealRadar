@@ -111,7 +111,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
                                   placeholder="e.g., Call agent Tuesday, check roof condition...")
         note_col1, note_col2 = st.columns([1, 3])
         with note_col1:
-            if st.button("Save Note", key=f"{key_prefix}_save_note_{idx}"):
+            if st.button("Save Note", key=f"{key_prefix}_save_note_{idx}", type="primary", disabled=note_text == existing_notes):
                 if not db.is_property_saved(user_id, address):
                     if plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan,
                                                     "saved_properties", db.count_saved_properties(user_id)):

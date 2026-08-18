@@ -228,7 +228,11 @@ def _render_account(settings):
         st.caption(":material/lock: Changing your email requires your current password, since it's also your sign-in username.")
         profile_pw = st.text_input("Current password", type="password", key="settings_profile_pw")
 
-    if st.button(":material/save: Save Profile", key="settings_save_profile_btn"):
+    profile_has_changes = (
+        new_first != profile["first_name"] or new_middle != profile["middle_name"] or new_last != profile["last_name"] or
+        new_email != profile["email"] or new_phone != profile["phone"] or new_address != profile["address"]
+    )
+    if st.button(":material/save: Save Profile", key="settings_save_profile_btn", type="primary", disabled=not profile_has_changes):
         if not new_first.strip() or not new_last.strip():
             st.error("First and last name can't be empty.")
         else:
@@ -236,7 +240,10 @@ def _render_account(settings):
             if result["success"]:
                 st.session_state.user_name = " ".join(p.strip() for p in [new_first, new_middle, new_last] if p and p.strip())
                 st.session_state.user_email = new_email
-                st.success("Profile updated!")
+                # st.toast, not st.success - a success message here would be
+                # wiped by the st.rerun() below before it's visible (inline
+                # elements don't survive a rerun; toasts do).
+                st.toast("Profile updated!", icon=":material/check_circle:")
                 st.rerun()
             else:
                 st.error(result["error"])
@@ -257,7 +264,11 @@ def _render_account(settings):
         confirm_pw = st.text_input("Confirm new password", type="password", key="settings_cpw_confirm")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button(":material/key: Update Password", use_container_width=True, key="settings_cpw_submit_btn"):
+            # No "before" value to diff against for password fields (never
+            # pre-filled, for security) - disabled until there's actually
+            # something to submit instead.
+            if st.button(":material/key: Update Password", use_container_width=True, key="settings_cpw_submit_btn",
+                          type="primary", disabled=not (new_pw_val and confirm_pw)):
                 if len(new_pw_val) < 6:
                     st.error("New password must be at least 6 characters.")
                 elif new_pw_val != confirm_pw:

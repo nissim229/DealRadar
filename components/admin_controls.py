@@ -320,7 +320,11 @@ def _render_pricing_tab():
                     st.number_input("Searches cap", min_value=0, value=int(tier["saved_searches"] or 0), key=f"pkg_ss_{tier_name}")
             with pkg_col6:
                 st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-                if st.button(":material/save: Save", key=f"pkg_save_{tier_name}", use_container_width=True):
+                pkg_has_changes = (
+                    new_price != float(tier["price"]) or new_credits != int(tier["credits"]) or
+                    new_pf != tier["portfolio_properties"] or new_sp != tier["saved_properties"] or new_ss != tier["saved_searches"]
+                )
+                if st.button(":material/save: Save", key=f"pkg_save_{tier_name}", type="primary", use_container_width=True, disabled=not pkg_has_changes):
                     db.update_credit_package(tier_name, new_price, new_credits, new_pf, new_sp, new_ss)
                     st.toast(f"Updated {tier_name} package.")
                     st.rerun()
@@ -337,7 +341,7 @@ def _render_pricing_tab():
         rc_limit_input = st.number_input("Calls included per month", min_value=1, value=int(rc_conf["monthly_limit"]))
         verified_note = f"Last verified {rc_conf['verified_at']}" if rc_conf["verified_at"] else "Never verified - RentCast has no price-change API, so re-check their pricing page periodically and re-save here."
         st.caption(verified_note)
-        if st.form_submit_button(":material/save: Save RentCast Plan", use_container_width=True):
+        if st.form_submit_button(":material/save: Save RentCast Plan", type="primary", use_container_width=True):
             db.update_rentcast_config(rc_limit_input, rc_name_input, rc_cost_input)
             st.toast("RentCast plan updated.")
             st.rerun()
@@ -349,7 +353,7 @@ def _render_pricing_tab():
         st.markdown("**OpenAI report generation**")
         st.caption(f"{oa_used} / {oa_conf['monthly_limit']} calls used this month - once this cap is hit, scans fall back to the free local report generator instead of calling OpenAI.")
         oa_limit_input = st.number_input("Monthly call limit", min_value=1, value=int(oa_conf["monthly_limit"]))
-        if st.form_submit_button(":material/save: Save OpenAI Limit", use_container_width=True):
+        if st.form_submit_button(":material/save: Save OpenAI Limit", type="primary", use_container_width=True):
             db.update_openai_config(oa_limit_input)
             st.toast("OpenAI monthly limit updated.")
             st.rerun()

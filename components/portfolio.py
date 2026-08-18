@@ -466,7 +466,25 @@ def _render_mortgage_subtab(p):
     if section == "Loan Information":
         loan = _render_loan_info_section(p, key_prefix)
 
-        if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", use_container_width=True):
+        # Mirrors the exact default-value expressions _render_loan_info_section
+        # used to initialize each widget from p, so this only lights up on a
+        # real difference from what's actually saved - not a false positive
+        # from int/float/None coercion mismatches.
+        loan_has_changes = (
+            loan["mortgage_rate"] != float(p.get("mortgage_rate") or 0) or
+            loan["monthly_pmi"] != int(p.get("monthly_pmi") or 0) or
+            loan["use_calc"] != bool(p.get("use_mortgage_calculator")) or
+            (loan["use_calc"] and (
+                loan["original_loan_amount"] != int(p.get("original_loan_amount") or 0) or
+                loan["mortgage_start_date"] != (_parse_date(p.get("mortgage_start_date")) or date.today()) or
+                int(loan["loan_term_years"]) != int(p.get("loan_term_years") or 30)
+            )) or
+            (not loan["use_calc"] and (
+                loan["mortgage_balance"] != int(p.get("mortgage_balance") or 0) or
+                loan["monthly_mortgage_payment"] != int(p.get("monthly_mortgage_payment") or 0)
+            ))
+        )
+        if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", use_container_width=True, disabled=not loan_has_changes):
             _save_property_fields(
                 p, mortgage_balance=loan["mortgage_balance"], monthly_mortgage_payment=loan["monthly_mortgage_payment"],
                 mortgage_rate=loan["mortgage_rate"], original_loan_amount=loan["original_loan_amount"],
@@ -494,7 +512,12 @@ def _render_mortgage_subtab(p):
     else:
         lender = _render_lender_contact_section(p, key_prefix)
 
-        if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", use_container_width=True):
+        lender_has_changes = (
+            lender["lender_name"] != p.get("lender_name", "") or lender["loan_officer_name"] != p.get("loan_officer_name", "") or
+            lender["lender_phone"] != p.get("lender_phone", "") or lender["lender_email"] != p.get("lender_email", "") or
+            lender["loan_account_number"] != p.get("loan_account_number", "")
+        )
+        if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", use_container_width=True, disabled=not lender_has_changes):
             _save_property_fields(
                 p, lender_name=lender["lender_name"], loan_officer_name=lender["loan_officer_name"],
                 lender_phone=lender["lender_phone"], lender_email=lender["lender_email"],
