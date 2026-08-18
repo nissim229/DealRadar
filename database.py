@@ -1308,16 +1308,26 @@ def update_user_profile_admin(user_id, first_name, middle_name, last_name, email
 def get_own_profile(user_id):
     """First/middle/last name, email/phone/address, and the read-only
     account_id for the Settings page's Account section - deliberately
-    nothing payment-related here (see update_own_profile)."""
+    nothing payment-related here (see update_own_profile). Legacy accounts
+    (created before first/middle/last existed) have empty structured-name
+    columns even though their old combined `name` is set - best-effort
+    split that legacy name into first/last here rather than returning
+    blanks, since update_own_profile rebuilds `name` from these three
+    fields and would otherwise silently blank a real name on save."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT first_name, middle_name, last_name, email, phone, address, account_id FROM users WHERE id=?", (int(user_id),))
+        cursor.execute("SELECT first_name, middle_name, last_name, email, phone, address, account_id, name FROM users WHERE id=?", (int(user_id),))
         row = cursor.fetchone()
         if not row:
             return None
+        first_name, middle_name, last_name, legacy_name = row[0] or "", row[1] or "", row[2] or "", row[7] or ""
+        if not (first_name or last_name) and legacy_name:
+            legacy_parts = legacy_name.strip().split(" ", 1)
+            first_name = legacy_parts[0]
+            last_name = legacy_parts[1] if len(legacy_parts) > 1 else ""
         return {
-            "first_name": row[0] or "", "middle_name": row[1] or "", "last_name": row[2] or "",
+            "first_name": first_name, "middle_name": middle_name, "last_name": last_name,
             "email": row[3] or "", "phone": row[4] or "", "address": row[5] or "", "account_id": row[6] or "",
         }
     finally:

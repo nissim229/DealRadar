@@ -174,14 +174,29 @@ def _render_users_tab_body(current_role):
         # has a typo'd name/wrong email and can't fix it themselves. Not
         # shown to support - scoped to admin and above.
         if current_role != "support":
+            # Legacy accounts (created before first/middle/last existed)
+            # have empty structured-name columns even though their old
+            # combined `name` is set - defaulting the fields to blank in
+            # that case would silently blank the name on save (it gets
+            # rebuilt from these three fields). Best-effort split the
+            # legacy name into the fields instead, same convention as the
+            # Google-signup name split, so what's shown matches what's
+            # actually saved.
+            if not (u_first_name or u_last_name) and u_name:
+                _legacy_parts = u_name.strip().split(" ", 1)
+                _default_first = _legacy_parts[0]
+                _default_last = _legacy_parts[1] if len(_legacy_parts) > 1 else ""
+            else:
+                _default_first, _default_last = u_first_name or "", u_last_name or ""
+
             st.markdown("**Profile**")
             name_col1, name_col2, name_col3 = st.columns(3)
             with name_col1:
-                new_first = st.text_input("First Name", value=u_first_name or "", key=f"user_first_name_field_{u_id}")
+                new_first = st.text_input("First Name", value=_default_first, key=f"user_first_name_field_{u_id}")
             with name_col2:
                 new_middle = st.text_input("Middle Name (optional)", value=u_middle_name or "", key=f"user_middle_name_field_{u_id}")
             with name_col3:
-                new_last = st.text_input("Last Name", value=u_last_name or "", key=f"user_last_name_field_{u_id}")
+                new_last = st.text_input("Last Name", value=_default_last, key=f"user_last_name_field_{u_id}")
             prof_col1, prof_col2, prof_col3 = st.columns(3)
             with prof_col1:
                 new_email = st.text_input("Email", value=u_email, key=f"user_email_field_{u_id}")
@@ -207,9 +222,12 @@ def _render_users_tab_body(current_role):
                 elif db.update_user_profile_admin(u_id, new_first.strip(), new_middle.strip(), new_last.strip(), new_email.strip()):
                     if can_edit_role and new_role != u_role:
                         if not db.update_user_role_admin(u_id, new_role):
-                            st.warning("Profile saved, but that role change was blocked - can't demote the last super_admin.")
+                            st.toast("Profile saved, but that role change was blocked - can't demote the last super_admin.", icon=":material/warning:")
                     db.update_user_plan_admin(u_id, new_plan)
-                    st.success(f"Updated profile for {new_email}.")
+                    # st.toast, not st.success - a success message here would
+                    # be wiped by the st.rerun() below before it's visible
+                    # (inline elements don't survive a rerun; toasts do).
+                    st.toast(f"Updated profile for {new_email}.", icon=":material/check_circle:")
                     if u_id == st.session_state.user_id:
                         st.session_state.user_plan = new_plan
                     st.rerun()
@@ -224,7 +242,7 @@ def _render_users_tab_body(current_role):
             st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
             if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True):
                 db.update_user_credits_admin(u_id, new_cred)
-                st.success(f"Updated credits for {u_email}.")
+                st.toast(f"Updated credits for {u_email}.", icon=":material/check_circle:")
                 if u_id == st.session_state.user_id:
                     st.session_state.user_credits = new_cred
                 st.rerun()
@@ -348,7 +366,7 @@ def _render_pricing_tab():
                     expires_str = f"{promo_expiry_input} 23:59:59" if promo_expiry_input else None
                     max_uses = promo_max_uses_input if promo_max_uses_input > 0 else None
                     if db.create_promo_code(promo_code_input, promo_type_input, promo_value_input, max_uses, expires_str):
-                        st.success(f"Created code {promo_code_input}.")
+                        st.toast(f"Created code {promo_code_input}.", icon=":material/check_circle:")
                         st.rerun()
                     else:
                         st.error("A code with that name already exists.")
@@ -705,7 +723,7 @@ def render_admin_control_panel():
                                                    key="admin_promote_role_select")
                     if st.button(":material/verified_user: Grant Access", type="primary", use_container_width=True, key="admin_promote_btn"):
                         if db.update_user_role_admin(picked_id, new_staff_role):
-                            st.success(f"{picked_email} is now {new_staff_role.upper()}.")
+                            st.toast(f"{picked_email} is now {new_staff_role.upper()}.", icon=":material/check_circle:")
                             st.rerun()
                         else:
                             st.error("Couldn't demote the last super_admin - promote someone else first.")
