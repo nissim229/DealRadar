@@ -453,33 +453,11 @@ def render_admin_control_panel():
     scan_breakdown = db.get_scan_live_mock_breakdown()
     revenue_stats = db.get_revenue_stats()
 
-    # Each card is a real (CSS-restyled) button, not decorative HTML - click
-    # opens a floating st.dialog with drill-down detail. Streamlit's st.tabs
-    # can't be jumped to programmatically, so a dialog (with its own native
-    # close button) is the actual mechanism for "click a card, see more"
-    # here, not a same-page tab switch.
-    stat_cols = st.columns(4)
-    stat_defs = [
-        (":material/group:", "Total Users", stats["total_users"], f"+{signup_stats['new_this_week']} this week", _show_signups_dialog, ()),
-        (":material/show_chart:", "Live Scans (This Month)", scan_breakdown["live_this_month"],
-         f"{scan_breakdown['mock_this_month']} mock/preview", _show_scans_dialog, (scan_breakdown,)),
-        (":material/payments:", "Revenue (This Month)", f"${revenue_stats['total_this_month']:,.0f}",
-         f"${revenue_stats['total_all_time']:,.0f} all-time · demo", _show_revenue_dialog, (revenue_stats,)),
-        (":material/toll:", "Credits Outstanding", f"{stats['total_credits']:,}", "across all accounts", _show_credits_dialog, ()),
-    ]
-    for i, (icon_shortcode, label, value, sub, dialog_fn, dialog_args) in enumerate(stat_defs):
-        with stat_cols[i]:
-            with st.container(key=f"admin_stat_card_{i}"):
-                if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"admin_stat_card_btn_{i}",
-                             use_container_width=True, help=sub):
-                    dialog_fn(*dialog_args)
-
-    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-
-    # ---- DASHBOARD GRID - signup trend, zero-credit list, and RentCast
-    # usage are real always-visible cards (not hidden behind a dropdown),
-    # laid out in a persisted, admin-resizable grid (see dashboard_grid.py)
-    # instead of a fixed one-per-row stack. ----
+    # Card-rendering functions are defined here (before the tabs exist) but
+    # not called until inside the Dashboard tab below - keeps the data
+    # fetches (stats/signup_stats/scan_breakdown/revenue_stats) in one place
+    # up top, since API Usage and Revenue tabs also read scan_breakdown/
+    # revenue_stats directly.
     def _render_signup_trend_card():
         with st.container(key="admin_signup_trend_card"):
             st.markdown("""<style>div.st-key-admin_signup_trend_card { background: var(--radar-surface);
@@ -553,33 +531,66 @@ def render_admin_control_panel():
         else:
             st.info("RentCast isn't configured yet - scans are using simulated listing data. Add RENTCAST_API_KEY to .env to switch on real listings.", icon=":material/info:")
 
-    dashboard_cards = [
-        {"id": "signup_trend", "title": "Signup Trend", "render": _render_signup_trend_card,
-         "default_row": 1, "default_col": 1, "default_span": 2},
-    ]
-    if stats["zero_credit_users"]:
-        dashboard_cards.append({"id": "zero_credit", "title": "0-Credit Users", "render": _render_zero_credit_card,
-                                 "default_row": 1, "default_col": 3, "default_span": 1})
-    dashboard_cards.append({"id": "rentcast_usage", "title": "RentCast Usage", "render": _render_rentcast_card,
-                             "default_row": 1, "default_col": 4, "default_span": 1})
-
-    render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
-
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
     # Pricing and Add Admins are super_admin-exclusive - real financial
     # control and the privilege-escalation surface respectively (see
     # roles.py) - so they're left out of the tab bar entirely for 'admin',
     # not just hidden-but-present. Built from a label list + dict lookup
     # (rather than fixed positional unpacking like `t1, t2 = st.tabs(...)`)
-    # specifically because the tab COUNT itself varies by role.
-    tab_labels = [":material/group: Users", ":material/api: API Usage", ":material/payments: Revenue"]
+    # specifically because the tab COUNT itself varies by role. Dashboard
+    # is first and always present (both admin and super_admin reach this
+    # code path - support gets its own separate narrowed view above and
+    # never sees this tab bar at all) - placing the tab bar directly under
+    # the hero, with the stat-card overview as its own tab instead of
+    # always-visible content, means reaching Users/API Usage/etc. no longer
+    # requires scrolling past the whole dashboard first.
+    tab_labels = [":material/dashboard: Dashboard", ":material/group: Users", ":material/api: API Usage", ":material/payments: Revenue"]
     if roles.is_super_admin(current_role):
         tab_labels.append(":material/sell: Pricing")
     tab_labels.append(":material/campaign: Broadcast")
     if roles.is_super_admin(current_role):
         tab_labels.append(":material/admin_panel_settings: Add Admins")
     tab_map = dict(zip(tab_labels, st.tabs(tab_labels)))
+
+    with tab_map[":material/dashboard: Dashboard"]:
+        # Each card is a real (CSS-restyled) button, not decorative HTML -
+        # click opens a floating st.dialog with drill-down detail.
+        # Streamlit's st.tabs can't be jumped to programmatically, so a
+        # dialog (with its own native close button) is the actual
+        # mechanism for "click a card, see more" here, not a same-page tab
+        # switch.
+        stat_cols = st.columns(4)
+        stat_defs = [
+            (":material/group:", "Total Users", stats["total_users"], f"+{signup_stats['new_this_week']} this week", _show_signups_dialog, ()),
+            (":material/show_chart:", "Live Scans (This Month)", scan_breakdown["live_this_month"],
+             f"{scan_breakdown['mock_this_month']} mock/preview", _show_scans_dialog, (scan_breakdown,)),
+            (":material/payments:", "Revenue (This Month)", f"${revenue_stats['total_this_month']:,.0f}",
+             f"${revenue_stats['total_all_time']:,.0f} all-time · demo", _show_revenue_dialog, (revenue_stats,)),
+            (":material/toll:", "Credits Outstanding", f"{stats['total_credits']:,}", "across all accounts", _show_credits_dialog, ()),
+        ]
+        for i, (icon_shortcode, label, value, sub, dialog_fn, dialog_args) in enumerate(stat_defs):
+            with stat_cols[i]:
+                with st.container(key=f"admin_stat_card_{i}"):
+                    if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"admin_stat_card_btn_{i}",
+                                 use_container_width=True, help=sub):
+                        dialog_fn(*dialog_args)
+
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+        # ---- DASHBOARD GRID - signup trend, zero-credit list, and
+        # RentCast usage are real always-visible cards (not hidden behind
+        # a dropdown), laid out in a persisted, admin-resizable grid (see
+        # dashboard_grid.py) instead of a fixed one-per-row stack. ----
+        dashboard_cards = [
+            {"id": "signup_trend", "title": "Signup Trend", "render": _render_signup_trend_card,
+             "default_row": 1, "default_col": 1, "default_span": 2},
+        ]
+        if stats["zero_credit_users"]:
+            dashboard_cards.append({"id": "zero_credit", "title": "0-Credit Users", "render": _render_zero_credit_card,
+                                     "default_row": 1, "default_col": 3, "default_span": 1})
+        dashboard_cards.append({"id": "rentcast_usage", "title": "RentCast Usage", "render": _render_rentcast_card,
+                                 "default_row": 1, "default_col": 4, "default_span": 1})
+
+        render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
 
     with tab_map[":material/group: Users"]:
         _render_users_tab_body(current_role)
