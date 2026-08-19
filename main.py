@@ -194,10 +194,17 @@ else:
                 width: 34px !important; height: 34px !important; min-height: 0 !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
-                font-weight: 700 !important; font-size: 14px !important;
+                font-weight: 700 !important; font-size: 18px !important;
             }
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] p {
-                color: white !important; margin: 0 !important;
+                color: white !important; margin: 0 !important; font-size: 18px !important; line-height: 1 !important;
+            }
+            /* Streamlit auto-appends a decorative chevron (aria-hidden) as a
+            sibling of the label inside every popover trigger button - fine
+            for the category dropdown (it reads as a real dropdown) but
+            wrong here, where the whole button IS the icon/initial. */
+            div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
+                display: none !important;
             }
 
             /* Help icon trigger - small ghost circle matching the navbar's
@@ -212,6 +219,12 @@ else:
                 width: 30px !important; height: 30px !important; min-height: 0 !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
+            }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
+                display: none !important;
+            }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+                font-size: 18px !important;
             }
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover {
                 background: rgba(148, 163, 184, 0.15) !important;
@@ -282,12 +295,12 @@ else:
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_category, col_nav, col_help, col_user = st.columns([0.9, 0.85, 3.3, 0.35, 1.0])
+        col_logo, col_category, col_nav, col_help, col_user = st.columns([1.35, 0.85, 2.85, 0.35, 1.0])
 
         with col_logo:
             st.markdown("""
-                <div style='display: flex; align-items: center; gap: 10px;'>
-                    <div style='background: linear-gradient(135deg, #2563eb, #1d4ed8); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;'>
+                <div style='display: flex; align-items: center; gap: 10px; width: 100%;'>
+                    <div style='background: linear-gradient(135deg, #2563eb, #1d4ed8); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex: none;'>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="9" />
                             <circle cx="12" cy="12" r="5" />
@@ -295,11 +308,12 @@ else:
                             <circle cx="17" cy="7" r="1.4" fill="white" stroke="none" />
                         </svg>
                     </div>
-                    <div style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35);'></div>
-                    <div style='line-height: 1.1;'>
+                    <div style='line-height: 1.1; flex: none;'>
                         <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
                         <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
                     </div>
+                    <div style='flex: 1;'></div>
+                    <div style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none;'></div>
                 </div>
             """, unsafe_allow_html=True)
 
