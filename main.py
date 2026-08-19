@@ -211,17 +211,24 @@ else:
             selectors carry equal-or-higher specificity than the generic
             transparent rule above and are declared after it, so they win
             the cascade instead of being flattened back to transparent. */
-            div.st-key-topbar_account_popover_wrap { display: flex !important; justify-content: flex-end !important; }
+            /* Streamlit's stVerticalBlock wrapper is flex-direction:column,
+            so justify-content controls the VERTICAL axis here and
+            align-items controls the horizontal one - align-items is what
+            actually pushes content to the wrap's right edge. (Confirmed
+            live: with justify-content:flex-end the button was sitting
+            ~150px left of the true edge, unaffected, since that property
+            was only ever governing an axis with nothing to push against.) */
+            div.st-key-topbar_account_popover_wrap { display: flex !important; align-items: flex-end !important; }
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
                 color: white !important;
                 width: 34px !important; height: 34px !important; min-height: 0 !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
-                font-weight: 700 !important; font-size: 18px !important;
+                font-weight: 700 !important; font-size: 30px !important;
             }
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] p {
-                color: white !important; margin: 0 !important; font-size: 18px !important; line-height: 1 !important;
+                color: white !important; margin: 0 !important; font-size: 30px !important; line-height: 1 !important;
             }
             /* Streamlit auto-appends a decorative chevron (aria-hidden) as a
             sibling of the label inside every popover trigger button - fine
@@ -235,7 +242,7 @@ else:
             muted text color, consistent with the account avatar's circular
             shape but visually secondary (outline, not filled) since it's a
             reference action, not identity/navigation. */
-            div.st-key-topbar_help_popover_wrap { display: flex !important; justify-content: center !important; }
+            div.st-key-topbar_help_popover_wrap { display: flex !important; align-items: center !important; }
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] {
                 background: transparent !important;
                 border: 1px solid rgba(148, 163, 184, 0.35) !important;
@@ -248,7 +255,7 @@ else:
                 display: none !important;
             }
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
-                font-size: 18px !important;
+                font-size: 27px !important;
             }
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover {
                 background: rgba(148, 163, 184, 0.15) !important;
@@ -261,7 +268,7 @@ else:
             layout around: the badge is a sibling markdown block, but
             position:absolute takes it out of flow and anchors it to this
             div regardless of source order. */
-            div.st-key-topbar_alerts_popover_wrap { position: relative; display: flex !important; justify-content: center !important; }
+            div.st-key-topbar_alerts_popover_wrap { position: relative; display: flex !important; align-items: center !important; }
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] {
                 background: transparent !important;
                 border: 1px solid rgba(148, 163, 184, 0.35) !important;
@@ -274,7 +281,7 @@ else:
                 display: none !important;
             }
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
-                font-size: 17px !important;
+                font-size: 27px !important;
             }
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"]:hover {
                 background: rgba(148, 163, 184, 0.15) !important;
