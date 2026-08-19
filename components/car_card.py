@@ -21,20 +21,40 @@ _GRADE_ACCENT = {
 }
 
 
-def render_car_card(idx, listing, metrics, key_prefix):
-    """One car listing (real or mock) rendered as a card."""
+def render_car_card(idx, listing, key_prefix):
+    """One car listing (real or mock) rendered as a card. Grade, market
+    value, and grade_adjustments are precomputed on the listing itself by
+    car_engine.py (compute_car_deal_metrics for mock, _grade_real_listings
+    for real) rather than passed in separately, so every listing dict -
+    whichever source it came from - already carries the same fields."""
     card_key = f"{key_prefix}_car_card_{idx}"
-    grade = metrics["grade"]
-    accent = _GRADE_ACCENT[grade]
+    has_reliable_grade = listing.get("has_reliable_grade", True)
+    grade = listing.get("grade")
     photo_url = listing.get("primary_image")
 
     with st.container(border=True, key=card_key):
         if photo_url:
-            photo_html = f"""background-image:url('{photo_url}'); background-size:cover; background-position:center;"""
+            # Double quotes around the URL, not single - the outer <div
+            # style='...'> tag is itself single-quoted, so a single-quoted
+            # url('...') here would prematurely close that attribute at the
+            # URL's own opening quote, silently truncating the style and
+            # dropping the photo entirely (confirmed live: every real
+            # listing's card rendered background-image: url("") with the
+            # URL missing, even though listing["primary_image"] was set).
+            photo_html = f"""background-image:url("{photo_url}"); background-size:cover; background-position:center;"""
             icon_html = ""
         else:
             photo_html = "background: linear-gradient(135deg, #1e293b, #334155);"
             icon_html = svg_icon("car", size=56, color="#64748b")
+        # No badge at all when there's not enough data to grade confidently
+        # - a neutral "Not enough data" chip, not a colored grade badge
+        # that would look like a real assessment happened. See
+        # [[feedback_honest_deal_grading]].
+        badge_html = render_car_deal_badge(grade) if has_reliable_grade else (
+            "<span style='background-color:#f1f5f9; color:#64748b; padding:6px 12px; "
+            "border-radius:6px; font-weight:700; font-size:12px; border:1px solid #e2e8f0; "
+            "white-space:nowrap;'>Not enough data to grade</span>"
+        )
         st.markdown(f"""
             <div style='position:relative; height:150px; border-radius:var(--radar-radius-md);
                         {photo_html}
@@ -44,7 +64,7 @@ def render_car_card(idx, listing, metrics, key_prefix):
                     ${listing['price']:,.0f}
                 </div>
                 <div style='position:absolute; top:10px; right:10px;'>
-                    {render_car_deal_badge(grade)}
+                    {badge_html}
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -54,14 +74,20 @@ def render_car_card(idx, listing, metrics, key_prefix):
         location_bit = f"{listing['city']}, {listing['state']}" if listing.get("city") else f"ZIP {listing['zip_code']}"
         st.caption(f"{listing['mileage']:,} mi · {listing['dealer_name']} · {location_bit}")
 
-        pct = metrics["pct_below_market"]
-        dollars = metrics["dollars_below_market"]
-        if pct >= 0:
-            comparison_html = f"${dollars:,.0f} ({pct:.0f}%) below estimated market value"
+        if has_reliable_grade:
+            accent = _GRADE_ACCENT[grade]
+            pct = listing["pct_below_market"]
+            dollars = listing["dollars_below_market"]
+            if pct >= 0:
+                comparison_html = f"${dollars:,.0f} ({pct:.0f}%) below estimated market value"
+            else:
+                comparison_html = f"${abs(dollars):,.0f} ({abs(pct):.0f}%) above estimated market value"
+            st.markdown(f"<span style='color:{accent}; font-weight:700; font-size:13px;'>{comparison_html}</span>", unsafe_allow_html=True)
+            st.caption(f"Estimated market value: ${listing['market_value']:,.0f} (based on comparable listings)")
+            if listing.get("grade_adjustments"):
+                st.caption("Grade adjusted for: " + ", ".join(listing["grade_adjustments"]))
         else:
-            comparison_html = f"${abs(dollars):,.0f} ({abs(pct):.0f}%) above estimated market value"
-        st.markdown(f"<span style='color:{accent}; font-weight:700; font-size:13px;'>{comparison_html}</span>", unsafe_allow_html=True)
-        st.caption(f"Estimated market value: ${listing['market_value']:,.0f} (based on comparable listings)")
+            st.caption("No other similar listings in this search to compare price against - shown for reference, not graded.")
 
         # Real vehicle history (Carfax-backed) is worth surfacing right on
         # the card, not buried behind a click - it's exactly the "is this

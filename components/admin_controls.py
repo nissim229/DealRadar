@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import database as db
 import agent_engine as engine
+import car_engine
 import email_utils
 import plan_limits
 import roles
@@ -411,7 +412,7 @@ def _render_pricing_tab():
                         st.rerun()
 
 
-def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card):
+def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card, _render_autodev_card):
     # Each card is a real (CSS-restyled) button, not decorative HTML -
     # click opens a floating st.dialog with drill-down detail.
     # Streamlit's st.tabs can't be jumped to programmatically, so a
@@ -449,6 +450,8 @@ def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _r
                                  "default_row": 1, "default_col": 3, "default_span": 1})
     dashboard_cards.append({"id": "rentcast_usage", "title": "RentCast Usage", "render": _render_rentcast_card,
                              "default_row": 1, "default_col": 4, "default_span": 1})
+    dashboard_cards.append({"id": "autodev_usage", "title": "Auto.dev Usage", "render": _render_autodev_card,
+                             "default_row": 2, "default_col": 1, "default_span": 1})
 
     render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
 
@@ -486,6 +489,20 @@ def _render_api_usage_tab(scan_breakdown):
             for row in usage_by_user
         ])
         st.dataframe(usage_df, use_container_width=True, hide_index=True, height=len(usage_df) * 35 + 38)
+
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown("### Auto.dev Calls by User (This Month)")
+    st.caption("Cars category searches, plus the live make/model dropdown lookups behind them.")
+    autodev_usage_by_user = db.get_autodev_usage_by_user()
+    if not autodev_usage_by_user:
+        st.caption("No real Auto.dev calls made yet this month.")
+    else:
+        autodev_usage_df = pd.DataFrame([
+            {"User": f"{row['name']} ({row['email']})" if row["name"] and row["email"] else row["name"] or row["email"],
+             "Auto.dev Calls": row["call_count"]}
+            for row in autodev_usage_by_user
+        ])
+        st.dataframe(autodev_usage_df, use_container_width=True, hide_index=True, height=len(autodev_usage_df) * 35 + 38)
 
 
 def _render_revenue_tab(revenue_stats):
@@ -797,6 +814,41 @@ def render_admin_control_panel():
         else:
             st.info("RentCast isn't configured yet - scans are using simulated listing data. Add RENTCAST_API_KEY to .env to switch on real listings.", icon=":material/info:")
 
+    def _render_autodev_card():
+        # Cars' equivalent of the RentCast card above - no admin-editable
+        # plan config yet (car_engine.AUTODEV_MONTHLY_LIMIT is a flat
+        # constant, not a db-backed one like get_rentcast_config()), since
+        # only one Auto.dev plan tier exists to configure so far.
+        if car_engine.is_autodev_configured():
+            ad_used = db.get_autodev_usage_this_month()
+            ad_limit = car_engine.AUTODEV_MONTHLY_LIMIT
+            ad_fraction = min(ad_used / ad_limit, 1.0) if ad_limit else 0
+            if ad_used >= ad_limit:
+                ad_color, ad_status = "var(--radar-danger)", "Limit reached - car searches are using simulated data until next month"
+            elif ad_fraction >= 0.8:
+                ad_color, ad_status = "var(--radar-warning)", "Getting close to the monthly limit"
+            else:
+                ad_color, ad_status = "var(--radar-success)", "Within budget"
+
+            with st.container(key="admin_autodev_usage"):
+                st.markdown(f"""<style>div.st-key-admin_autodev_usage {{ background: var(--radar-surface);
+                    border: 1px solid var(--radar-border); border-radius: var(--radar-radius-md);
+                    padding: var(--radar-space-4); margin-bottom: var(--radar-space-4); }}</style>""",
+                            unsafe_allow_html=True)
+                st.markdown(f"""
+                    <div style='display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;'>
+                        <div style='display:flex; align-items:center; gap:8px;'>
+                            {svg_icon("chart", size=16, color=ad_color)}
+                            <span style='font-weight:700; color:var(--radar-navy); font-size:14px;'>Auto.dev API Usage This Month</span>
+                        </div>
+                        <span style='font-weight:700; color:{ad_color}; font-size:14px;'>{ad_used} / {ad_limit}</span>
+                    </div>
+                """, unsafe_allow_html=True)
+                st.progress(ad_fraction)
+                st.caption(f"{ad_status} · Free plan (1,000 calls/mo, $0) - powers Cars category search")
+        else:
+            st.info("Auto.dev isn't configured yet - Cars searches are using simulated listing data. Add AUTODEV_API_KEY to .env to switch on real listings.", icon=":material/info:")
+
     # Pricing and Add Admins are super_admin-exclusive - real financial
     # control and the privilege-escalation surface respectively (see
     # roles.py) - so they're left out of the tab bar entirely for 'admin',
@@ -829,7 +881,7 @@ def render_admin_control_panel():
     with content_col:
         if active_section == "Dashboard":
             _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats,
-                                   _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card)
+                                   _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card, _render_autodev_card)
         elif active_section == "Users":
             _render_users_tab_body(current_role)
         elif active_section == "API Usage":

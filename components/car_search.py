@@ -118,9 +118,9 @@ def render_car_search_page():
     with st.container(key="car_search_action_card"):
         row1 = st.columns(4)
         with row1[0]:
-            make = st.selectbox("Make", ["Any make"] + car_engine.CAR_MAKES, key="car_search_make")
+            make = st.selectbox("Make", ["Any make"] + car_engine.get_available_makes(user_id=st.session_state.user_id), key="car_search_make")
         with row1[1]:
-            model_options = ["Any model"] + (car_engine.models_for_make(make) if make != "Any make" else [])
+            model_options = ["Any model"] + (car_engine.get_available_models(make, user_id=st.session_state.user_id) if make != "Any make" else [])
             if st.session_state.get("car_search_model") not in model_options:
                 st.session_state.car_search_model = "Any model"
             model = st.selectbox("Model", model_options, key="car_search_model")
@@ -191,14 +191,27 @@ def render_car_search_page():
                         else:
                             st.error("Give this search a name first.")
 
-    best = max(results, key=lambda c: car_engine.compute_car_deal_metrics(c["price"], c["market_value"])["pct_below_market"])
-    best_metrics = car_engine.compute_car_deal_metrics(best["price"], best["market_value"])
-    if best_metrics["pct_below_market"] > 0:
+    # Only a listing with has_reliable_grade=True (a real comp group behind
+    # it, not a broken/thin one) is eligible to be called "the best deal" -
+    # never force a highlight onto the least-bad option just to have one.
+    # See [[feedback_honest_deal_grading]]: the user's own framing was "I
+    # dont want to lie to my customer" - a search with nothing confidently
+    # good in it should say so, not manufacture a banner.
+    gradeable = [c for c in results if c.get("has_reliable_grade") and c["pct_below_market"] > 0]
+    if gradeable:
+        best = max(gradeable, key=lambda c: c["pct_below_market"])
         st.markdown(f"""
             <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin:12px 0 16px 0; display:flex; align-items:center; gap:8px;'>
                 <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
                 <span style='font-weight:700; color:#065f46;'>Best deal in this search:</span>
-                <span style='color:#065f46;'>{best_metrics['pct_below_market']:.0f}% below market on the {best['year']} {best['make']} {best['model']}</span>
+                <span style='color:#065f46;'>{best['pct_below_market']:.0f}% below market on the {best['year']} {best['make']} {best['model']}</span>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+            <div style='background:var(--radar-surface-alt); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin:12px 0 16px 0; display:flex; align-items:center; gap:8px;'>
+                <span style='color:var(--radar-text-muted);'>{svg_icon("crosshair", size=16, color="var(--radar-text-muted)")}</span>
+                <span style='color:var(--radar-text-muted);'>No confidently-graded deals in this search right now - save it to get notified if one shows up.</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -206,9 +219,8 @@ def render_car_search_page():
         row = results[row_start:row_start + 3]
         cols = st.columns(3)
         for slot, listing in enumerate(row):
-            metrics = car_engine.compute_car_deal_metrics(listing["price"], listing["market_value"])
             with cols[slot]:
-                render_car_card(row_start + slot, listing, metrics, "car_search")
+                render_car_card(row_start + slot, listing, "car_search")
 
 
 def render_saved_car_searches_page():

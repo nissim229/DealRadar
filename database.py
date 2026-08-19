@@ -1032,6 +1032,27 @@ def get_autodev_usage_this_month():
     finally:
         conn.close()
 
+def get_autodev_usage_by_user(limit=10):
+    """Same idea as get_rentcast_usage_by_user, for Cars' Auto.dev calls -
+    no legacy-NULL-user_id bucket needed here since autodev_usage_log had
+    a user_id column from the start (unlike rentcast_usage_log, which
+    predates its own user_id migration)."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT u.email, u.name, COUNT(*) as call_count
+            FROM autodev_usage_log a
+            JOIN users u ON a.user_id = u.id
+            WHERE strftime('%Y-%m', a.called_at) = strftime('%Y-%m', 'now')
+            GROUP BY a.user_id
+            ORDER BY call_count DESC
+            LIMIT ?
+        """, (limit,))
+        return [{"email": email, "name": name, "call_count": count} for email, name, count in cursor.fetchall()]
+    finally:
+        conn.close()
+
 def get_rentcast_usage_this_month():
     """Counts real RentCast API calls made so far in the current calendar
     month (both successes and failures - a failed request still counts
