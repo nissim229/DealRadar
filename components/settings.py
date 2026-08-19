@@ -316,8 +316,36 @@ def render_settings_page():
             background: var(--radar-surface); border: 1px solid var(--radar-border);
             border-radius: var(--radar-radius-lg); padding: var(--radar-space-5);
         }
+        div[class*="st-key-settings_nav_item_"] {
+            margin-bottom: 1px;
+        }
         div[class*="st-key-settings_nav_item_"] button {
             text-align: left !important; justify-content: flex-start !important;
+            background: transparent !important; border: none !important; box-shadow: none !important;
+            border-radius: var(--radar-radius-sm) !important; border-left: 3px solid transparent !important;
+            padding: 7px 10px 7px 9px !important; min-height: 0 !important; height: auto !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button p {
+            font-size: 13.5px !important; font-weight: 500 !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="secondary"] {
+            color: var(--radar-text-muted) !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="secondary"] p {
+            color: var(--radar-text-muted) !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="secondary"]:hover {
+            background: var(--radar-surface-alt) !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="secondary"]:hover p {
+            color: var(--radar-text) !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="primary"] {
+            background: rgba(37,99,235,0.08) !important;
+            border-left: 3px solid var(--radar-primary) !important;
+        }
+        div[class*="st-key-settings_nav_item_"] button[kind="primary"] p {
+            color: var(--radar-primary) !important; font-weight: 700 !important;
         }
         </style>
     """, unsafe_allow_html=True)

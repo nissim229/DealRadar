@@ -933,6 +933,35 @@ def render_portfolio_page():
             margin-bottom: var(--radar-space-5);
             border-radius: 0 0 var(--radar-radius-xl) var(--radar-radius-xl);
         }
+        /* Compact nav rows, matching Settings' left-nav. The per-property
+        left border (cash-flow health color) is set separately per-item and
+        lives on the outer container, not the button - so it isn't touched
+        here, and "selected" is instead shown as a light background tint on
+        the button itself, keeping the two signals visually distinct. */
+        div[class*="st-key-nav_item_"] button {
+            text-align: left !important; justify-content: flex-start !important;
+            background: transparent !important; border: none !important; box-shadow: none !important;
+            border-radius: var(--radar-radius-sm) !important;
+            padding: 6px 8px !important; min-height: 0 !important; height: auto !important;
+        }
+        div[class*="st-key-nav_item_"] button p {
+            font-size: 13.5px !important; font-weight: 500 !important;
+        }
+        div[class*="st-key-nav_item_"] button[kind="secondary"] {
+            color: var(--radar-text-muted) !important;
+        }
+        div[class*="st-key-nav_item_"] button[kind="secondary"] p {
+            color: var(--radar-text) !important;
+        }
+        div[class*="st-key-nav_item_"] button[kind="secondary"]:hover {
+            background: var(--radar-surface-alt) !important;
+        }
+        div[class*="st-key-nav_item_"] button[kind="primary"] {
+            background: rgba(37,99,235,0.08) !important;
+        }
+        div[class*="st-key-nav_item_"] button[kind="primary"] p {
+            color: var(--radar-primary) !important; font-weight: 700 !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
