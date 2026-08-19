@@ -76,6 +76,174 @@ def _show_credits_dialog():
     st.caption("Users at 0 credits (upsell targets) are listed below the stat cards on the main dashboard.")
 
 
+def _clear_manage_user_target():
+    st.session_state.admin_selected_user_id = None
+
+
+@st.dialog("Manage User", width="large", on_dismiss=_clear_manage_user_target)
+def _manage_user_dialog(selected_row, current_role):
+    """The floating-dialog version of what used to be an always-inline
+    panel below the table (see [[table_action_pattern]] for the app-wide
+    standard this now matches). Kept as one dialog covering every action
+    (profile, credits, suspend, password reset) rather than split into
+    pencil/trash icons - a user row doesn't decompose into a simple edit/
+    delete pair the way a saved search does (there's no "delete a user"
+    action at all, deliberately - see the Table View memory's note that
+    no delete_user function exists), so the single "Manage" entry point
+    stays, just as a real overlay now instead of an inline block.
+
+    on_dismiss=_clear_manage_user_target matters, not just the explicit
+    Close button below: confirmed live that dismissing via the native X
+    (or Esc/click-outside) left admin_selected_user_id set, so the very
+    next unrelated interaction anywhere on the page (paging, changing
+    rows-per-page) silently reopened this same dialog - on_dismiss is the
+    one hook that fires for every dismissal path, not just a button
+    inside the dialog's own body."""
+    (u_id, u_email, u_name, u_role, u_plan, u_credits, u_suspended, u_created_at,
+     u_scan_count, u_live_scan_count, u_rentcast_calls, u_total_spent,
+     u_account_id, u_first_name, u_middle_name, u_last_name) = selected_row
+
+    suspended_badge = " · :red[SUSPENDED]" if u_suspended else ""
+    display_name = f"{u_name} · " if u_name else ""
+    st.markdown(f"**{display_name}{u_email}** &nbsp;·&nbsp; {u_role.upper()} · {u_plan}{suspended_badge}")
+    st.caption(f"Account ID: {u_account_id or '-'} · {u_scan_count} scan(s) run ({u_live_scan_count} live) · {u_rentcast_calls} RentCast call(s) · ${u_total_spent:,.0f} spent (demo) · joined {(u_created_at or '')[:10]}")
+
+    # Full profile edit - covers the support-ticket case where a user
+    # has a typo'd name/wrong email and can't fix it themselves. Not
+    # shown to support - scoped to admin and above.
+    if current_role != "support":
+        # Legacy accounts (created before first/middle/last existed)
+        # have empty structured-name columns even though their old
+        # combined `name` is set - defaulting the fields to blank in
+        # that case would silently blank the name on save (it gets
+        # rebuilt from these three fields). Best-effort split the
+        # legacy name into the fields instead, same convention as the
+        # Google-signup name split, so what's shown matches what's
+        # actually saved.
+        if not (u_first_name or u_last_name) and u_name:
+            _legacy_parts = u_name.strip().split(" ", 1)
+            _default_first = _legacy_parts[0]
+            _default_last = _legacy_parts[1] if len(_legacy_parts) > 1 else ""
+        else:
+            _default_first, _default_last = u_first_name or "", u_last_name or ""
+
+        st.markdown("**Profile**")
+        name_col1, name_col2, name_col3 = st.columns(3)
+        with name_col1:
+            new_first = st.text_input("First Name", value=_default_first, key=f"user_first_name_field_{u_id}")
+        with name_col2:
+            new_middle = st.text_input("Middle Name (optional)", value=u_middle_name or "", key=f"user_middle_name_field_{u_id}")
+        with name_col3:
+            new_last = st.text_input("Last Name", value=_default_last, key=f"user_last_name_field_{u_id}")
+        prof_col1, prof_col2, prof_col3 = st.columns(3)
+        with prof_col1:
+            new_email = st.text_input("Email", value=u_email, key=f"user_email_field_{u_id}")
+        with prof_col2:
+            # Only a super_admin can change ANYONE's role, and never
+            # their own (self-lockout / self-escalation risk) - see
+            # roles.py. Everyone else just sees it as read-only text.
+            can_edit_role = current_role == "super_admin" and u_id != st.session_state.user_id
+            if can_edit_role:
+                role_options = roles.ALL_ROLES
+                new_role = st.selectbox("Role", role_options,
+                                         index=role_options.index(u_role) if u_role in role_options else 0,
+                                         key=f"user_role_field_{u_id}")
+            else:
+                new_role = u_role
+                st.text_input("Role", value=u_role.upper(), disabled=True, key=f"user_role_field_ro_{u_id}",
+                              help="Only a super_admin can change someone else's role.")
+        with prof_col3:
+            new_plan = st.selectbox("Plan", plan_limits.PLAN_ORDER, index=plan_limits.PLAN_ORDER.index(u_plan) if u_plan in plan_limits.PLAN_ORDER else 0, key=f"user_plan_field_{u_id}")
+
+        # Disabled until a field actually differs from what's on file -
+        # compared against the freshly-fetched DB values (u_*), not a
+        # separately-tracked "original" snapshot, so the button greys
+        # back out on its own right after a save (the next rerun's u_*
+        # already reflects the just-saved values).
+        profile_has_changes = (
+            new_first.strip() != _default_first or new_middle.strip() != (u_middle_name or "") or
+            new_last.strip() != _default_last or new_email.strip() != u_email or
+            (can_edit_role and new_role != u_role) or new_plan != u_plan
+        )
+        if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", use_container_width=True, disabled=not profile_has_changes):
+            if not new_email.strip():
+                st.error("Email can't be empty.")
+            elif db.update_user_profile_admin(u_id, new_first.strip(), new_middle.strip(), new_last.strip(), new_email.strip()):
+                if can_edit_role and new_role != u_role:
+                    if not db.update_user_role_admin(u_id, new_role):
+                        st.toast("Profile saved, but that role change was blocked - can't demote the last super_admin.", icon=":material/warning:")
+                db.update_user_plan_admin(u_id, new_plan)
+                # st.toast, not st.success - a success message here would
+                # be wiped by the st.rerun() below before it's visible
+                # (inline elements don't survive a rerun; toasts do).
+                st.toast(f"Updated profile for {new_email}.", icon=":material/check_circle:")
+                if u_id == st.session_state.user_id:
+                    st.session_state.user_plan = new_plan
+                st.rerun()
+            else:
+                st.error("That email is already in use by another account.")
+
+    st.markdown("**Credits**")
+    col_u2, col_u3, col_u4 = st.columns([1.3, 1, 1.6])
+    with col_u2:
+        # Key includes u_credits itself, not just u_id - confirmed live
+        # that popping the plain-u_id key and calling st.rerun() (the
+        # normal fix for this class of bug elsewhere in the app, e.g.
+        # car_search.py's Make/Model reset) was NOT enough for a
+        # number_input inside an open st.dialog specifically: both +5
+        # Bonus clicks wrote to the DB correctly (confirmed by direct query
+        # each time) but the dialog kept displaying the pre-click number
+        # regardless. Baking the current value into the key sidesteps
+        # whatever dialog/fragment-rerun quirk causes that - a changed
+        # u_credits always means a genuinely new widget identity, so there
+        # is no stale session_state for it to fall back to.
+        new_cred = st.number_input("Credits", min_value=0, value=u_credits, key=f"user_cred_field_{u_id}_{u_credits}")
+    with col_u3:
+        st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+        if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True, disabled=new_cred == u_credits):
+            db.update_user_credits_admin(u_id, new_cred)
+            st.toast(f"Updated credits for {u_email}.", icon=":material/check_circle:")
+            if u_id == st.session_state.user_id:
+                st.session_state.user_credits = new_cred
+            st.rerun()
+    with col_u4:
+        st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+        if st.button(":material/add_card: +5 Bonus", key=f"user_bonus_btn_{u_id}", use_container_width=True,
+                     help="Grant 5 free credits (e.g. as a support goodwill gesture)"):
+            db.add_purchased_credits(u_id, 5)
+            st.toast(f"Added 5 bonus credits for {u_email}.")
+            if u_id == st.session_state.user_id:
+                st.session_state.user_credits += 5
+            st.rerun()
+
+    with st.popover(":material/more_horiz: More actions", key=f"user_more_popover_{u_id}"):
+        if not roles.is_staff(u_role):
+            suspend_label = ":material/lock_open: Reactivate Account" if u_suspended else ":material/block: Suspend Account"
+            if st.button(suspend_label, key=f"user_suspend_btn_{u_id}", use_container_width=True):
+                db.set_user_suspended(u_id, not u_suspended)
+                st.toast(f"{'Reactivated' if u_suspended else 'Suspended'} {u_email}.")
+                st.rerun()
+        else:
+            st.caption("Staff accounts can't be suspended.")
+
+        st.markdown("---")
+        st.caption("Reset this user's password")
+        reset_pw = st.text_input("New password", type="password", key=f"user_reset_pw_{u_id}", label_visibility="collapsed", placeholder="New password (6+ characters)")
+        if st.button(":material/key: Set New Password", key=f"user_reset_btn_{u_id}", use_container_width=True):
+            if len(reset_pw) >= 6:
+                db.admin_reset_password(u_id, reset_pw)
+                if db.get_user_settings(u_id).get("notify_password_changed") and u_email:
+                    email_utils.send_password_changed_email(u_email)
+                st.toast(f"Password reset for {u_email}.")
+            else:
+                st.error("Password must be at least 6 characters.")
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    if st.button("Close", use_container_width=True, key=f"user_manage_close_btn_{u_id}"):
+        st.session_state.admin_selected_user_id = None
+        st.rerun()
+
+
 def _render_users_tab_body(current_role):
     """Shared by the Users tab (admin/super_admin, inside the full
     dashboard+tabs layout) and the narrowed support view (its whole page,
@@ -153,143 +321,8 @@ def _render_users_tab_body(current_role):
 
     selected_user_id = st.session_state.get("admin_selected_user_id")
     selected_row = next((u for u in user_rows_page if u[0] == selected_user_id), None)
-    if not selected_row:
-        return
-
-    (u_id, u_email, u_name, u_role, u_plan, u_credits, u_suspended, u_created_at,
-     u_scan_count, u_live_scan_count, u_rentcast_calls, u_total_spent,
-     u_account_id, u_first_name, u_middle_name, u_last_name) = selected_row
-
-    st.markdown("---")
-    with st.container(key=f"admin_user_manage_panel_{u_id}"):
-        st.markdown(f"""<style>div.st-key-admin_user_manage_panel_{u_id} {{ background: var(--radar-surface);
-            border: 1px solid var(--radar-border); border-radius: var(--radar-radius-md);
-            padding: var(--radar-space-4); }}</style>""",
-                    unsafe_allow_html=True)
-
-        suspended_badge = " · :red[SUSPENDED]" if u_suspended else ""
-        display_name = f"{u_name} · " if u_name else ""
-        st.markdown(f"**{display_name}{u_email}** &nbsp;·&nbsp; {u_role.upper()} · {u_plan}{suspended_badge}")
-        st.caption(f"Account ID: {u_account_id or '-'} · {u_scan_count} scan(s) run ({u_live_scan_count} live) · {u_rentcast_calls} RentCast call(s) · ${u_total_spent:,.0f} spent (demo) · joined {(u_created_at or '')[:10]}")
-
-        # Full profile edit - covers the support-ticket case where a user
-        # has a typo'd name/wrong email and can't fix it themselves. Not
-        # shown to support - scoped to admin and above.
-        if current_role != "support":
-            # Legacy accounts (created before first/middle/last existed)
-            # have empty structured-name columns even though their old
-            # combined `name` is set - defaulting the fields to blank in
-            # that case would silently blank the name on save (it gets
-            # rebuilt from these three fields). Best-effort split the
-            # legacy name into the fields instead, same convention as the
-            # Google-signup name split, so what's shown matches what's
-            # actually saved.
-            if not (u_first_name or u_last_name) and u_name:
-                _legacy_parts = u_name.strip().split(" ", 1)
-                _default_first = _legacy_parts[0]
-                _default_last = _legacy_parts[1] if len(_legacy_parts) > 1 else ""
-            else:
-                _default_first, _default_last = u_first_name or "", u_last_name or ""
-
-            st.markdown("**Profile**")
-            name_col1, name_col2, name_col3 = st.columns(3)
-            with name_col1:
-                new_first = st.text_input("First Name", value=_default_first, key=f"user_first_name_field_{u_id}")
-            with name_col2:
-                new_middle = st.text_input("Middle Name (optional)", value=u_middle_name or "", key=f"user_middle_name_field_{u_id}")
-            with name_col3:
-                new_last = st.text_input("Last Name", value=_default_last, key=f"user_last_name_field_{u_id}")
-            prof_col1, prof_col2, prof_col3 = st.columns(3)
-            with prof_col1:
-                new_email = st.text_input("Email", value=u_email, key=f"user_email_field_{u_id}")
-            with prof_col2:
-                # Only a super_admin can change ANYONE's role, and never
-                # their own (self-lockout / self-escalation risk) - see
-                # roles.py. Everyone else just sees it as read-only text.
-                can_edit_role = current_role == "super_admin" and u_id != st.session_state.user_id
-                if can_edit_role:
-                    role_options = roles.ALL_ROLES
-                    new_role = st.selectbox("Role", role_options,
-                                             index=role_options.index(u_role) if u_role in role_options else 0,
-                                             key=f"user_role_field_{u_id}")
-                else:
-                    new_role = u_role
-                    st.text_input("Role", value=u_role.upper(), disabled=True, key=f"user_role_field_ro_{u_id}",
-                                  help="Only a super_admin can change someone else's role.")
-            with prof_col3:
-                new_plan = st.selectbox("Plan", plan_limits.PLAN_ORDER, index=plan_limits.PLAN_ORDER.index(u_plan) if u_plan in plan_limits.PLAN_ORDER else 0, key=f"user_plan_field_{u_id}")
-
-            # Disabled until a field actually differs from what's on file -
-            # compared against the freshly-fetched DB values (u_*), not a
-            # separately-tracked "original" snapshot, so the button greys
-            # back out on its own right after a save (the next rerun's u_*
-            # already reflects the just-saved values).
-            profile_has_changes = (
-                new_first.strip() != _default_first or new_middle.strip() != (u_middle_name or "") or
-                new_last.strip() != _default_last or new_email.strip() != u_email or
-                (can_edit_role and new_role != u_role) or new_plan != u_plan
-            )
-            if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", use_container_width=True, disabled=not profile_has_changes):
-                if not new_email.strip():
-                    st.error("Email can't be empty.")
-                elif db.update_user_profile_admin(u_id, new_first.strip(), new_middle.strip(), new_last.strip(), new_email.strip()):
-                    if can_edit_role and new_role != u_role:
-                        if not db.update_user_role_admin(u_id, new_role):
-                            st.toast("Profile saved, but that role change was blocked - can't demote the last super_admin.", icon=":material/warning:")
-                    db.update_user_plan_admin(u_id, new_plan)
-                    # st.toast, not st.success - a success message here would
-                    # be wiped by the st.rerun() below before it's visible
-                    # (inline elements don't survive a rerun; toasts do).
-                    st.toast(f"Updated profile for {new_email}.", icon=":material/check_circle:")
-                    if u_id == st.session_state.user_id:
-                        st.session_state.user_plan = new_plan
-                    st.rerun()
-                else:
-                    st.error("That email is already in use by another account.")
-
-        st.markdown("**Credits**")
-        col_u2, col_u3, col_u4 = st.columns([1.3, 1, 1.6])
-        with col_u2:
-            new_cred = st.number_input("Credits", min_value=0, value=u_credits, key=f"user_cred_field_{u_id}")
-        with col_u3:
-            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-            if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True, disabled=new_cred == u_credits):
-                db.update_user_credits_admin(u_id, new_cred)
-                st.toast(f"Updated credits for {u_email}.", icon=":material/check_circle:")
-                if u_id == st.session_state.user_id:
-                    st.session_state.user_credits = new_cred
-                st.rerun()
-        with col_u4:
-            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-            if st.button(":material/add_card: +5 Bonus", key=f"user_bonus_btn_{u_id}", use_container_width=True,
-                         help="Grant 5 free credits (e.g. as a support goodwill gesture)"):
-                db.add_purchased_credits(u_id, 5)
-                st.toast(f"Added 5 bonus credits for {u_email}.")
-                if u_id == st.session_state.user_id:
-                    st.session_state.user_credits += 5
-                st.rerun()
-
-        with st.popover(":material/more_horiz: More actions", key=f"user_more_popover_{u_id}"):
-            if not roles.is_staff(u_role):
-                suspend_label = ":material/lock_open: Reactivate Account" if u_suspended else ":material/block: Suspend Account"
-                if st.button(suspend_label, key=f"user_suspend_btn_{u_id}", use_container_width=True):
-                    db.set_user_suspended(u_id, not u_suspended)
-                    st.toast(f"{'Reactivated' if u_suspended else 'Suspended'} {u_email}.")
-                    st.rerun()
-            else:
-                st.caption("Staff accounts can't be suspended.")
-
-            st.markdown("---")
-            st.caption("Reset this user's password")
-            reset_pw = st.text_input("New password", type="password", key=f"user_reset_pw_{u_id}", label_visibility="collapsed", placeholder="New password (6+ characters)")
-            if st.button(":material/key: Set New Password", key=f"user_reset_btn_{u_id}", use_container_width=True):
-                if len(reset_pw) >= 6:
-                    db.admin_reset_password(u_id, reset_pw)
-                    if db.get_user_settings(u_id).get("notify_password_changed") and u_email:
-                        email_utils.send_password_changed_email(u_email)
-                    st.toast(f"Password reset for {u_email}.")
-                else:
-                    st.error("Password must be at least 6 characters.")
+    if selected_row:
+        _manage_user_dialog(selected_row, current_role)
 
 
 def _render_pricing_tab():

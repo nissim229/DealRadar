@@ -286,13 +286,23 @@ def _render_establish_tab():
 
 
 
-@st.dialog("Edit Search")
+def _clear_hunt_edit_target():
+    st.session_state.hunt_edit_target = None
+
+
+@st.dialog("Edit Search", on_dismiss=_clear_hunt_edit_target)
 def _edit_search_dialog():
     """Reads whichever row's pencil icon was clicked from session_state -
     same reason property_card.py's _property_detail_dialog does the same
     thing: st.dialog's title is fixed at decoration time, so per-call data
     has to travel through session_state rather than a function argument
-    the call site could vary."""
+    the call site could vary.
+
+    on_dismiss clears that target on every dismissal path (native X, Esc,
+    click-outside), not just the in-dialog Cancel button - confirmed live
+    on admin_controls.py's Manage User dialog that skipping this let a
+    dialog dismissed via X reopen on the next unrelated click anywhere on
+    the page, since the target session_state var was still set."""
     ctx = st.session_state.get("hunt_edit_target")
     if not ctx:
         st.write("No search selected.")
@@ -332,7 +342,11 @@ def _edit_search_dialog():
             st.rerun()
 
 
-@st.dialog("Delete Search")
+def _clear_hunt_delete_target():
+    st.session_state.hunt_delete_target = None
+
+
+@st.dialog("Delete Search", on_dismiss=_clear_hunt_delete_target)
 def _delete_search_dialog():
     ctx = st.session_state.get("hunt_delete_target")
     if not ctx:

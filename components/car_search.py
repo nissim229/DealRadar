@@ -14,6 +14,7 @@ falls back to its own local simulator.
 """
 
 import streamlit as st
+import pandas as pd
 import database as db
 import roles
 import car_engine
@@ -94,6 +95,12 @@ def _run_search(make, model, min_year, max_price, max_mileage, zip_code, radius,
 
 
 def _criteria_label(make, model, min_year, max_price, zip_code, radius):
+    # zip_code (and in principle min_year/max_price too) can arrive as
+    # NaN from a pandas-read DB column with nulls in it, not just a plain
+    # None - `if zip_code:` alone doesn't catch that, since NaN is truthy
+    # in Python. Confirmed live: rows saved without a ZIP rendered "within
+    # 50 mi of nan" until this normalized it away first.
+    zip_code = zip_code if isinstance(zip_code, str) else None
     bits = []
     make_model = " ".join(p for p in [None if make == "Any make" else make, None if model == "Any model" else model] if p)
     if make_model:
@@ -223,6 +230,38 @@ def render_car_search_page():
                 render_car_card(row_start + slot, listing, "car_search")
 
 
+def _clear_car_saved_delete_target():
+    st.session_state.car_saved_delete_target = None
+
+
+@st.dialog("Delete Search", on_dismiss=_clear_car_saved_delete_target)
+def _delete_saved_car_search_dialog():
+    """Same floating-dialog shape as strategy_config.py's
+    _delete_search_dialog (see [[table_action_pattern]]) - no edit dialog
+    needed alongside it here, since a saved car search has nothing to
+    edit in place (the whole point of this flow is search-then-optionally-
+    save, not maintain a profile - see this module's own docstring).
+    on_dismiss clears the target on every dismissal path, not just
+    Cancel - see [[table_action_pattern]]."""
+    ctx = st.session_state.get("car_saved_delete_target")
+    if not ctx:
+        st.write("No search selected.")
+        return
+
+    st.warning(f"Delete **{ctx['name']}**? This can't be undone.")
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        if st.button(":material/delete_forever: Confirm Delete", type="primary", use_container_width=True):
+            db.delete_report_config(st.session_state.user_id, ctx["name"])
+            st.session_state.car_saved_delete_target = None
+            st.toast("Search deleted.")
+            st.rerun()
+    with cancel_col:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.car_saved_delete_target = None
+            st.rerun()
+
+
 def render_saved_car_searches_page():
     with st.container(key="car_search_hero"):
         st.markdown(f"""
@@ -260,26 +299,54 @@ def render_saved_car_searches_page():
         st.info("No saved searches yet - run a search on Find a Car and use \"Save this search\" to bookmark one.", icon=":material/bookmark_border:")
         return
 
-    for name, max_price, zip_code, car_make, car_model, min_year, max_mileage in rows:
-        with st.container(border=True):
-            label_col, run_col, delete_col = st.columns([4, 1, 1])
-            with label_col:
-                st.markdown(f"**{name}**")
-                st.caption(_criteria_label(car_make or "Any make", car_model or "Any model", min_year, max_price, zip_code, 50))
-            with run_col:
-                if st.button(":material/travel_explore: Run", key=f"saved_car_run_{name}", use_container_width=True):
-                    st.session_state.car_search_make = car_make or "Any make"
-                    st.session_state.car_search_model = car_model or "Any model"
-                    st.session_state.car_search_min_year = min_year or 2018
-                    st.session_state.car_search_max_price = max_price or 30000
-                    st.session_state.car_search_max_mileage = max_mileage or 80000
-                    st.session_state.car_search_zip = zip_code or ""
-                    st.session_state.car_search_radius = 50
-                    _run_search(car_make or "Any make", car_model or "Any model", min_year or 2018,
-                                max_price or 30000, max_mileage or 80000, zip_code or "", 50, use_live=True)
-                    st.session_state.current_page = "Find a Car"
-                    st.rerun()
-            with delete_col:
-                if st.button(":material/delete: Delete", key=f"saved_car_delete_{name}", use_container_width=True):
-                    db.delete_report_config(st.session_state.user_id, name)
-                    st.rerun()
+    df = pd.DataFrame(rows, columns=["Profile Name", "Max Price", "ZIP", "Make", "Model", "Min Year", "Max Mileage"])
+    # `mk or "Any make"` looks right but isn't: a NULL car_make column
+    # reads back through pandas as NaN (a float), not None, once the
+    # column has any real string values mixed in - and NaN is truthy in
+    # Python, so `or` never falls through to the default, and
+    # _criteria_label's string .join() then chokes on a float. Checking
+    # isinstance(..., str) catches both None and NaN the same way.
+    df["Criteria"] = [
+        _criteria_label(mk if isinstance(mk, str) else "Any make", md if isinstance(md, str) else "Any model", yr, pr, zp, 50)
+        for mk, md, yr, pr, zp in zip(df["Make"], df["Model"], df["Min Year"], df["Max Price"], df["ZIP"])
+    ]
+    df["Run"] = ":material/travel_explore:"
+    df["Delete"] = ":material/delete:"
+    st.dataframe(
+        df, use_container_width=True, hide_index=True, key="saved_car_searches_grid",
+        column_order=["Profile Name", "Criteria", "Run", "Delete"],
+        height=len(df) * 35 + 38,
+        column_config={
+            "Run": st.column_config.ButtonColumn("", width="small", type="tertiary", key="saved_car_run_click"),
+            "Delete": st.column_config.ButtonColumn("", width="small", type="tertiary", key="saved_car_delete_click"),
+        },
+    )
+
+    run_click = st.session_state.get("saved_car_run_click")
+    if run_click and run_click.get("row") is not None:
+        row = df.iloc[run_click["row"]]
+        # Same NaN-is-truthy trap as the Criteria column above - `or`
+        # alone doesn't catch it.
+        car_make = row["Make"] if isinstance(row["Make"], str) else "Any make"
+        car_model = row["Model"] if isinstance(row["Model"], str) else "Any model"
+        min_year = int(row["Min Year"]) if pd.notna(row["Min Year"]) else 2018
+        max_price = int(row["Max Price"]) if pd.notna(row["Max Price"]) else 30000
+        max_mileage = int(row["Max Mileage"]) if pd.notna(row["Max Mileage"]) else 80000
+        zip_code = row["ZIP"] if isinstance(row["ZIP"], str) else ""
+        st.session_state.car_search_make = car_make
+        st.session_state.car_search_model = car_model
+        st.session_state.car_search_min_year = min_year
+        st.session_state.car_search_max_price = max_price
+        st.session_state.car_search_max_mileage = max_mileage
+        st.session_state.car_search_zip = zip_code
+        st.session_state.car_search_radius = 50
+        _run_search(car_make, car_model, min_year, max_price, max_mileage, zip_code, 50, use_live=True)
+        st.session_state.current_page = "Find a Car"
+        st.rerun()
+
+    delete_click = st.session_state.get("saved_car_delete_click")
+    if delete_click and delete_click.get("row") is not None:
+        st.session_state.car_saved_delete_target = {"name": df.iloc[delete_click["row"]]["Profile Name"]}
+
+    if st.session_state.get("car_saved_delete_target"):
+        _delete_saved_car_search_dialog()

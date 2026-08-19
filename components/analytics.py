@@ -1104,6 +1104,40 @@ def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pc
         st.info("No searches set up yet. Head to 'Manage Searches' to create one.")
 
 
+def _clear_hist_delete_target():
+    st.session_state.hist_delete_target = None
+
+
+@st.dialog("Delete Scan Report", on_dismiss=_clear_hist_delete_target)
+def _delete_history_dialog():
+    """Same floating-dialog shape as strategy_config.py's
+    _delete_search_dialog (see [[table_action_pattern]]) - both the grid's
+    trash icon and the "Remove" button under an opened report set
+    hist_delete_target and land here, so there's exactly one delete
+    confirmation, not two different ones with different behavior (the
+    "Remove" button used to skip confirmation entirely). on_dismiss clears
+    the target on every dismissal path, not just Cancel - see
+    [[table_action_pattern]] for why that matters (a dialog dismissed via
+    the native X otherwise reopens on the next unrelated interaction)."""
+    ctx = st.session_state.get("hist_delete_target")
+    if not ctx:
+        st.write("No report selected.")
+        return
+
+    st.warning(f"Delete **{ctx['name']}** from your scan history? This can't be undone.")
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        if st.button(":material/delete_forever: Confirm Delete", type="primary", use_container_width=True):
+            db.delete_history_log(st.session_state.user_id, ctx["id"])
+            st.session_state.hist_delete_target = None
+            st.toast("Removed from your scan history.")
+            st.rerun()
+    with cancel_col:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.hist_delete_target = None
+            st.rerun()
+
+
 def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
     st.markdown(f"""
         <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
@@ -1214,25 +1248,13 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
 
         delete_click = st.session_state.get("hist_delete_btn_click")
         if delete_click and delete_click.get("row") is not None:
-            st.session_state.hist_pending_delete = {
+            st.session_state.hist_delete_target = {
                 "id": df_hist_page.iloc[delete_click["row"]]["Log ID"],
                 "name": df_hist_page.iloc[delete_click["row"]]["Profile Name"],
             }
 
-        if st.session_state.get("hist_pending_delete"):
-            pending = st.session_state.hist_pending_delete
-            st.warning(f"Delete **{pending['name']}** from your scan history? This can't be undone.")
-            confirm_col, cancel_col = st.columns(2)
-            with confirm_col:
-                if st.button(":material/delete: Confirm Delete", type="primary", use_container_width=True, key="hist_confirm_delete_btn"):
-                    db.delete_history_log(st.session_state.user_id, pending["id"])
-                    st.session_state.hist_pending_delete = None
-                    st.toast("Removed from your scan history.")
-                    st.rerun()
-            with cancel_col:
-                if st.button("Cancel", use_container_width=True, key="hist_cancel_delete_btn"):
-                    st.session_state.hist_pending_delete = None
-                    st.rerun()
+        if st.session_state.get("hist_delete_target"):
+            _delete_history_dialog()
 
         if selected_log_indices:
             target_log_row_idx = selected_log_indices[0]
@@ -1249,8 +1271,7 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
             with delete_col:
                 st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
                 if st.button(":material/delete: Remove", key=f"delete_history_{archived_log_id}", use_container_width=True):
-                    db.delete_history_log(st.session_state.user_id, archived_log_id)
-                    st.toast("Removed from your scan history.")
+                    st.session_state.hist_delete_target = {"id": archived_log_id, "name": archived_report_name}
                     st.rerun()
 
             _render_scan_results(
