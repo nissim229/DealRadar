@@ -7,7 +7,6 @@ import database as db
 import agent_engine as engine
 import plan_limits
 import location_data
-import car_engine
 from icons import icon as svg_icon
 from components import pricing
 from nav import render_side_nav
@@ -174,19 +173,17 @@ def render_strategy_configuration():
         </style>
     """, unsafe_allow_html=True)
 
-    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
-
     with st.container(key="strategy_hero"):
         st.markdown(f"""
             <div style='text-align:center; max-width:760px; margin:0 auto;'>
                 <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
                     <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("car" if _is_cars else "crosshair", size=24, color="white")}
+                        {svg_icon("crosshair", size=24, color="white")}
                     </div>
-                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>{"Manage Car Search Criteria" if _is_cars else "Manage Hunt Criteria"}</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Manage Hunt Criteria</div>
                 </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>{"Create, edit, or remove your automated car searches" if _is_cars else "Create, edit, or remove your automated property searches"}</div>
+                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Create, edit, or remove your automated property searches</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -214,112 +211,6 @@ def render_strategy_configuration():
             _render_decommission_tab()
 
 
-def _render_establish_cars_fields():
-    """The Cars-category variant of the Establish Hunt Criteria form - no
-    state/city picker (ZIP-only location, kept lightweight since this is a
-    preview - see car_engine.py's module docstring), Make/Model/Year/
-    Mileage instead of Property Type/Beds. Saved rows are distinguished by
-    category="cars" in database.py (see save_report_config's docstring)."""
-    profile_name = st.text_input("Search Name", placeholder="e.g., Toyota Camry Under 25k", key="hunt_new_profile_name")
-
-    st.info(
-        ":material/science: Cars is a preview category - results below are generated from mock listings, "
-        "not a live feed, until a real car-listings API is connected.",
-    )
-
-    # Make/Model live outside the form (like the real-estate location
-    # picker above) since Model's options depend on the currently-selected
-    # Make - a form only reruns on submit, so a dependent dropdown inside
-    # one would show whatever Make was selected on the PREVIOUS run, not
-    # the one just picked.
-    st.markdown("##### Vehicle")
-    with st.container(border=True):
-        veh_col1, veh_col2 = st.columns(2)
-        with veh_col1:
-            car_make = st.selectbox("Make", ["Any make"] + car_engine.CAR_MAKES, key="hunt_new_car_make")
-        with veh_col2:
-            model_options = ["Any model"] + (car_engine.models_for_make(car_make) if car_make != "Any make" else [])
-            # A Make change can leave the Model widget's stored value
-            # outside the new model_options list (e.g. "Camry" selected,
-            # then Make switched to Honda) - st.selectbox raises if its
-            # key's session_state value isn't in the current options, so
-            # this resets it first, the same self-correcting pattern the
-            # real-estate location picker uses when its State changes.
-            if st.session_state.get("hunt_new_car_model") not in model_options:
-                st.session_state.hunt_new_car_model = "Any model"
-            car_model = st.selectbox("Model", model_options, key="hunt_new_car_model")
-
-    with st.form("hunt_criteria_car_form", clear_on_submit=True):
-        panel_col1, panel_col2 = st.columns(2)
-        with panel_col1:
-            st.markdown("##### Vehicle Year")
-            with st.container(border=True):
-                min_year = st.number_input("Minimum Year", min_value=1990, max_value=2026, value=2018, step=1)
-        with panel_col2:
-            st.markdown("##### Budget & Mileage")
-            with st.container(border=True):
-                max_price = st.number_input("Maximum Budget ($)", min_value=0, value=30000, step=1000)
-                max_mileage = st.number_input("Maximum Mileage", min_value=0, value=80000, step=5000)
-                zip_code = st.text_input("ZIP Code (optional)", placeholder="e.g., 80301")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### Notifications & Schedule")
-        with st.container(border=True):
-            sub_col1, sub_col2 = st.columns(2)
-            with sub_col1:
-                recipient_email = st.text_input("Send Reports To", value=st.session_state.user_email)
-            with sub_col2:
-                schedule_time = st.text_input("Daily Scan Time (24h format)", value="08:00")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit_button = st.form_submit_button(":material/rocket_launch: Save Search", type="primary", use_container_width=True)
-
-        if submit_button:
-            if profile_name and recipient_email:
-                existing_names = db.get_all_reports(st.session_state.user_id)
-                if profile_name not in existing_names and not plan_limits.is_within_limit(
-                    st.session_state.user_role, st.session_state.user_plan, "saved_searches", len(existing_names)
-                ):
-                    pricing.render_plan_limit_notice("saved_searches", len(existing_names))
-                elif zip_code and (not zip_code.isdigit() or len(zip_code) != 5):
-                    st.error("ZIP code must be exactly 5 digits, or left blank.")
-                else:
-                    make_display = None if car_make == "Any make" else car_make
-                    model_display = None if car_model == "Any model" else car_model
-                    location_display = f"ZIP {zip_code}" if zip_code else "Nationwide"
-                    db.save_report_config(
-                        st.session_state.user_id,
-                        profile_name,
-                        location_display,
-                        int(max_price),
-                        0,
-                        None,
-                        recipient_email,
-                        schedule_time,
-                        zip_code=zip_code or None,
-                        category="cars",
-                        car_make=make_display,
-                        car_model=model_display,
-                        car_min_year=int(min_year),
-                        car_max_mileage=int(max_mileage),
-                    )
-                    st.toast("Search created!")
-                    st.session_state.save_success_flash = f"'{profile_name}' saved successfully!"
-                    # Make/Model live outside the form, so clear_on_submit
-                    # doesn't reset them. Deleting the keys (not assigning
-                    # "Any make"/"Any model") - like _clear_location_picker
-                    # does for the real-estate form - since both widgets
-                    # already instantiated earlier in this same run, and
-                    # Streamlit raises if an already-instantiated widget's
-                    # session_state key is assigned to (not deleted) again
-                    # in the same run.
-                    st.session_state.pop("hunt_new_car_make", None)
-                    st.session_state.pop("hunt_new_car_model", None)
-                    st.rerun()
-            else:
-                st.error("Please fill in a search name and a recipient email before saving.")
-
-
 def _render_establish_tab():
     st.markdown("""
         <div style='background-color: var(--radar-surface-alt); padding: var(--radar-space-5); border-radius: var(--radar-radius-md); border-left: 4px solid var(--radar-primary); margin-bottom: var(--radar-space-6);'>
@@ -327,13 +218,6 @@ def _render_establish_tab():
             <p style='margin: 0; color: var(--radar-text-muted); font-size: 14px;'>Set your target location, budget, and criteria below - we'll scan for matching deals on your schedule.</p>
         </div>
     """, unsafe_allow_html=True)
-
-    # Which category's form to show is driven by the top navbar's Real
-    # Estate/Cars switcher (main.py) - the single source of truth for deal
-    # type app-wide - not a second, local picker that could disagree with it.
-    if st.session_state.get("active_category", "real_estate") == "cars":
-        _render_establish_cars_fields()
-        return
 
     profile_name = st.text_input("Search Name", placeholder="e.g., Denver Wholesale Multi", key="hunt_new_profile_name")
 
@@ -407,25 +291,16 @@ def _render_establish_tab():
 
 def _render_modify_tab():
     st.markdown("### Edit a Saved Search")
-    # Scoped to the active top-nav category, same as the dashboard - so
-    # this list only ever shows the kind of search "Manage Car Search
-    # Criteria"/"Manage Hunt Criteria" actually claims to be managing.
-    # NOTE: the edit form below only has property fields (Property Type,
-    # Min Beds) - a car row can be found and deleted here, but not yet
-    # fully edited (make/model/year/mileage aren't wired into this form).
-    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
+    # Cars gets its own dedicated flow now (components/car_search.py) and
+    # never reaches this page - real estate only, no category branching
+    # needed here anymore (see [[cars-category-feature]]).
     import sqlite3
     conn = sqlite3.connect(db.DB_NAME)
     try:
         cursor = conn.cursor()
-        if _is_cars:
-            cursor.execute(
-                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code "
-                "FROM reports WHERE user_id=? AND category='cars'", (int(st.session_state.user_id),))
-        else:
-            cursor.execute(
-                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code "
-                "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
+        cursor.execute(
+            "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code "
+            "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
         rows = cursor.fetchall()
     finally:
         conn.close()
@@ -539,19 +414,14 @@ def _render_modify_tab():
 
 def _render_decommission_tab():
     st.markdown("### Delete a Saved Search")
-    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
+    # Real estate only - see the note in _render_modify_tab above.
     import sqlite3
     conn = sqlite3.connect(db.DB_NAME)
     try:
         cursor = conn.cursor()
-        if _is_cars:
-            cursor.execute(
-                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
-                "FROM reports WHERE user_id=? AND category='cars'", (int(st.session_state.user_id),))
-        else:
-            cursor.execute(
-                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
-                "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
+        cursor.execute(
+            "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
+            "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
         rows = cursor.fetchall()
     finally:
         conn.close()
