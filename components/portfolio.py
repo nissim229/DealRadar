@@ -944,8 +944,12 @@ def render_portfolio_page():
             border-radius: var(--radar-radius-sm) !important;
             padding: 6px 8px !important; min-height: 0 !important; height: auto !important;
         }
+        div[class*="st-key-nav_item_"] button div,
+        div[class*="st-key-nav_item_"] button span {
+            justify-content: flex-start !important;
+        }
         div[class*="st-key-nav_item_"] button p {
-            font-size: 13.5px !important; font-weight: 500 !important;
+            font-size: 13.5px !important; font-weight: 500 !important; text-align: left !important;
         }
         div[class*="st-key-nav_item_"] button[kind="secondary"] {
             color: var(--radar-text-muted) !important;
@@ -1019,7 +1023,7 @@ def render_portfolio_page():
                 names = ", ".join(f"{p['address']} (-${abs(_monthly_cash_flow(p)):,.0f}/mo)" for p in losing_properties)
                 st.error(f"{len(losing_properties)} propert{'y is' if len(losing_properties) == 1 else 'ies are'} losing money each month: {names}", icon=":material/warning:")
 
-            nav_col, detail_col = st.columns([1, 2.6])
+            nav_col, detail_col = st.columns([1, 4])
             with nav_col:
                 selected = _render_property_nav(properties)
             with detail_col:

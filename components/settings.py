@@ -325,8 +325,16 @@ def render_settings_page():
             border-radius: var(--radar-radius-sm) !important; border-left: 3px solid transparent !important;
             padding: 7px 10px 7px 9px !important; min-height: 0 !important; height: auto !important;
         }
+        /* Streamlit nests the label in button > div > span > div > p, and
+        the div/span each default to justify-content:center - overriding
+        the button's own flex-start was not enough, the text still centered
+        inside those inner wrappers. */
+        div[class*="st-key-settings_nav_item_"] button div,
+        div[class*="st-key-settings_nav_item_"] button span {
+            justify-content: flex-start !important;
+        }
         div[class*="st-key-settings_nav_item_"] button p {
-            font-size: 13.5px !important; font-weight: 500 !important;
+            font-size: 13.5px !important; font-weight: 500 !important; text-align: left !important;
         }
         div[class*="st-key-settings_nav_item_"] button[kind="secondary"] {
             color: var(--radar-text-muted) !important;
@@ -368,7 +376,7 @@ def render_settings_page():
             </div>
         """, unsafe_allow_html=True)
 
-    nav_col, content_col = st.columns([1, 2.6])
+    nav_col, content_col = st.columns([1, 4])
     with nav_col:
         _render_nav()
     with content_col:
