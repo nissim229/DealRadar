@@ -670,7 +670,7 @@ def render_admin_control_panel():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon("shield-check", size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Admin Controls</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Admin Controls</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Manage users, credits, and admin access</div>
             </div>

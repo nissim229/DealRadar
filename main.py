@@ -109,6 +109,7 @@ else:
             being "set" in the markdown source. */
             div.st-key-scoutai_topbar .dealradar-logo-name {
                 color: white !important;
+                font-family: var(--radar-font-display) !important;
             }
             div.st-key-scoutai_topbar .dealradar-logo-tag {
                 color: #94a3b8 !important;

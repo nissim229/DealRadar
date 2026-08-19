@@ -61,6 +61,10 @@ def render_guest_landing():
             color: white !important;
             border: none !important;
             font-weight: 600 !important;
+            white-space: nowrap !important;
+        }
+        div.st-key-guest_topbar button p {
+            white-space: nowrap !important;
         }
         div.st-key-guest_topbar button:hover {
             background-color: var(--radar-primary-dark) !important;
@@ -71,12 +75,13 @@ def render_guest_landing():
         the dark navbar (see the same fix in main.py's topbar). */
         div.st-key-guest_topbar .dealradar-logo-name {
             color: white !important;
+            font-family: var(--radar-font-display) !important;
         }
         </style>
     """, unsafe_allow_html=True)
 
     with st.container(key="guest_topbar"):
-        col_logo, col_spacer, col_signin = st.columns([2, 3, 1])
+        col_logo, col_spacer, col_signin = st.columns([2, 2.5, 1.5])
         with col_logo:
             st.markdown("""
                 <div style='display: flex; align-items: center; gap: 10px;'>
@@ -156,7 +161,7 @@ def render_guest_landing():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon("radar", size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Find your next great deal in seconds</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Find your next great deal in seconds</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>
                     Search any city for a free instant preview - real property matches, real numbers,

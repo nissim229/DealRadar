@@ -1621,7 +1621,7 @@ def render_analytics_dashboard():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon(_hero_icon, size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Analytics Dashboard</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Analytics Dashboard</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>{_hero_subtitle}</div>
             </div>

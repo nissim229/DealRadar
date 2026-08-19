@@ -153,6 +153,28 @@ Always reach for a `design_tokens.py` variable
 etc.) before writing a raw px/hex value in new HTML. If a value doesn't
 have a token yet, that's a signal to add one, not to hardcode it locally.
 
+## 11. Typography
+
+Three faces, loaded once via `design_tokens.py`'s `inject_design_tokens()`
+(Google Fonts, applied app-wide before the guest/auth/authenticated router
+split so every page gets them):
+
+- **`var(--radar-font-display)`** (Sora) — real headings (`h1`-`h6`,
+  including every `st.markdown("##### ...")` section header) and hero
+  titles/wordmarks. Used sparingly and only at larger sizes, so it stays a
+  display face rather than blending into body copy.
+- **`var(--radar-font-body)`** (Work Sans) — everything else: labels,
+  buttons, tables, captions, form fields. Applied globally as the default,
+  so new code doesn't need to set this explicitly.
+- **`var(--radar-font-mono)`** (JetBrains Mono) — anywhere digits or
+  identifiers need to line up: code, file paths, addresses in a data
+  table.
+
+**Rule**: a hand-coded hero title (raw `<div style="font-size:32px;...">`
+rather than a real `<h1>`) needs `font-family: var(--radar-font-display)`
+set explicitly in its inline style, since it isn't a semantic heading tag
+the global `h1`-`h6` rule would otherwise catch automatically.
+
 ## Applying this to a new category (e.g. Cars)
 
 A new deal category should reuse, not reinvent: `render_side_nav` for any

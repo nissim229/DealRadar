@@ -18,7 +18,7 @@ def _render_auth_header():
                         box-shadow: var(--radar-shadow-md);'>
                 {svg_icon("radar", size=28, color="white")}
             </div>
-            <div style='font-size: var(--radar-text-3xl); font-weight: var(--radar-weight-black); color: var(--radar-navy);'>DealRadar</div>
+            <div style='font-family: var(--radar-font-display); font-size: var(--radar-text-3xl); font-weight: var(--radar-weight-black); color: var(--radar-navy);'>DealRadar</div>
             <div style='margin-top: 4px; color: var(--radar-text-muted); font-size: var(--radar-text-md);'>Precision Deal Scanning for Real Estate Investors</div>
         </div>
     """, unsafe_allow_html=True)

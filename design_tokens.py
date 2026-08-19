@@ -24,6 +24,18 @@ import streamlit as st
 
 TOKENS_CSS = """
 :root {
+    /* Typography - Sora for headings/hero titles (geometric, a little more
+    character than the body face, used sparingly so it stays a display
+    face rather than blending into body copy), Work Sans for everything
+    else (labels, buttons, tables, captions - built for long runs of UI
+    text at small sizes), JetBrains Mono wherever digits/identifiers need
+    to line up (table cell alignment, file paths, addresses). Previously
+    unset - every page rendered on the browser's bare default font, which
+    is why DealRadar never actually had a typographic identity until now. */
+    --radar-font-display: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --radar-font-body: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --radar-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
     /* Brand */
     --radar-primary: #2563eb;
     --radar-primary-dark: #1d4ed8;
@@ -102,5 +114,40 @@ TOKENS_CSS = """
 """
 
 
+# Google Fonts is the one external font host Streamlit's own CSP-free
+# markdown rendering can reach reliably (no build step to bundle a local
+# @font-face file into) - loaded once, here, so every page (including the
+# pre-login guest/auth screens, which render before theme.py ever runs)
+# gets the real typeface instead of falling back to it only after login.
+FONT_IMPORT_HTML = """
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Work+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+"""
+
+# Applied broadly via data-testid/class selectors (same technique theme.py
+# already uses for color) rather than a bare `body { font-family }` -
+# Streamlit's own component library sets its own font-family on several
+# internal elements with enough specificity that a single top-level rule
+# doesn't reliably cascade into e.g. dataframe cells or widget labels.
+FONT_CSS = """
+    html, body, .stApp, [class*="st-"], [data-testid] {
+        font-family: var(--radar-font-body);
+    }
+    h1, h2, h3, h4, h5, h6,
+    [data-testid="stMarkdownContainer"] h1,
+    [data-testid="stMarkdownContainer"] h2,
+    [data-testid="stMarkdownContainer"] h3,
+    [data-testid="stMarkdownContainer"] h4,
+    [data-testid="stMarkdownContainer"] h5 {
+        font-family: var(--radar-font-display);
+    }
+    code, pre, kbd, [data-testid="stCode"] {
+        font-family: var(--radar-font-mono);
+    }
+"""
+
+
 def inject_design_tokens():
-    st.markdown(f"<style>{TOKENS_CSS}</style>", unsafe_allow_html=True)
+    st.markdown(FONT_IMPORT_HTML, unsafe_allow_html=True)
+    st.markdown(f"<style>{TOKENS_CSS}{FONT_CSS}</style>", unsafe_allow_html=True)

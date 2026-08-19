@@ -320,7 +320,7 @@ def render_settings_page():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon("settings", size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Settings</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Settings</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Your defaults, notifications, and account preferences</div>
             </div>

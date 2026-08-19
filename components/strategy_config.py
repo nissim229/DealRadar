@@ -184,7 +184,7 @@ def render_strategy_configuration():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon("car" if _is_cars else "crosshair", size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>{"Manage Car Search Criteria" if _is_cars else "Manage Hunt Criteria"}</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>{"Manage Car Search Criteria" if _is_cars else "Manage Hunt Criteria"}</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>{"Create, edit, or remove your automated car searches" if _is_cars else "Create, edit, or remove your automated property searches"}</div>
             </div>
