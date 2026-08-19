@@ -7,6 +7,7 @@ import plan_limits
 import roles
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
+from nav import render_side_nav
 
 
 @st.dialog("Recent Signups")
@@ -410,6 +411,201 @@ def _render_pricing_tab():
                         st.rerun()
 
 
+def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card):
+    # Each card is a real (CSS-restyled) button, not decorative HTML -
+    # click opens a floating st.dialog with drill-down detail.
+    # Streamlit's st.tabs can't be jumped to programmatically, so a
+    # dialog (with its own native close button) is the actual
+    # mechanism for "click a card, see more" here, not a same-page tab
+    # switch.
+    stat_cols = st.columns(4)
+    stat_defs = [
+        (":material/group:", "Total Users", stats["total_users"], f"+{signup_stats['new_this_week']} this week", _show_signups_dialog, ()),
+        (":material/show_chart:", "Live Scans (This Month)", scan_breakdown["live_this_month"],
+         f"{scan_breakdown['mock_this_month']} mock/preview", _show_scans_dialog, (scan_breakdown,)),
+        (":material/payments:", "Revenue (This Month)", f"${revenue_stats['total_this_month']:,.0f}",
+         f"${revenue_stats['total_all_time']:,.0f} all-time · demo", _show_revenue_dialog, (revenue_stats,)),
+        (":material/toll:", "Credits Outstanding", f"{stats['total_credits']:,}", "across all accounts", _show_credits_dialog, ()),
+    ]
+    for i, (icon_shortcode, label, value, sub, dialog_fn, dialog_args) in enumerate(stat_defs):
+        with stat_cols[i]:
+            with st.container(key=f"admin_stat_card_{i}"):
+                if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"admin_stat_card_btn_{i}",
+                             use_container_width=True, help=sub):
+                    dialog_fn(*dialog_args)
+
+    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+
+    # ---- DASHBOARD GRID - signup trend, zero-credit list, and
+    # RentCast usage are real always-visible cards (not hidden behind
+    # a dropdown), laid out in a persisted, admin-resizable grid (see
+    # dashboard_grid.py) instead of a fixed one-per-row stack. ----
+    dashboard_cards = [
+        {"id": "signup_trend", "title": "Signup Trend", "render": _render_signup_trend_card,
+         "default_row": 1, "default_col": 1, "default_span": 2},
+    ]
+    if stats["zero_credit_users"]:
+        dashboard_cards.append({"id": "zero_credit", "title": "0-Credit Users", "render": _render_zero_credit_card,
+                                 "default_row": 1, "default_col": 3, "default_span": 1})
+    dashboard_cards.append({"id": "rentcast_usage", "title": "RentCast Usage", "render": _render_rentcast_card,
+                             "default_row": 1, "default_col": 4, "default_span": 1})
+
+    render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
+
+
+def _render_api_usage_tab(scan_breakdown):
+    st.markdown("### Live vs. Mock/Preview Scans")
+    st.caption("A scan is 'live' when it pulled real RentCast listings; 'mock/preview' covers admin Test Scans, out-of-credit scans, and guest previews.")
+    api_col1, api_col2 = st.columns(2)
+    with api_col1:
+        st.markdown(f"""
+            <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
+                <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>ALL TIME</div>
+                <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>{scan_breakdown['live_all_time']} live</div>
+                <div style='font-size:13px; color:var(--radar-text-muted);'>{scan_breakdown['mock_all_time']} mock/preview</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with api_col2:
+        st.markdown(f"""
+            <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
+                <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>THIS MONTH</div>
+                <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>{scan_breakdown['live_this_month']} live</div>
+                <div style='font-size:13px; color:var(--radar-text-muted);'>{scan_breakdown['mock_this_month']} mock/preview</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown("### RentCast Calls by User (This Month)")
+    usage_by_user = db.get_rentcast_usage_by_user()
+    if not usage_by_user:
+        st.caption("No real RentCast calls made yet this month.")
+    else:
+        usage_df = pd.DataFrame([
+            {"User": f"{row['name']} ({row['email']})" if row["name"] and row["email"] else row["name"] or row["email"],
+             "RentCast Calls": row["call_count"]}
+            for row in usage_by_user
+        ])
+        st.dataframe(usage_df, use_container_width=True, hide_index=True, height=len(usage_df) * 35 + 38)
+
+
+def _render_revenue_tab(revenue_stats):
+    st.markdown("### Revenue (Simulated)")
+    st.caption(f"{svg_icon('lightbulb', size=13, color='var(--radar-text-subtle)')} No real payment processor is wired up yet - these numbers reflect the demo checkout in Buy Credits, not real charges.", unsafe_allow_html=True)
+
+    rev_col1, rev_col2 = st.columns(2)
+    with rev_col1:
+        st.markdown(f"""
+            <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
+                <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>THIS MONTH</div>
+                <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>${revenue_stats['total_this_month']:,.0f}</div>
+                <div style='font-size:13px; color:var(--radar-text-muted);'>{revenue_stats['count_this_month']} purchase(s)</div>
+            </div>
+        """, unsafe_allow_html=True)
+    with rev_col2:
+        st.markdown(f"""
+            <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
+                <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>ALL TIME</div>
+                <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>${revenue_stats['total_all_time']:,.0f}</div>
+                <div style='font-size:13px; color:var(--radar-text-muted);'>{revenue_stats['count_all_time']} purchase(s)</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown("### Plan Tier Distribution")
+    plan_dist = db.get_plan_distribution()
+    plan_cols = st.columns(len(plan_dist) or 1)
+    for (plan_name, count), col in zip(plan_dist.items(), plan_cols):
+        with col:
+            st.markdown(f"""
+                <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:10px 14px; text-align:center;'>
+                    <div style='font-size:18px; font-weight:800; color:var(--radar-navy);'>{count}</div>
+                    <div style='font-size:11px; color:var(--radar-text-muted); font-weight:600;'>{plan_name}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown("### Recent Transactions")
+    recent_tx = db.get_recent_transactions()
+    if not recent_tx:
+        st.caption("No purchases yet.")
+    else:
+        tx_df = pd.DataFrame([
+            {"User": f"{name} ({email})" if name else email, "Package": pkg,
+             "Amount": f"${amt:,.0f}", "Credits": credits, "Date": purchased_at}
+            for email, name, pkg, amt, credits, purchased_at in recent_tx
+        ])
+        st.dataframe(tx_df, use_container_width=True, hide_index=True, height=len(tx_df) * 35 + 38)
+
+
+def _render_add_admins_tab(current_role):
+    st.markdown("### Grant Staff Access")
+    st.caption("Only a super_admin can grant or change roles - see the role descriptions below.")
+    with st.expander(":material/info: What each role can do"):
+        st.caption("**Support** - the Users tab only, and just enough to help a customer: credits, suspend/reactivate, password reset. No pricing, revenue, or profile-editing access.")
+        st.caption("**Admin** - full day-to-day operations: Users (full), API Usage, Revenue, Broadcast. Can't edit pricing/cost config or grant roles to anyone.")
+        st.caption("**Super Admin** - everything, including this tab and Pricing. Keep this to the smallest number of people who genuinely need it.")
+
+    nav_col, content_col = st.columns([1, 3])
+    with nav_col:
+        grant_mode = render_side_nav(
+            [
+                {"label": "Promote an existing user", "icon": ":material/person_add:"},
+                {"label": "Create a new account", "icon": ":material/add_circle:"},
+            ],
+            key_prefix="admin_grant_mode_nav",
+        )
+
+    with content_col:
+        if grant_mode == "Promote an existing user":
+            candidates = [(u[0], u[1], u[2], u[3]) for u in db.get_all_users_for_admin_table() if u[3] != "super_admin"]
+            if not candidates:
+                st.caption("No eligible users - everyone is already a super_admin.")
+            else:
+                labels = [f"{name or email} ({email}) - currently {role.upper()}" for _, email, name, role in candidates]
+                picked_idx = st.selectbox("User", range(len(candidates)), format_func=lambda i: labels[i], key="admin_promote_user_select")
+                picked_id, picked_email, picked_name, picked_current_role = candidates[picked_idx]
+                new_staff_role = st.selectbox("Grant role", roles.STAFF_ROLES,
+                                               index=roles.STAFF_ROLES.index(picked_current_role) if picked_current_role in roles.STAFF_ROLES else 0,
+                                               key="admin_promote_role_select")
+                if st.button(":material/verified_user: Grant Access", type="primary", use_container_width=True, key="admin_promote_btn"):
+                    if db.update_user_role_admin(picked_id, new_staff_role):
+                        st.toast(f"{picked_email} is now {new_staff_role.upper()}.", icon=":material/check_circle:")
+                        st.rerun()
+                    else:
+                        st.error("Couldn't demote the last super_admin - promote someone else first.")
+        else:
+            new_admin_email = st.text_input("Email")
+            new_admin_pass = st.text_input("Password", type="password")
+            new_admin_role = st.selectbox("Role", roles.STAFF_ROLES, index=roles.STAFF_ROLES.index("admin"), key="admin_new_account_role")
+
+            if st.button(":material/verified_user: Create Account", type="primary", use_container_width=True, key="admin_create_account_btn"):
+                if new_admin_email and len(new_admin_pass) >= 6:
+                    if db.create_super_user_admin(new_admin_email, new_admin_pass, new_admin_role):
+                        st.success(f"{new_admin_role.upper()} account created for {new_admin_email}.")
+                    else:
+                        st.error("An account with this email already exists.")
+                else:
+                    st.error("Enter an email and a password of at least 6 characters.")
+
+
+def _render_broadcast_tab():
+    st.markdown("### Site-Wide Announcement")
+    st.caption("Shown as a banner to every logged-in user until you clear it - useful for maintenance notices or new feature announcements.")
+    current_message = db.get_broadcast_message()
+    new_message = st.text_area("Message", value=current_message, placeholder="e.g., Scheduled maintenance tonight 10-11pm ET.")
+    bc_col1, bc_col2 = st.columns([1, 1])
+    with bc_col1:
+        if st.button(":material/campaign: Publish", type="primary", use_container_width=True):
+            db.set_broadcast_message(new_message)
+            st.toast("Broadcast message published.")
+            st.rerun()
+    with bc_col2:
+        if st.button(":material/close: Clear", use_container_width=True, disabled=not current_message):
+            db.set_broadcast_message("")
+            st.toast("Broadcast message cleared.")
+            st.rerun()
+
+
 def render_admin_control_panel():
     st.markdown("""
         <style>
@@ -576,199 +772,35 @@ def render_admin_control_panel():
     # the hero, with the stat-card overview as its own tab instead of
     # always-visible content, means reaching Users/API Usage/etc. no longer
     # requires scrolling past the whole dashboard first.
-    tab_labels = [":material/dashboard: Dashboard", ":material/group: Users", ":material/api: API Usage", ":material/payments: Revenue"]
+    nav_items = [
+        {"label": "Dashboard", "icon": ":material/dashboard:"},
+        {"label": "Users", "icon": ":material/group:"},
+        {"label": "API Usage", "icon": ":material/api:"},
+        {"label": "Revenue", "icon": ":material/payments:"},
+    ]
     if roles.is_super_admin(current_role):
-        tab_labels.append(":material/sell: Pricing")
-    tab_labels.append(":material/campaign: Broadcast")
+        nav_items.append({"label": "Pricing", "icon": ":material/sell:"})
+    nav_items.append({"label": "Broadcast", "icon": ":material/campaign:"})
     if roles.is_super_admin(current_role):
-        tab_labels.append(":material/admin_panel_settings: Add Admins")
-    tab_map = dict(zip(tab_labels, st.tabs(tab_labels)))
+        nav_items.append({"label": "Add Admins", "icon": ":material/admin_panel_settings:"})
 
-    with tab_map[":material/dashboard: Dashboard"]:
-        # Each card is a real (CSS-restyled) button, not decorative HTML -
-        # click opens a floating st.dialog with drill-down detail.
-        # Streamlit's st.tabs can't be jumped to programmatically, so a
-        # dialog (with its own native close button) is the actual
-        # mechanism for "click a card, see more" here, not a same-page tab
-        # switch.
-        stat_cols = st.columns(4)
-        stat_defs = [
-            (":material/group:", "Total Users", stats["total_users"], f"+{signup_stats['new_this_week']} this week", _show_signups_dialog, ()),
-            (":material/show_chart:", "Live Scans (This Month)", scan_breakdown["live_this_month"],
-             f"{scan_breakdown['mock_this_month']} mock/preview", _show_scans_dialog, (scan_breakdown,)),
-            (":material/payments:", "Revenue (This Month)", f"${revenue_stats['total_this_month']:,.0f}",
-             f"${revenue_stats['total_all_time']:,.0f} all-time · demo", _show_revenue_dialog, (revenue_stats,)),
-            (":material/toll:", "Credits Outstanding", f"{stats['total_credits']:,}", "across all accounts", _show_credits_dialog, ()),
-        ]
-        for i, (icon_shortcode, label, value, sub, dialog_fn, dialog_args) in enumerate(stat_defs):
-            with stat_cols[i]:
-                with st.container(key=f"admin_stat_card_{i}"):
-                    if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"admin_stat_card_btn_{i}",
-                                 use_container_width=True, help=sub):
-                        dialog_fn(*dialog_args)
+    nav_col, content_col = st.columns([1, 4])
+    with nav_col:
+        active_section = render_side_nav(nav_items, key_prefix="admin_nav")
 
-        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
-
-        # ---- DASHBOARD GRID - signup trend, zero-credit list, and
-        # RentCast usage are real always-visible cards (not hidden behind
-        # a dropdown), laid out in a persisted, admin-resizable grid (see
-        # dashboard_grid.py) instead of a fixed one-per-row stack. ----
-        dashboard_cards = [
-            {"id": "signup_trend", "title": "Signup Trend", "render": _render_signup_trend_card,
-             "default_row": 1, "default_col": 1, "default_span": 2},
-        ]
-        if stats["zero_credit_users"]:
-            dashboard_cards.append({"id": "zero_credit", "title": "0-Credit Users", "render": _render_zero_credit_card,
-                                     "default_row": 1, "default_col": 3, "default_span": 1})
-        dashboard_cards.append({"id": "rentcast_usage", "title": "RentCast Usage", "render": _render_rentcast_card,
-                                 "default_row": 1, "default_col": 4, "default_span": 1})
-
-        render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
-
-    with tab_map[":material/group: Users"]:
-        _render_users_tab_body(current_role)
-
-    with tab_map[":material/api: API Usage"]:
-        st.markdown("### Live vs. Mock/Preview Scans")
-        st.caption("A scan is 'live' when it pulled real RentCast listings; 'mock/preview' covers admin Test Scans, out-of-credit scans, and guest previews.")
-        api_col1, api_col2 = st.columns(2)
-        with api_col1:
-            st.markdown(f"""
-                <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
-                    <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>ALL TIME</div>
-                    <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>{scan_breakdown['live_all_time']} live</div>
-                    <div style='font-size:13px; color:var(--radar-text-muted);'>{scan_breakdown['mock_all_time']} mock/preview</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with api_col2:
-            st.markdown(f"""
-                <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
-                    <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>THIS MONTH</div>
-                    <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>{scan_breakdown['live_this_month']} live</div>
-                    <div style='font-size:13px; color:var(--radar-text-muted);'>{scan_breakdown['mock_this_month']} mock/preview</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-        st.markdown("### RentCast Calls by User (This Month)")
-        usage_by_user = db.get_rentcast_usage_by_user()
-        if not usage_by_user:
-            st.caption("No real RentCast calls made yet this month.")
-        else:
-            usage_df = pd.DataFrame([
-                {"User": f"{row['name']} ({row['email']})" if row["name"] and row["email"] else row["name"] or row["email"],
-                 "RentCast Calls": row["call_count"]}
-                for row in usage_by_user
-            ])
-            st.dataframe(usage_df, use_container_width=True, hide_index=True, height=len(usage_df) * 35 + 38)
-
-    with tab_map[":material/payments: Revenue"]:
-        st.markdown("### Revenue (Simulated)")
-        st.caption(f"{svg_icon('lightbulb', size=13, color='var(--radar-text-subtle)')} No real payment processor is wired up yet - these numbers reflect the demo checkout in Buy Credits, not real charges.", unsafe_allow_html=True)
-
-        rev_col1, rev_col2 = st.columns(2)
-        with rev_col1:
-            st.markdown(f"""
-                <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
-                    <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>THIS MONTH</div>
-                    <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>${revenue_stats['total_this_month']:,.0f}</div>
-                    <div style='font-size:13px; color:var(--radar-text-muted);'>{revenue_stats['count_this_month']} purchase(s)</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with rev_col2:
-            st.markdown(f"""
-                <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:var(--radar-space-4);'>
-                    <div style='font-size:12px; font-weight:700; color:var(--radar-text-muted); margin-bottom:6px;'>ALL TIME</div>
-                    <div style='font-size:22px; font-weight:800; color:var(--radar-navy);'>${revenue_stats['total_all_time']:,.0f}</div>
-                    <div style='font-size:13px; color:var(--radar-text-muted);'>{revenue_stats['count_all_time']} purchase(s)</div>
-                </div>
-            """, unsafe_allow_html=True)
-
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-        st.markdown("### Plan Tier Distribution")
-        plan_dist = db.get_plan_distribution()
-        plan_cols = st.columns(len(plan_dist) or 1)
-        for (plan_name, count), col in zip(plan_dist.items(), plan_cols):
-            with col:
-                st.markdown(f"""
-                    <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:10px 14px; text-align:center;'>
-                        <div style='font-size:18px; font-weight:800; color:var(--radar-navy);'>{count}</div>
-                        <div style='font-size:11px; color:var(--radar-text-muted); font-weight:600;'>{plan_name}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-        st.markdown("### Recent Transactions")
-        recent_tx = db.get_recent_transactions()
-        if not recent_tx:
-            st.caption("No purchases yet.")
-        else:
-            tx_df = pd.DataFrame([
-                {"User": f"{name} ({email})" if name else email, "Package": pkg,
-                 "Amount": f"${amt:,.0f}", "Credits": credits, "Date": purchased_at}
-                for email, name, pkg, amt, credits, purchased_at in recent_tx
-            ])
-            st.dataframe(tx_df, use_container_width=True, hide_index=True, height=len(tx_df) * 35 + 38)
-
-    if roles.is_super_admin(current_role):
-        with tab_map[":material/sell: Pricing"]:
+    with content_col:
+        if active_section == "Dashboard":
+            _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats,
+                                   _render_signup_trend_card, _render_zero_credit_card, _render_rentcast_card)
+        elif active_section == "Users":
+            _render_users_tab_body(current_role)
+        elif active_section == "API Usage":
+            _render_api_usage_tab(scan_breakdown)
+        elif active_section == "Revenue":
+            _render_revenue_tab(revenue_stats)
+        elif active_section == "Pricing" and roles.is_super_admin(current_role):
             _render_pricing_tab()
-
-    if roles.is_super_admin(current_role):
-        with tab_map[":material/admin_panel_settings: Add Admins"]:
-            st.markdown("### Grant Staff Access")
-            st.caption("Only a super_admin can grant or change roles - see the role descriptions below.")
-            with st.expander(":material/info: What each role can do"):
-                st.caption("**Support** - the Users tab only, and just enough to help a customer: credits, suspend/reactivate, password reset. No pricing, revenue, or profile-editing access.")
-                st.caption("**Admin** - full day-to-day operations: Users (full), API Usage, Revenue, Broadcast. Can't edit pricing/cost config or grant roles to anyone.")
-                st.caption("**Super Admin** - everything, including this tab and Pricing. Keep this to the smallest number of people who genuinely need it.")
-
-            grant_mode = st.radio("How", ["Promote an existing user", "Create a new account"], horizontal=True, key="admin_grant_mode")
-
-            if grant_mode == "Promote an existing user":
-                candidates = [(u[0], u[1], u[2], u[3]) for u in db.get_all_users_for_admin_table() if u[3] != "super_admin"]
-                if not candidates:
-                    st.caption("No eligible users - everyone is already a super_admin.")
-                else:
-                    labels = [f"{name or email} ({email}) - currently {role.upper()}" for _, email, name, role in candidates]
-                    picked_idx = st.selectbox("User", range(len(candidates)), format_func=lambda i: labels[i], key="admin_promote_user_select")
-                    picked_id, picked_email, picked_name, picked_current_role = candidates[picked_idx]
-                    new_staff_role = st.selectbox("Grant role", roles.STAFF_ROLES,
-                                                   index=roles.STAFF_ROLES.index(picked_current_role) if picked_current_role in roles.STAFF_ROLES else 0,
-                                                   key="admin_promote_role_select")
-                    if st.button(":material/verified_user: Grant Access", type="primary", use_container_width=True, key="admin_promote_btn"):
-                        if db.update_user_role_admin(picked_id, new_staff_role):
-                            st.toast(f"{picked_email} is now {new_staff_role.upper()}.", icon=":material/check_circle:")
-                            st.rerun()
-                        else:
-                            st.error("Couldn't demote the last super_admin - promote someone else first.")
-            else:
-                new_admin_email = st.text_input("Email")
-                new_admin_pass = st.text_input("Password", type="password")
-                new_admin_role = st.selectbox("Role", roles.STAFF_ROLES, index=roles.STAFF_ROLES.index("admin"), key="admin_new_account_role")
-
-                if st.button(":material/verified_user: Create Account", type="primary", use_container_width=True, key="admin_create_account_btn"):
-                    if new_admin_email and len(new_admin_pass) >= 6:
-                        if db.create_super_user_admin(new_admin_email, new_admin_pass, new_admin_role):
-                            st.success(f"{new_admin_role.upper()} account created for {new_admin_email}.")
-                        else:
-                            st.error("An account with this email already exists.")
-                    else:
-                        st.error("Enter an email and a password of at least 6 characters.")
-
-    with tab_map[":material/campaign: Broadcast"]:
-        st.markdown("### Site-Wide Announcement")
-        st.caption("Shown as a banner to every logged-in user until you clear it - useful for maintenance notices or new feature announcements.")
-        current_message = db.get_broadcast_message()
-        new_message = st.text_area("Message", value=current_message, placeholder="e.g., Scheduled maintenance tonight 10-11pm ET.")
-        bc_col1, bc_col2 = st.columns([1, 1])
-        with bc_col1:
-            if st.button(":material/campaign: Publish", type="primary", use_container_width=True):
-                db.set_broadcast_message(new_message)
-                st.toast("Broadcast message published.")
-                st.rerun()
-        with bc_col2:
-            if st.button(":material/close: Clear", use_container_width=True, disabled=not current_message):
-                db.set_broadcast_message("")
-                st.toast("Broadcast message cleared.")
-                st.rerun()
+        elif active_section == "Broadcast":
+            _render_broadcast_tab()
+        elif active_section == "Add Admins" and roles.is_super_admin(current_role):
+            _render_add_admins_tab(current_role)

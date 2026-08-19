@@ -459,78 +459,84 @@ def _render_overview_subtab(p):
 def _render_mortgage_subtab(p):
     key_prefix = f"prop_{p['id']}_mortgage"
 
-    section = st.radio(
-        "Mortgage section", ["Loan Information", "Lender Contact"], horizontal=True,
-        label_visibility="collapsed", key=f"{key_prefix}_section",
-    )
-
-    if section == "Loan Information":
-        loan = _render_loan_info_section(p, key_prefix)
-
-        # Mirrors the exact default-value expressions _render_loan_info_section
-        # used to initialize each widget from p, so this only lights up on a
-        # real difference from what's actually saved - not a false positive
-        # from int/float/None coercion mismatches.
-        loan_has_changes = (
-            loan["mortgage_rate"] != float(p.get("mortgage_rate") or 0) or
-            loan["monthly_pmi"] != int(p.get("monthly_pmi") or 0) or
-            loan["use_calc"] != bool(p.get("use_mortgage_calculator")) or
-            (loan["use_calc"] and (
-                loan["original_loan_amount"] != int(p.get("original_loan_amount") or 0) or
-                loan["mortgage_start_date"] != (_parse_date(p.get("mortgage_start_date")) or date.today()) or
-                int(loan["loan_term_years"]) != int(p.get("loan_term_years") or 30)
-            )) or
-            (not loan["use_calc"] and (
-                loan["mortgage_balance"] != int(p.get("mortgage_balance") or 0) or
-                loan["monthly_mortgage_payment"] != int(p.get("monthly_mortgage_payment") or 0)
-            ))
+    nav_col, content_col = st.columns([1, 3])
+    with nav_col:
+        section = render_side_nav(
+            [
+                {"label": "Loan Information", "icon": ":material/account_balance:"},
+                {"label": "Lender Contact", "icon": ":material/call:"},
+            ],
+            key_prefix=f"{key_prefix}_section_nav",
         )
-        if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", use_container_width=True, disabled=not loan_has_changes):
-            _save_property_fields(
-                p, mortgage_balance=loan["mortgage_balance"], monthly_mortgage_payment=loan["monthly_mortgage_payment"],
-                mortgage_rate=loan["mortgage_rate"], original_loan_amount=loan["original_loan_amount"],
-                mortgage_start_date=loan["mortgage_start_date"].isoformat() if loan["use_calc"] else p.get("mortgage_start_date", ""),
-                loan_term_years=int(loan["loan_term_years"]), use_mortgage_calculator=int(loan["use_calc"]),
-                monthly_pmi=loan["monthly_pmi"],
+
+    with content_col:
+        if section == "Loan Information":
+            loan = _render_loan_info_section(p, key_prefix)
+
+            # Mirrors the exact default-value expressions _render_loan_info_section
+            # used to initialize each widget from p, so this only lights up on a
+            # real difference from what's actually saved - not a false positive
+            # from int/float/None coercion mismatches.
+            loan_has_changes = (
+                loan["mortgage_rate"] != float(p.get("mortgage_rate") or 0) or
+                loan["monthly_pmi"] != int(p.get("monthly_pmi") or 0) or
+                loan["use_calc"] != bool(p.get("use_mortgage_calculator")) or
+                (loan["use_calc"] and (
+                    loan["original_loan_amount"] != int(p.get("original_loan_amount") or 0) or
+                    loan["mortgage_start_date"] != (_parse_date(p.get("mortgage_start_date")) or date.today()) or
+                    int(loan["loan_term_years"]) != int(p.get("loan_term_years") or 30)
+                )) or
+                (not loan["use_calc"] and (
+                    loan["mortgage_balance"] != int(p.get("mortgage_balance") or 0) or
+                    loan["monthly_mortgage_payment"] != int(p.get("monthly_mortgage_payment") or 0)
+                ))
             )
-            st.toast("Loan information updated.")
-            st.rerun()
+            if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", use_container_width=True, disabled=not loan_has_changes):
+                _save_property_fields(
+                    p, mortgage_balance=loan["mortgage_balance"], monthly_mortgage_payment=loan["monthly_mortgage_payment"],
+                    mortgage_rate=loan["mortgage_rate"], original_loan_amount=loan["original_loan_amount"],
+                    mortgage_start_date=loan["mortgage_start_date"].isoformat() if loan["use_calc"] else p.get("mortgage_start_date", ""),
+                    loan_term_years=int(loan["loan_term_years"]), use_mortgage_calculator=int(loan["use_calc"]),
+                    monthly_pmi=loan["monthly_pmi"],
+                )
+                st.toast("Loan information updated.")
+                st.rerun()
 
-        # Widgets here write to session_state live as the user types, even
-        # without saving - so typing a change and switching away (to another
-        # section, tab, or property) without clicking Save would otherwise
-        # leave that abandoned draft sitting here indefinitely, masking the
-        # real saved value next time this section is viewed.
-        if st.button("Discard changes", key=f"{key_prefix}_discard_loan", use_container_width=True):
-            for suffix in ["use_calc", "rate", "loan_amt", "start_date", "term", "balance", "payment", "pmi"]:
-                st.session_state.pop(f"{key_prefix}_{suffix}", None)
-            st.rerun()
+            # Widgets here write to session_state live as the user types, even
+            # without saving - so typing a change and switching away (to another
+            # section, tab, or property) without clicking Save would otherwise
+            # leave that abandoned draft sitting here indefinitely, masking the
+            # real saved value next time this section is viewed.
+            if st.button("Discard changes", key=f"{key_prefix}_discard_loan", use_container_width=True):
+                for suffix in ["use_calc", "rate", "loan_amt", "start_date", "term", "balance", "payment", "pmi"]:
+                    st.session_state.pop(f"{key_prefix}_{suffix}", None)
+                st.rerun()
 
-        if p.get("use_mortgage_calculator"):
-            st.markdown("---")
-            _render_schedule_section(p)
+            if p.get("use_mortgage_calculator"):
+                st.markdown("---")
+                _render_schedule_section(p)
 
-    else:
-        lender = _render_lender_contact_section(p, key_prefix)
+        else:
+            lender = _render_lender_contact_section(p, key_prefix)
 
-        lender_has_changes = (
-            lender["lender_name"] != p.get("lender_name", "") or lender["loan_officer_name"] != p.get("loan_officer_name", "") or
-            lender["lender_phone"] != p.get("lender_phone", "") or lender["lender_email"] != p.get("lender_email", "") or
-            lender["loan_account_number"] != p.get("loan_account_number", "")
-        )
-        if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", use_container_width=True, disabled=not lender_has_changes):
-            _save_property_fields(
-                p, lender_name=lender["lender_name"], loan_officer_name=lender["loan_officer_name"],
-                lender_phone=lender["lender_phone"], lender_email=lender["lender_email"],
-                loan_account_number=lender["loan_account_number"],
+            lender_has_changes = (
+                lender["lender_name"] != p.get("lender_name", "") or lender["loan_officer_name"] != p.get("loan_officer_name", "") or
+                lender["lender_phone"] != p.get("lender_phone", "") or lender["lender_email"] != p.get("lender_email", "") or
+                lender["loan_account_number"] != p.get("loan_account_number", "")
             )
-            st.toast("Lender contact updated.")
-            st.rerun()
+            if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", use_container_width=True, disabled=not lender_has_changes):
+                _save_property_fields(
+                    p, lender_name=lender["lender_name"], loan_officer_name=lender["loan_officer_name"],
+                    lender_phone=lender["lender_phone"], lender_email=lender["lender_email"],
+                    loan_account_number=lender["loan_account_number"],
+                )
+                st.toast("Lender contact updated.")
+                st.rerun()
 
-        if st.button("Discard changes", key=f"{key_prefix}_discard_lender", use_container_width=True):
-            for suffix in ["lender_name", "lender_phone", "loan_acct", "officer", "lender_email"]:
-                st.session_state.pop(f"{key_prefix}_{suffix}", None)
-            st.rerun()
+            if st.button("Discard changes", key=f"{key_prefix}_discard_lender", use_container_width=True):
+                for suffix in ["lender_name", "lender_phone", "loan_acct", "officer", "lender_email"]:
+                    st.session_state.pop(f"{key_prefix}_{suffix}", None)
+                st.rerun()
 
 
 def _render_property_details_subtab(p):
@@ -778,27 +784,38 @@ def _render_property_nav(properties):
 
 
 def _render_property_detail(p):
-    tabs = st.tabs([
-        ":material/dashboard: Overview", ":material/account_balance: Mortgage", ":material/home: Property",
-        ":material/key: Rental Status", ":material/groups: Occupancy", ":material/badge: Tenants",
-        ":material/description: Documents", ":material/payments: Other & Notes",
-    ])
-    with tabs[0]:
-        _render_overview_subtab(p)
-    with tabs[1]:
-        _render_mortgage_subtab(p)
-    with tabs[2]:
-        _render_property_details_subtab(p)
-    with tabs[3]:
-        _render_rental_status_subtab(p)
-    with tabs[4]:
-        _render_occupancy_subtab(p)
-    with tabs[5]:
-        _render_tenants_subtab(p)
-    with tabs[6]:
-        _render_documents_subtab(p)
-    with tabs[7]:
-        _render_expenses_notes_subtab(p)
+    nav_col, content_col = st.columns([1, 3])
+    with nav_col:
+        active_section = render_side_nav(
+            [
+                {"label": "Overview", "icon": ":material/dashboard:"},
+                {"label": "Mortgage", "icon": ":material/account_balance:"},
+                {"label": "Property", "icon": ":material/home:"},
+                {"label": "Rental Status", "icon": ":material/key:"},
+                {"label": "Occupancy", "icon": ":material/groups:"},
+                {"label": "Tenants", "icon": ":material/badge:"},
+                {"label": "Documents", "icon": ":material/description:"},
+                {"label": "Other & Notes", "icon": ":material/payments:"},
+            ],
+            key_prefix="property_detail_nav",
+        )
+    with content_col:
+        if active_section == "Overview":
+            _render_overview_subtab(p)
+        elif active_section == "Mortgage":
+            _render_mortgage_subtab(p)
+        elif active_section == "Property":
+            _render_property_details_subtab(p)
+        elif active_section == "Rental Status":
+            _render_rental_status_subtab(p)
+        elif active_section == "Occupancy":
+            _render_occupancy_subtab(p)
+        elif active_section == "Tenants":
+            _render_tenants_subtab(p)
+        elif active_section == "Documents":
+            _render_documents_subtab(p)
+        else:
+            _render_expenses_notes_subtab(p)
 
 
 def _render_summary_tab(properties):

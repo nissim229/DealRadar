@@ -15,6 +15,7 @@ import roles
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
+from nav import render_side_nav
 
 
 def _format_price_short(price):
@@ -1074,6 +1075,232 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
+def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
+    if raw_profiles:
+        if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
+            _render_scan_results(
+                st.session_state.active_scanned_report,
+                st.session_state.get("active_scanned_profile", "Your Search"),
+                st.session_state.active_scanned_coords,
+                "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                calc_down_pct, calc_interest, calc_target_yield,
+                show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
+                pdf_filename_prefix="DealRadar_Report",
+            )
+    else:
+        st.info("No searches set up yet. Head to 'Manage Hunt Criteria' to create one.")
+
+
+def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
+    st.markdown(f"""
+        <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
+            {svg_icon("clock", size=20, color="var(--radar-primary)")}
+            <span style='font-weight:700; font-size:var(--radar-text-xl); color:var(--radar-navy);'>Historical Scans Registry Archive</span>
+        </div>
+    """, unsafe_allow_html=True)
+    st.caption("Review any past scan for free - browsing your history doesn't use any credits.")
+
+    history_rows = db.get_history_logs(st.session_state.user_id)
+    if history_rows:
+        df_hist = pd.DataFrame(history_rows, columns=["Log ID", "Profile Name", "Geographic Location", "Generation Date", "Hidden Raw Content", "Hidden Coordinates"])
+        # Stored as UTC (SQLite's CURRENT_TIMESTAMP) - convert to this
+        # user's own timezone (Settings) before it's ever displayed, so
+        # a scan from "10 minutes ago" doesn't read like it happened at
+        # a confusing hour this morning.
+        _user_tz = st.session_state.user_settings.get("timezone")
+        df_hist["Generation Date"] = df_hist["Generation Date"].apply(lambda d: format_local_datetime(d, _user_tz))
+        search_hist = st.text_input(":material/search: Search History Log", placeholder="Start typing...", key="hist_search_field_unique")
+        if search_hist:
+            df_hist = df_hist[df_hist["Profile Name"].str.contains(search_hist, case=False, na=False)]
+
+        with st.expander(":material/delete_sweep: Bulk cleanup - delete old logs"):
+            bulk_col1, bulk_col2 = st.columns([2, 1])
+            with bulk_col1:
+                bulk_days = st.number_input("Delete every log older than this many days", min_value=1, value=90, step=1, key="hist_bulk_days")
+            with bulk_col2:
+                st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+                if st.button(":material/delete_sweep: Preview & Delete", use_container_width=True, key="hist_bulk_delete_trigger"):
+                    st.session_state.hist_bulk_pending = bulk_days
+
+            if st.session_state.get("hist_bulk_pending"):
+                pending_days = st.session_state.hist_bulk_pending
+                cutoff_label = (datetime.now() - timedelta(days=int(pending_days))).strftime("%B %d, %Y")
+                st.warning(f"Delete every scan log from before **{cutoff_label}** ({int(pending_days)}+ days old)? This can't be undone.")
+                bulk_confirm_col, bulk_cancel_col = st.columns(2)
+                with bulk_confirm_col:
+                    if st.button(":material/delete_sweep: Confirm Bulk Delete", type="primary", use_container_width=True, key="hist_bulk_confirm_btn"):
+                        deleted_count = db.delete_history_logs_older_than(st.session_state.user_id, pending_days)
+                        st.session_state.hist_bulk_pending = None
+                        st.toast(f"Deleted {deleted_count} old log{'s' if deleted_count != 1 else ''}.")
+                        st.rerun()
+                with bulk_cancel_col:
+                    if st.button("Cancel", use_container_width=True, key="hist_bulk_cancel_btn"):
+                        st.session_state.hist_bulk_pending = None
+                        st.rerun()
+
+        page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=1, key="hist_page_size")
+        total_rows = len(df_hist)
+        total_pages = max(1, (total_rows + page_size - 1) // page_size)
+        current_page = min(st.session_state.get("hist_current_page", 1), total_pages)
+
+        page_nav1, page_nav2, page_nav3 = st.columns([1, 2, 1])
+        with page_nav1:
+            if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key="hist_prev_page_btn"):
+                st.session_state.hist_current_page = current_page - 1
+                st.rerun()
+        with page_nav2:
+            st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total scans</div>", unsafe_allow_html=True)
+        with page_nav3:
+            if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key="hist_next_page_btn"):
+                st.session_state.hist_current_page = current_page + 1
+                st.rerun()
+
+        df_hist_page = df_hist.iloc[(current_page - 1) * page_size: current_page * page_size]
+
+        def _summarize_history_row(coords_raw):
+            """Matches / price range / deal-grade breakdown for one
+            history row - computed from the archived listing snapshot
+            using the CURRENT underwriting assumptions (same sidebar
+            inputs the results view itself uses), not whatever
+            assumptions were active when the scan originally ran."""
+            try:
+                pts = json.loads(coords_raw)
+                if not pts:
+                    return "-", "-", "-"
+                prices = [float(p["price"]) for p in pts]
+                price_range = (_format_price_short(min(prices)) if min(prices) == max(prices)
+                               else f"{_format_price_short(min(prices))}–{_format_price_short(max(prices))}")
+                grade_counts = {"excellent": 0, "average": 0, "critical": 0}
+                for p in pts:
+                    m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                    grade_counts[m["grade"]] += 1
+                grades_str = f"🟢{grade_counts['excellent']} 🟡{grade_counts['average']} 🔴{grade_counts['critical']}"
+                return str(len(pts)), price_range, grades_str
+            except Exception:
+                return "-", "-", "-"
+
+        summaries = df_hist_page["Hidden Coordinates"].apply(_summarize_history_row)
+        df_hist_display = df_hist_page[["Profile Name", "Geographic Location"]].copy()
+        df_hist_display["Matches"] = [s[0] for s in summaries]
+        df_hist_display["Price Range"] = [s[1] for s in summaries]
+        df_hist_display["Grades (🟢/🟡/🔴)"] = [s[2] for s in summaries]
+        df_hist_display["Generation Date"] = df_hist_page["Generation Date"]
+        df_hist_display["Delete"] = ":material/delete:"
+        selected_log_grid = st.dataframe(
+            df_hist_display, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="history_log_grid",
+            height=len(df_hist_display) * 35 + 38,
+            column_config={
+                "Matches": st.column_config.TextColumn(width="small"),
+                "Price Range": st.column_config.TextColumn(width="small"),
+                "Grades (🟢/🟡/🔴)": st.column_config.TextColumn(width="small"),
+                "Delete": st.column_config.ButtonColumn("", width="small", type="tertiary", key="hist_delete_btn_click"),
+            },
+        )
+        selected_log_indices = selected_log_grid.get("selection", {}).get("rows", [])
+
+        delete_click = st.session_state.get("hist_delete_btn_click")
+        if delete_click and delete_click.get("row") is not None:
+            st.session_state.hist_pending_delete = {
+                "id": df_hist_page.iloc[delete_click["row"]]["Log ID"],
+                "name": df_hist_page.iloc[delete_click["row"]]["Profile Name"],
+            }
+
+        if st.session_state.get("hist_pending_delete"):
+            pending = st.session_state.hist_pending_delete
+            st.warning(f"Delete **{pending['name']}** from your scan history? This can't be undone.")
+            confirm_col, cancel_col = st.columns(2)
+            with confirm_col:
+                if st.button(":material/delete: Confirm Delete", type="primary", use_container_width=True, key="hist_confirm_delete_btn"):
+                    db.delete_history_log(st.session_state.user_id, pending["id"])
+                    st.session_state.hist_pending_delete = None
+                    st.toast("Removed from your scan history.")
+                    st.rerun()
+            with cancel_col:
+                if st.button("Cancel", use_container_width=True, key="hist_cancel_delete_btn"):
+                    st.session_state.hist_pending_delete = None
+                    st.rerun()
+
+        if selected_log_indices:
+            target_log_row_idx = selected_log_indices[0]
+
+            archived_log_id = df_hist_page.iloc[target_log_row_idx]["Log ID"]
+            archived_report_body = str(df_hist_page.iloc[target_log_row_idx]["Hidden Raw Content"])
+            archived_report_name = str(df_hist_page.iloc[target_log_row_idx]["Profile Name"])
+            archived_coords_raw = str(df_hist_page.iloc[target_log_row_idx]["Hidden Coordinates"])
+
+            st.markdown("---")
+            info_col, delete_col = st.columns([5, 1])
+            with info_col:
+                st.info(f"Viewing Historical Saved Archive Record: **{archived_report_name}**")
+            with delete_col:
+                st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
+                if st.button(":material/delete: Remove", key=f"delete_history_{archived_log_id}", use_container_width=True):
+                    db.delete_history_log(st.session_state.user_id, archived_log_id)
+                    st.toast("Removed from your scan history.")
+                    st.rerun()
+
+            _render_scan_results(
+                archived_report_body, archived_report_name, archived_coords_raw,
+                f"hist_{archived_log_id}", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                calc_down_pct, calc_interest, calc_target_yield,
+                show_preview_notice=False, pdf_button_label="Export Archived Report to Document PDF / Print",
+                pdf_filename_prefix="DealRadar_Archive",
+            )
+        else:
+            st.info("Click any row above to view that scan's full report.", icon=":material/lightbulb:")
+    else:
+        render_empty_state(
+            "clock", "No scans yet",
+            "Once you run a search, every scan gets saved here automatically - free to browse back through anytime, no credits used.",
+        )
+
+
+def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
+    st.markdown(f"""
+        <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
+            {svg_icon("star-filled", size=20, color="var(--radar-warning)")}
+            <span style='font-weight:700; font-size:var(--radar-text-xl); color:var(--radar-navy);'>Your Saved Properties</span>
+        </div>
+    """, unsafe_allow_html=True)
+    st.caption("Properties you've starred from any scan, with your personal notes attached. Note: since DealRadar currently uses simulated listing data, there's no live 'still active' status to verify here - that would require a licensed MLS/IDX data feed.")
+
+    saved_rows = db.get_saved_properties(st.session_state.user_id)
+    if saved_rows:
+        # Same 2-column grid the main scan results use, instead of one
+        # full-width card per row - the photo carousel is a fixed
+        # height, so at full page width it read as a stretched-out
+        # banner. This matches it back to the same proportions as
+        # everywhere else in the app.
+        for pair_start in range(0, len(saved_rows), 2):
+            pair_rows = saved_rows[pair_start:pair_start + 2]
+            grid_cols = st.columns(2)
+            for slot, s_row in enumerate(pair_rows):
+                s_idx = pair_start + slot
+                address, title, price, beds, baths, latitude, longitude, notes, saved_at = s_row
+                row_item = {
+                    "title": title, "address": address, "price": price,
+                    "beds": beds, "baths": baths, "latitude": latitude, "longitude": longitude,
+                }
+                metrics = compute_deal_metrics(
+                    float(price), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                )
+                with grid_cols[slot]:
+                    st.caption(_format_relative_time(saved_at))
+                    render_property_card(s_idx, row_item, metrics, view_mode, "saved_card", False,
+                                          st.session_state.user_id, st.session_state.get("distance_reference_point"),
+                                          calc_target_yield,
+                                          {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                           "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
+    else:
+        render_empty_state(
+            "star-outline", "No saved properties yet",
+            "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
+            accent="var(--radar-warning)",
+        )
+
+
 def render_analytics_dashboard():
     # Apply the user's saved default distance reference point (Settings)
     # once per session, only if they haven't already set/cleared one during
@@ -1363,229 +1590,21 @@ def render_analytics_dashboard():
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    analytics_tab1, analytics_tab2, analytics_tab3 = st.tabs([
-        ":material/rocket_launch: Execute Live Scan", ":material/history: Scanned Reports History Log", ":material/star: Saved Properties",
-    ])
+    nav_col, content_col = st.columns([1, 4])
+    with nav_col:
+        active_section = render_side_nav(
+            [
+                {"label": "Execute Live Scan", "icon": ":material/rocket_launch:"},
+                {"label": "Scanned Reports History Log", "icon": ":material/history:"},
+                {"label": "Saved Properties", "icon": ":material/star:"},
+            ],
+            key_prefix="scan_results_nav",
+        )
 
-    with analytics_tab1:
-        if raw_profiles:
-            if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
-                _render_scan_results(
-                    st.session_state.active_scanned_report,
-                    st.session_state.get("active_scanned_profile", "Your Search"),
-                    st.session_state.active_scanned_coords,
-                    "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                    calc_down_pct, calc_interest, calc_target_yield,
-                    show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
-                    pdf_filename_prefix="DealRadar_Report",
-                )
+    with content_col:
+        if active_section == "Execute Live Scan":
+            _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+        elif active_section == "Scanned Reports History Log":
+            _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
         else:
-            st.info("No searches set up yet. Head to 'Manage Hunt Criteria' to create one.")
-
-    with analytics_tab2:
-        st.markdown(f"""
-            <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
-                {svg_icon("clock", size=20, color="var(--radar-primary)")}
-                <span style='font-weight:700; font-size:var(--radar-text-xl); color:var(--radar-navy);'>Historical Scans Registry Archive</span>
-            </div>
-        """, unsafe_allow_html=True)
-        st.caption("Review any past scan for free - browsing your history doesn't use any credits.")
-
-        history_rows = db.get_history_logs(st.session_state.user_id)
-        if history_rows:
-            df_hist = pd.DataFrame(history_rows, columns=["Log ID", "Profile Name", "Geographic Location", "Generation Date", "Hidden Raw Content", "Hidden Coordinates"])
-            # Stored as UTC (SQLite's CURRENT_TIMESTAMP) - convert to this
-            # user's own timezone (Settings) before it's ever displayed, so
-            # a scan from "10 minutes ago" doesn't read like it happened at
-            # a confusing hour this morning.
-            _user_tz = st.session_state.user_settings.get("timezone")
-            df_hist["Generation Date"] = df_hist["Generation Date"].apply(lambda d: format_local_datetime(d, _user_tz))
-            search_hist = st.text_input(":material/search: Search History Log", placeholder="Start typing...", key="hist_search_field_unique")
-            if search_hist:
-                df_hist = df_hist[df_hist["Profile Name"].str.contains(search_hist, case=False, na=False)]
-
-            with st.expander(":material/delete_sweep: Bulk cleanup - delete old logs"):
-                bulk_col1, bulk_col2 = st.columns([2, 1])
-                with bulk_col1:
-                    bulk_days = st.number_input("Delete every log older than this many days", min_value=1, value=90, step=1, key="hist_bulk_days")
-                with bulk_col2:
-                    st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-                    if st.button(":material/delete_sweep: Preview & Delete", use_container_width=True, key="hist_bulk_delete_trigger"):
-                        st.session_state.hist_bulk_pending = bulk_days
-
-                if st.session_state.get("hist_bulk_pending"):
-                    pending_days = st.session_state.hist_bulk_pending
-                    cutoff_label = (datetime.now() - timedelta(days=int(pending_days))).strftime("%B %d, %Y")
-                    st.warning(f"Delete every scan log from before **{cutoff_label}** ({int(pending_days)}+ days old)? This can't be undone.")
-                    bulk_confirm_col, bulk_cancel_col = st.columns(2)
-                    with bulk_confirm_col:
-                        if st.button(":material/delete_sweep: Confirm Bulk Delete", type="primary", use_container_width=True, key="hist_bulk_confirm_btn"):
-                            deleted_count = db.delete_history_logs_older_than(st.session_state.user_id, pending_days)
-                            st.session_state.hist_bulk_pending = None
-                            st.toast(f"Deleted {deleted_count} old log{'s' if deleted_count != 1 else ''}.")
-                            st.rerun()
-                    with bulk_cancel_col:
-                        if st.button("Cancel", use_container_width=True, key="hist_bulk_cancel_btn"):
-                            st.session_state.hist_bulk_pending = None
-                            st.rerun()
-
-            page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=1, key="hist_page_size")
-            total_rows = len(df_hist)
-            total_pages = max(1, (total_rows + page_size - 1) // page_size)
-            current_page = min(st.session_state.get("hist_current_page", 1), total_pages)
-
-            page_nav1, page_nav2, page_nav3 = st.columns([1, 2, 1])
-            with page_nav1:
-                if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key="hist_prev_page_btn"):
-                    st.session_state.hist_current_page = current_page - 1
-                    st.rerun()
-            with page_nav2:
-                st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total scans</div>", unsafe_allow_html=True)
-            with page_nav3:
-                if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key="hist_next_page_btn"):
-                    st.session_state.hist_current_page = current_page + 1
-                    st.rerun()
-
-            df_hist_page = df_hist.iloc[(current_page - 1) * page_size: current_page * page_size]
-
-            def _summarize_history_row(coords_raw):
-                """Matches / price range / deal-grade breakdown for one
-                history row - computed from the archived listing snapshot
-                using the CURRENT underwriting assumptions (same sidebar
-                inputs the results view itself uses), not whatever
-                assumptions were active when the scan originally ran."""
-                try:
-                    pts = json.loads(coords_raw)
-                    if not pts:
-                        return "-", "-", "-"
-                    prices = [float(p["price"]) for p in pts]
-                    price_range = (_format_price_short(min(prices)) if min(prices) == max(prices)
-                                   else f"{_format_price_short(min(prices))}–{_format_price_short(max(prices))}")
-                    grade_counts = {"excellent": 0, "average": 0, "critical": 0}
-                    for p in pts:
-                        m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
-                        grade_counts[m["grade"]] += 1
-                    grades_str = f"🟢{grade_counts['excellent']} 🟡{grade_counts['average']} 🔴{grade_counts['critical']}"
-                    return str(len(pts)), price_range, grades_str
-                except Exception:
-                    return "-", "-", "-"
-
-            summaries = df_hist_page["Hidden Coordinates"].apply(_summarize_history_row)
-            df_hist_display = df_hist_page[["Profile Name", "Geographic Location"]].copy()
-            df_hist_display["Matches"] = [s[0] for s in summaries]
-            df_hist_display["Price Range"] = [s[1] for s in summaries]
-            df_hist_display["Grades (🟢/🟡/🔴)"] = [s[2] for s in summaries]
-            df_hist_display["Generation Date"] = df_hist_page["Generation Date"]
-            df_hist_display["Delete"] = ":material/delete:"
-            selected_log_grid = st.dataframe(
-                df_hist_display, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="history_log_grid",
-                height=len(df_hist_display) * 35 + 38,
-                column_config={
-                    "Matches": st.column_config.TextColumn(width="small"),
-                    "Price Range": st.column_config.TextColumn(width="small"),
-                    "Grades (🟢/🟡/🔴)": st.column_config.TextColumn(width="small"),
-                    "Delete": st.column_config.ButtonColumn("", width="small", type="tertiary", key="hist_delete_btn_click"),
-                },
-            )
-            selected_log_indices = selected_log_grid.get("selection", {}).get("rows", [])
-
-            delete_click = st.session_state.get("hist_delete_btn_click")
-            if delete_click and delete_click.get("row") is not None:
-                st.session_state.hist_pending_delete = {
-                    "id": df_hist_page.iloc[delete_click["row"]]["Log ID"],
-                    "name": df_hist_page.iloc[delete_click["row"]]["Profile Name"],
-                }
-
-            if st.session_state.get("hist_pending_delete"):
-                pending = st.session_state.hist_pending_delete
-                st.warning(f"Delete **{pending['name']}** from your scan history? This can't be undone.")
-                confirm_col, cancel_col = st.columns(2)
-                with confirm_col:
-                    if st.button(":material/delete: Confirm Delete", type="primary", use_container_width=True, key="hist_confirm_delete_btn"):
-                        db.delete_history_log(st.session_state.user_id, pending["id"])
-                        st.session_state.hist_pending_delete = None
-                        st.toast("Removed from your scan history.")
-                        st.rerun()
-                with cancel_col:
-                    if st.button("Cancel", use_container_width=True, key="hist_cancel_delete_btn"):
-                        st.session_state.hist_pending_delete = None
-                        st.rerun()
-
-            if selected_log_indices:
-                target_log_row_idx = selected_log_indices[0]
-
-                archived_log_id = df_hist_page.iloc[target_log_row_idx]["Log ID"]
-                archived_report_body = str(df_hist_page.iloc[target_log_row_idx]["Hidden Raw Content"])
-                archived_report_name = str(df_hist_page.iloc[target_log_row_idx]["Profile Name"])
-                archived_coords_raw = str(df_hist_page.iloc[target_log_row_idx]["Hidden Coordinates"])
-
-                st.markdown("---")
-                info_col, delete_col = st.columns([5, 1])
-                with info_col:
-                    st.info(f"Viewing Historical Saved Archive Record: **{archived_report_name}**")
-                with delete_col:
-                    st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
-                    if st.button(":material/delete: Remove", key=f"delete_history_{archived_log_id}", use_container_width=True):
-                        db.delete_history_log(st.session_state.user_id, archived_log_id)
-                        st.toast("Removed from your scan history.")
-                        st.rerun()
-
-                _render_scan_results(
-                    archived_report_body, archived_report_name, archived_coords_raw,
-                    f"hist_{archived_log_id}", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                    calc_down_pct, calc_interest, calc_target_yield,
-                    show_preview_notice=False, pdf_button_label="Export Archived Report to Document PDF / Print",
-                    pdf_filename_prefix="DealRadar_Archive",
-                )
-            else:
-                st.info("Click any row above to view that scan's full report.", icon=":material/lightbulb:")
-        else:
-            render_empty_state(
-                "clock", "No scans yet",
-                "Once you run a search, every scan gets saved here automatically - free to browse back through anytime, no credits used.",
-            )
-
-    with analytics_tab3:
-        st.markdown(f"""
-            <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
-                {svg_icon("star-filled", size=20, color="var(--radar-warning)")}
-                <span style='font-weight:700; font-size:var(--radar-text-xl); color:var(--radar-navy);'>Your Saved Properties</span>
-            </div>
-        """, unsafe_allow_html=True)
-        st.caption("Properties you've starred from any scan, with your personal notes attached. Note: since DealRadar currently uses simulated listing data, there's no live 'still active' status to verify here - that would require a licensed MLS/IDX data feed.")
-
-        saved_rows = db.get_saved_properties(st.session_state.user_id)
-        if saved_rows:
-            # Same 2-column grid the main scan results use, instead of one
-            # full-width card per row - the photo carousel is a fixed
-            # height, so at full page width it read as a stretched-out
-            # banner. This matches it back to the same proportions as
-            # everywhere else in the app.
-            for pair_start in range(0, len(saved_rows), 2):
-                pair_rows = saved_rows[pair_start:pair_start + 2]
-                grid_cols = st.columns(2)
-                for slot, s_row in enumerate(pair_rows):
-                    s_idx = pair_start + slot
-                    address, title, price, beds, baths, latitude, longitude, notes, saved_at = s_row
-                    row_item = {
-                        "title": title, "address": address, "price": price,
-                        "beds": beds, "baths": baths, "latitude": latitude, "longitude": longitude,
-                    }
-                    metrics = compute_deal_metrics(
-                        float(price), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
-                    )
-                    with grid_cols[slot]:
-                        st.caption(_format_relative_time(saved_at))
-                        render_property_card(s_idx, row_item, metrics, view_mode, "saved_card", False,
-                                              st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                              calc_target_yield,
-                                              {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                               "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
-        else:
-            render_empty_state(
-                "star-outline", "No saved properties yet",
-                "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
-                accent="var(--radar-warning)",
-            )
+            _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
