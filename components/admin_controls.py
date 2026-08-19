@@ -606,6 +606,43 @@ def _render_broadcast_tab():
             st.rerun()
 
 
+def _render_design_standards_tab():
+    st.markdown("### Design Standards")
+    st.caption(
+        "The UI conventions every new page or feature gets checked against - navigation, tables, "
+        "badges, icons, and so on. Edit here for a quick wording tweak, or ask Claude to update it "
+        "alongside a real code change so the doc and the code move together."
+    )
+
+    has_override = db.has_design_standards_override()
+    if has_override:
+        st.info(":material/edit: Showing your saved edit, not the version checked into the repo.", icon=":material/edit:")
+
+    current_content = db.get_design_standards()
+    edited_content = st.text_area(
+        "Content (Markdown)", value=current_content, height=420,
+        label_visibility="collapsed", key="design_standards_editor",
+    )
+
+    ds_col1, ds_col2 = st.columns([1, 1])
+    with ds_col1:
+        if st.button(":material/save: Save", type="primary", use_container_width=True,
+                     disabled=(edited_content == current_content)):
+            db.set_design_standards_override(edited_content)
+            st.toast("Design standards updated.")
+            st.rerun()
+    with ds_col2:
+        if st.button(":material/restart_alt: Revert to repo file", use_container_width=True, disabled=not has_override):
+            db.clear_design_standards_override()
+            st.toast("Reverted to DESIGN_STANDARDS.md.")
+            st.rerun()
+
+    st.markdown("---")
+    st.markdown("##### Preview")
+    with st.container(border=True):
+        st.markdown(current_content)
+
+
 def render_admin_control_panel():
     st.markdown("""
         <style>
@@ -783,6 +820,7 @@ def render_admin_control_panel():
     nav_items.append({"label": "Broadcast", "icon": ":material/campaign:"})
     if roles.is_super_admin(current_role):
         nav_items.append({"label": "Add Admins", "icon": ":material/admin_panel_settings:"})
+        nav_items.append({"label": "Design Standards", "icon": ":material/design_services:"})
 
     nav_col, content_col = st.columns([1, 4])
     with nav_col:
@@ -804,3 +842,5 @@ def render_admin_control_panel():
             _render_broadcast_tab()
         elif active_section == "Add Admins" and roles.is_super_admin(current_role):
             _render_add_admins_tab(current_role)
+        elif active_section == "Design Standards" and roles.is_super_admin(current_role):
+            _render_design_standards_tab()

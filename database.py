@@ -929,6 +929,65 @@ def set_broadcast_message(message):
     finally:
         conn.close()
 
+def get_design_standards():
+    """Returns the current DESIGN_STANDARDS.md content - an admin-saved
+    override from app_settings if one exists (Admin Controls > Design
+    Standards lets a super_admin edit this live, in-app), otherwise the
+    file checked into the repo, read fresh each call so a code-level edit
+    (e.g. Claude updating the file directly) shows up immediately without
+    needing a matching DB write. The file stays the source of truth for
+    what ships; the DB override is for a quick in-app wording tweak that
+    doesn't need a code change."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='design_standards_override'")
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+    finally:
+        conn.close()
+
+    try:
+        standards_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "DESIGN_STANDARDS.md")
+        with open(standards_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+def set_design_standards_override(content):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('design_standards_override', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (content,)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def clear_design_standards_override():
+    """Reverts to the repo file (DESIGN_STANDARDS.md) as the source of
+    truth again, discarding any in-app edit."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM app_settings WHERE key='design_standards_override'")
+        conn.commit()
+    finally:
+        conn.close()
+
+def has_design_standards_override():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM app_settings WHERE key='design_standards_override'")
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
+
 def log_rentcast_call(success, user_id=None):
     conn = sqlite3.connect(DB_NAME)
     try:
