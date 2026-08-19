@@ -132,7 +132,7 @@ else:
             }
             /* Nav button row - each button sized to fit its own text
             (shrink-to-fit) rather than forced into an equal 1/3 share of
-            col_nav's width, which was clipping "Manage Hunt Criteria" at
+            col_nav's width, which was clipping "Manage Searches" at
             three items sharing a narrower column now that the category
             switcher takes space beside it. */
             div.st-key-scoutai_nav_row div[data-testid="stHorizontalBlock"] {
@@ -237,7 +237,7 @@ else:
         {"value": "cars", "label": "Cars", "icon": ":material/directions_car:"},
     ]
     CATEGORY_MENUS = {
-        "real_estate": ["Run Property Scans", "Manage Hunt Criteria", "My Portfolio"],
+        "real_estate": ["Run Property Scans", "Manage Searches", "My Portfolio"],
         "cars": ["Find a Car", "Saved Searches"],
     }
     active_category = next(c for c in CATEGORIES if c["value"] == st.session_state.active_category)
@@ -351,7 +351,7 @@ else:
     # saved-profile step first).
     if st.session_state.current_page == "Run Property Scans":
         render_analytics_dashboard()
-    elif st.session_state.current_page == "Manage Hunt Criteria":
+    elif st.session_state.current_page == "Manage Searches":
         render_strategy_configuration()
     elif st.session_state.current_page == "Find a Car":
         render_car_search_page()

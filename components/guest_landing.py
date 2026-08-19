@@ -203,7 +203,7 @@ def render_guest_landing():
         ("chart", "Full Pro Calculator", "DSCR, GRM, MAO, and a Suggested Max Offer for every property"),
         ("star-filled", "Save & Track Deals", "Star properties across scans, add your own notes"),
         ("download", "Export Reports", "Download a clean PDF for any property or full scan"),
-        ("crosshair", "Saved Searches", "Set up hunt profiles and re-run them anytime"),
+        ("crosshair", "Saved Searches", "Set up a search once and re-run it anytime"),
     ]
     benefit_cols = st.columns(4)
     for (icon_name, title, desc), bcol in zip(benefits, benefit_cols):

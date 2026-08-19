@@ -181,7 +181,7 @@ def render_strategy_configuration():
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
                         {svg_icon("crosshair", size=24, color="white")}
                     </div>
-                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Manage Hunt Criteria</div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Manage Searches</div>
                 </div>
                 <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Create, edit, or remove your automated property searches</div>
             </div>
@@ -190,25 +190,22 @@ def render_strategy_configuration():
     if "save_success_flash" in st.session_state and st.session_state.save_success_flash:
         st.success(st.session_state.save_success_flash)
         st.session_state.save_success_flash = None
-        
+
     nav_col, content_col = st.columns([1, 4])
     with nav_col:
         active_section = render_side_nav(
             [
-                {"label": "Establish Hunt Criteria", "icon": ":material/add_circle:"},
-                {"label": "Modify Hunt Criteria", "icon": ":material/edit:"},
-                {"label": "Decommission Hunt Criteria", "icon": ":material/delete:"},
+                {"label": "New Search", "icon": ":material/add_circle:"},
+                {"label": "Your Searches", "icon": ":material/list_alt:"},
             ],
             key_prefix="hunt_nav",
         )
 
     with content_col:
-        if active_section == "Establish Hunt Criteria":
+        if active_section == "New Search":
             _render_establish_tab()
-        elif active_section == "Modify Hunt Criteria":
-            _render_modify_tab()
         else:
-            _render_decommission_tab()
+            _render_your_searches_tab()
 
 
 def _render_establish_tab():
@@ -289,8 +286,75 @@ def _render_establish_tab():
 
 
 
-def _render_modify_tab():
-    st.markdown("### Edit a Saved Search")
+@st.dialog("Edit Search")
+def _edit_search_dialog():
+    """Reads whichever row's pencil icon was clicked from session_state -
+    same reason property_card.py's _property_detail_dialog does the same
+    thing: st.dialog's title is fixed at decoration time, so per-call data
+    has to travel through session_state rather than a function argument
+    the call site could vary."""
+    ctx = st.session_state.get("hunt_edit_target")
+    if not ctx:
+        st.write("No search selected.")
+        return
+
+    if ctx["state"]:
+        st.caption(f"This search uses the precise city picker ({ctx['location']}). Target City below is display-only here - to change which cities are searched, delete this search and create a new one.")
+
+    new_location = st.text_input("Target City", value=ctx["location"])
+    col1, col2 = st.columns(2)
+    with col1:
+        property_types = ["Single Family Home", "Condo", "Multi-Family", "Townhouse"]
+        new_property_type = st.selectbox("Property Type", property_types,
+                                          index=property_types.index(ctx["property_type"]) if ctx["property_type"] in property_types else 0)
+        new_max_price = st.number_input("Maximum Budget ($)", min_value=0, value=ctx["max_price"], step=25000)
+    with col2:
+        new_min_beds = st.number_input("Minimum Bedrooms", min_value=0, value=ctx["min_beds"], step=1)
+        new_recipient_email = st.text_input("Send Reports To", value=ctx["recipient_email"])
+    new_schedule_time = st.text_input("Daily Scan Time (24h format)", value=ctx["schedule_time"])
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    save_col, cancel_col = st.columns(2)
+    with save_col:
+        if st.button(":material/save: Save Changes", type="primary", use_container_width=True):
+            if new_location and new_recipient_email:
+                db.save_report_config(st.session_state.user_id, ctx["name"], new_location, int(new_max_price), int(new_min_beds),
+                                       new_property_type, new_recipient_email, new_schedule_time,
+                                       state=ctx["state"], cities_json=ctx["cities_json"], zip_code=ctx["zip_code"])
+                st.session_state.hunt_edit_target = None
+                st.toast("Search updated!")
+                st.rerun()
+            else:
+                st.error("Please fill in all fields before saving.")
+    with cancel_col:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.hunt_edit_target = None
+            st.rerun()
+
+
+@st.dialog("Delete Search")
+def _delete_search_dialog():
+    ctx = st.session_state.get("hunt_delete_target")
+    if not ctx:
+        st.write("No search selected.")
+        return
+
+    st.warning(f"Delete **{ctx['name']}** ({ctx['location']})? This can't be undone.")
+    confirm_col, cancel_col = st.columns(2)
+    with confirm_col:
+        if st.button(":material/delete_forever: Confirm Delete", type="primary", use_container_width=True):
+            db.delete_report_config(st.session_state.user_id, ctx["name"])
+            st.session_state.hunt_delete_target = None
+            st.toast("Search deleted.")
+            st.rerun()
+    with cancel_col:
+        if st.button("Cancel", use_container_width=True):
+            st.session_state.hunt_delete_target = None
+            st.rerun()
+
+
+def _render_your_searches_tab():
+    st.markdown("### Your Searches")
     # Cars gets its own dedicated flow now (components/car_search.py) and
     # never reaches this page - real estate only, no category branching
     # needed here anymore (see [[cars-category-feature]]).
@@ -305,184 +369,69 @@ def _render_modify_tab():
     finally:
         conn.close()
 
-    if rows:
-        df = pd.DataFrame(rows, columns=["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time", "_state", "_cities_json", "_zip_code"])
-        grid_control1, grid_control2 = st.columns([2.5, 1])
-        with grid_control1:
-            search_query = st.text_input("Search", placeholder="Start typing a search name or location...")
-        with grid_control2:
-            page_size = st.selectbox("Rows per page", options=[10, 20, 50], index=1)
+    if not rows:
+        _render_empty_state("crosshair", "No searches yet", "Create your first search in the \"New Search\" tab, then come back here to edit or delete it.")
+        return
 
-        if search_query:
-            df = df[df["Profile Name"].str.contains(search_query, case=False, na=False) | df["Location"].str.contains(search_query, case=False, na=False)]
+    df = pd.DataFrame(rows, columns=["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time", "_state", "_cities_json", "_zip_code"])
+    grid_control1, grid_control2 = st.columns([2.5, 1])
+    with grid_control1:
+        search_query = st.text_input("Search", placeholder="Start typing a search name or location...")
+    with grid_control2:
+        page_size = st.selectbox("Rows per page", options=[10, 20, 50], index=1)
 
-        modify_total_rows = len(df)
-        modify_total_pages = max(1, (modify_total_rows + page_size - 1) // page_size)
-        modify_current_page = min(st.session_state.get("modify_searches_current_page", 1), modify_total_pages)
+    if search_query:
+        df = df[df["Profile Name"].str.contains(search_query, case=False, na=False) | df["Location"].str.contains(search_query, case=False, na=False)]
 
-        st.markdown("##### Your Searches")
-        modify_nav1, modify_nav2, modify_nav3 = st.columns([1, 2, 1])
-        with modify_nav1:
-            if st.button(":material/chevron_left: Previous", disabled=modify_current_page <= 1, use_container_width=True, key="modify_searches_prev_page_btn"):
-                st.session_state.modify_searches_current_page = modify_current_page - 1
-                st.rerun()
-        with modify_nav2:
-            st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {modify_current_page} of {modify_total_pages} · {modify_total_rows} total searches</div>", unsafe_allow_html=True)
-        with modify_nav3:
-            if st.button("Next :material/chevron_right:", disabled=modify_current_page >= modify_total_pages, use_container_width=True, key="modify_searches_next_page_btn"):
-                st.session_state.modify_searches_current_page = modify_current_page + 1
-                st.rerun()
+    total_rows = len(df)
+    total_pages = max(1, (total_rows + page_size - 1) // page_size)
+    current_page = min(st.session_state.get("your_searches_current_page", 1), total_pages)
 
-        df_paginated = df.iloc[(modify_current_page - 1) * page_size: modify_current_page * page_size]
-        visible_columns = ["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time"]
-        # Key includes the page number so a page change starts with a
-        # clean selection instead of a stale row index from the
-        # previous page's row count potentially pointing at the wrong
-        # search (same page-relative-indexing risk documented for the
-        # Table View / admin Users table selections).
-        selected_row_data = st.dataframe(
-            df_paginated, use_container_width=True, hide_index=True, on_select="rerun",
-            selection_mode="single-row", key=f"modify_profiles_ledger_grid_p{modify_current_page}",
-            column_order=visible_columns, height=len(df_paginated) * 35 + 38,
-        )
-        selected_rows_indices = selected_row_data.get("selection", {}).get("rows", [])
+    nav1, nav2, nav3 = st.columns([1, 2, 1])
+    with nav1:
+        if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key="your_searches_prev_page_btn"):
+            st.session_state.your_searches_current_page = current_page - 1
+            st.rerun()
+    with nav2:
+        st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total searches</div>", unsafe_allow_html=True)
+    with nav3:
+        if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key="your_searches_next_page_btn"):
+            st.session_state.your_searches_current_page = current_page + 1
+            st.rerun()
 
-        edit_name, edit_loc, edit_type, edit_price, edit_beds, edit_email, edit_time, form_disabled_state = "", "", "Multi-Family", 750000, 3, st.session_state.user_email, "08:00", True
-        edit_state, edit_cities_json, edit_zip = None, None, None
+    df_paginated = df.iloc[(current_page - 1) * page_size: current_page * page_size].copy()
+    df_paginated["Edit"] = ":material/edit:"
+    df_paginated["Delete"] = ":material/delete:"
+    visible_columns = ["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time", "Edit", "Delete"]
+    # Key includes the page number so a page change starts with fresh
+    # button-column state instead of a stale row index from the previous
+    # page's row count potentially pointing at the wrong search (same
+    # page-relative-indexing risk documented for Table View / admin Users).
+    st.dataframe(
+        df_paginated, use_container_width=True, hide_index=True,
+        key=f"your_searches_grid_p{current_page}",
+        column_order=visible_columns, height=len(df_paginated) * 35 + 38,
+        column_config={
+            "Edit": st.column_config.ButtonColumn("", width="small", type="tertiary", key="hunt_edit_btn_click"),
+            "Delete": st.column_config.ButtonColumn("", width="small", type="tertiary", key="hunt_delete_btn_click"),
+        },
+    )
 
-        if selected_rows_indices:
-            row_index = selected_rows_indices[0]
-            edit_name = df_paginated.iloc[row_index]["Profile Name"]
-            edit_loc = df_paginated.iloc[row_index]["Location"]
-            edit_price = int(df_paginated.iloc[row_index]["Max Budget ($)"])
-            edit_beds = int(df_paginated.iloc[row_index]["Min Beds"])
-            edit_type = df_paginated.iloc[row_index]["Asset Type"]
-            edit_email = df_paginated.iloc[row_index]["Target Email"]
-            edit_time = df_paginated.iloc[row_index]["Scan Time"]
-            # Not editable from this tab (see location_picker_feature memory
-            # for why) - carried through unchanged so saving other field
-            # changes here can't silently wipe a search's precise
-            # city/state selection back to the old unfiltered behavior.
-            edit_state = df_paginated.iloc[row_index]["_state"]
-            edit_cities_json = df_paginated.iloc[row_index]["_cities_json"]
-            edit_zip = df_paginated.iloc[row_index]["_zip_code"]
-            form_disabled_state = False
-            if edit_state:
-                st.caption(f"This search uses the precise city picker ({edit_loc}). Target City below is display-only here - to change which cities are searched, delete this search and create a new one.")
-            st.success(f"Editing: {edit_name}")
-        else:
-            st.info("Click a row above to edit that search.")
+    edit_click = st.session_state.get("hunt_edit_btn_click")
+    if edit_click and edit_click.get("row") is not None:
+        row = df_paginated.iloc[edit_click["row"]]
+        st.session_state.hunt_edit_target = {
+            "name": row["Profile Name"], "location": row["Location"], "max_price": int(row["Max Budget ($)"]),
+            "min_beds": int(row["Min Beds"]), "property_type": row["Asset Type"], "recipient_email": row["Target Email"],
+            "schedule_time": row["Scan Time"], "state": row["_state"], "cities_json": row["_cities_json"], "zip_code": row["_zip_code"],
+        }
 
-        with st.form("modify_criteria_form", clear_on_submit=False):
-            st.markdown("##### Edit Details")
-            mod_col1, mod_col2 = st.columns(2)
+    delete_click = st.session_state.get("hunt_delete_btn_click")
+    if delete_click and delete_click.get("row") is not None:
+        row = df_paginated.iloc[delete_click["row"]]
+        st.session_state.hunt_delete_target = {"name": row["Profile Name"], "location": row["Location"]}
 
-            with mod_col1:
-                st.text_input("Search Name (can't be changed)", value=edit_name, disabled=True)
-                new_location = st.text_input("Target City", value=edit_loc, disabled=form_disabled_state)
-                new_property_type = st.selectbox("Property Type", ["Single Family Home", "Condo", "Multi-Family", "Townhouse"], index=["Single Family Home", "Condo", "Multi-Family", "Townhouse"].index(edit_type) if edit_type in ["Single Family Home", "Condo", "Multi-Family", "Townhouse"] else 0, disabled=form_disabled_state)
-            with mod_col2:
-                new_max_price = st.number_input("Maximum Budget ($)", min_value=0, value=edit_price, step=25000, disabled=form_disabled_state)
-                new_min_beds = st.number_input("Minimum Bedrooms", min_value=0, value=edit_beds, step=1, disabled=form_disabled_state)
-                st.markdown("<div style='margin-bottom: 27px;'></div>", unsafe_allow_html=True)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown("##### Notifications & Schedule")
-            with st.container(border=True):
-                mod_sub1, mod_sub2 = st.columns(2)
-                with mod_sub1:
-                    new_recipient_email = st.text_input("Send Reports To", value=edit_email, disabled=form_disabled_state)
-                with mod_sub2:
-                    new_schedule_time = st.text_input("Daily Scan Time (24h format)", value=edit_time, disabled=form_disabled_state)
-
-            st.markdown("<br>", unsafe_allow_html=True)
-            update_button = st.form_submit_button(":material/save: Save Changes", type="primary", use_container_width=True, disabled=form_disabled_state)
-
-            if update_button:
-                if new_location and new_recipient_email:
-                    db.save_report_config(st.session_state.user_id, edit_name, new_location, int(new_max_price), int(new_min_beds), new_property_type, new_recipient_email, new_schedule_time,
-                                           state=edit_state, cities_json=edit_cities_json, zip_code=edit_zip)
-                    st.toast("Search updated!")
-                    st.session_state.save_success_flash = f"'{edit_name}' updated successfully!"
-                    st.rerun()
-                else:
-                    st.error("Please fill in all fields before saving.")
-    else:
-        _render_empty_state("crosshair", "No searches yet", "Create your first search in the \"Establish Hunt Criteria\" tab, then come back here to edit it.")
-
-
-
-def _render_decommission_tab():
-    st.markdown("### Delete a Saved Search")
-    # Real estate only - see the note in _render_modify_tab above.
-    import sqlite3
-    conn = sqlite3.connect(db.DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
-            "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
-        rows = cursor.fetchall()
-    finally:
-        conn.close()
-
-    if rows:
-        df_del = pd.DataFrame(rows, columns=["Profile Name", "Location", "Max Budget ($)", "Min Beds", "Asset Type", "Target Email", "Scan Time"])
-        del_grid_control1, del_grid_control2 = st.columns([2.5, 1])
-        with del_grid_control1:
-            search_query_del = st.text_input("Search", placeholder="Type a search name or location...", key="purge_search_input_unique_key")
-        with del_grid_control2:
-            del_page_size = st.selectbox("Rows per page", options=[10, 20, 50], index=1, key="decommission_page_size")
-
-        if search_query_del:
-            df_del = df_del[df_del["Profile Name"].str.contains(search_query_del, case=False, na=False) | df_del["Location"].str.contains(search_query_del, case=False, na=False)]
-
-        del_total_rows = len(df_del)
-        del_total_pages = max(1, (del_total_rows + del_page_size - 1) // del_page_size)
-        del_current_page = min(st.session_state.get("decommission_current_page", 1), del_total_pages)
-
-        st.markdown("##### Your Searches")
-        del_nav1, del_nav2, del_nav3 = st.columns([1, 2, 1])
-        with del_nav1:
-            if st.button(":material/chevron_left: Previous", disabled=del_current_page <= 1, use_container_width=True, key="decommission_prev_page_btn"):
-                st.session_state.decommission_current_page = del_current_page - 1
-                st.rerun()
-        with del_nav2:
-            st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {del_current_page} of {del_total_pages} · {del_total_rows} total searches</div>", unsafe_allow_html=True)
-        with del_nav3:
-            if st.button("Next :material/chevron_right:", disabled=del_current_page >= del_total_pages, use_container_width=True, key="decommission_next_page_btn"):
-                st.session_state.decommission_current_page = del_current_page + 1
-                st.rerun()
-
-        df_del_paginated = df_del.iloc[(del_current_page - 1) * del_page_size: del_current_page * del_page_size]
-        selected_row_del = st.dataframe(
-            df_del_paginated, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row",
-            key=f"decommission_grid_p{del_current_page}", height=len(df_del_paginated) * 35 + 38,
-        )
-        selected_rows_indices_del = selected_row_del.get("selection", {}).get("rows", [])
-
-        if selected_rows_indices_del:
-            row_index_del = selected_rows_indices_del[0]
-            target_delete_name = df_del_paginated.iloc[row_index_del]["Profile Name"]
-            target_delete_loc = df_del_paginated.iloc[row_index_del]["Location"]
-
-            st.markdown(f"""
-                <div style='background-color: var(--radar-danger-bg); padding: var(--radar-space-4); border-radius: var(--radar-radius-md); border: 1px solid var(--radar-danger); margin-top: var(--radar-space-4); margin-bottom: var(--radar-space-4); display:flex; align-items:flex-start; gap:8px;'>
-                    <span style='color: #991b1b; flex-shrink:0; margin-top:1px;'>{svg_icon("alert", size=15, color="#991b1b")}</span>
-                    <span>
-                        <span style='color: #991b1b; font-weight: 600;'>Warning:</span>
-                        <span style='color: #b91c1c; font-size: 14px;'>Deleting this search will remove it permanently. This cannot be undone.</span>
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
-
-            with st.container(border=True):
-                st.error(f"You're about to delete: {target_delete_name} ({target_delete_loc})")
-                if st.button(":material/delete_forever: Delete This Search", type="primary", use_container_width=True):
-                    db.delete_report_config(st.session_state.user_id, target_delete_name)
-                    st.toast("Search deleted.")
-                    st.rerun()
-        else:
-            st.info("Click a row above to select a search to delete.")
-    else:
-        _render_empty_state("crosshair", "Nothing to delete", "You don't have any saved searches yet - once you create one, it'll show up here.")
+    if st.session_state.get("hunt_edit_target"):
+        _edit_search_dialog()
+    if st.session_state.get("hunt_delete_target"):
+        _delete_search_dialog()

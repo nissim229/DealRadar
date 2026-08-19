@@ -1101,7 +1101,7 @@ def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pc
                 pdf_filename_prefix="DealRadar_Report",
             )
     else:
-        st.info("No searches set up yet. Head to 'Manage Hunt Criteria' to create one.")
+        st.info("No searches set up yet. Head to 'Manage Searches' to create one.")
 
 
 def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
@@ -1583,7 +1583,7 @@ def render_analytics_dashboard():
                     "crosshair", "Set up your first search",
                     "Tell us what you're looking for - target city, budget, and property type - and we'll scan for matching deals whenever you like.",
                     cta_label="Create Your First Search",
-                    cta_page="Manage Hunt Criteria",
+                    cta_page="Manage Searches",
                 )
 
         if len(raw_profiles) > 1:

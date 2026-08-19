@@ -317,7 +317,7 @@ def init_db():
             )
         """)
 
-        # 2. Multi-Tenant Reports (Hunt Criteria) Table
+        # 2. Multi-Tenant Reports (Saved Searches) Table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -613,7 +613,7 @@ def init_db():
 def register_user(email, password, first_name="", middle_name="", last_name=""):
     """Creates a new account. Returns the new user's id on success, or None
     if the email is already taken (returning the id, not just True/False,
-    lets the caller immediately pre-seed a first Hunt Criteria profile for
+    lets the caller immediately pre-seed a first saved search for
     the new account without a second lookup). Generates a unique account_id
     and keeps the legacy `name` column in sync as the concatenation of the
     name parts - see the account_id/first_name migration note in init_db()."""

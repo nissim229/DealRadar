@@ -2,7 +2,7 @@
 nav.py
 The one shared implementation behind every left-side navigation list in
 the app (Settings, Portfolio's property picker and property-section list,
-Manage Hunt Criteria, Run Property Scans' result views, Admin Controls) -
+Manage Searches, Run Property Scans' result views, Admin Controls) -
 flat rows, left-aligned icon+label, a light accent-tinted background (not
 a solid block) for the active item. Before this existed, each page had
 its own copy of the same CSS with small drifts (different padding, some
