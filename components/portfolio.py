@@ -10,6 +10,7 @@ from icons import icon as svg_icon
 from components.analytics import render_empty_state, render_stat_card
 from components import pricing
 from underwriting import GRADE_STYLES
+from nav import render_side_nav
 
 PROPERTY_TYPES = [
     "Primary Residence", "Single Family Rental", "Multi-Family Rental",
@@ -756,8 +757,8 @@ def _render_property_nav(properties):
     if st.session_state.get("portfolio_selected_id") not in valid_ids:
         st.session_state.portfolio_selected_id = properties_sorted[0]["id"]
 
+    items = []
     for p in properties_sorted:
-        is_selected = p["id"] == st.session_state.portfolio_selected_id
         cash_flow = _monthly_cash_flow(p)
         if cash_flow is None:
             accent, cf_text = "var(--radar-border)", "Not rented"
@@ -765,18 +766,15 @@ def _render_property_nav(properties):
             accent, cf_text = "var(--radar-success)", f"+${cash_flow:,.0f}/mo"
         else:
             accent, cf_text = "var(--radar-danger)", f"-${abs(cash_flow):,.0f}/mo"
+        label = p["address"] if len(p["address"]) <= 30 else p["address"][:29] + "…"
+        items.append({"label": label, "value": p["id"], "caption": cf_text, "accent": accent})
 
-        with st.container(key=f"nav_item_{p['id']}"):
-            st.markdown(f"""<style>div.st-key-nav_item_{p['id']} {{
-                border-left: 3px solid {accent}; border-radius: var(--radar-radius-sm);
-                padding: 2px 0 6px 8px; margin-bottom: var(--radar-space-2); }}</style>""", unsafe_allow_html=True)
-            label = p["address"] if len(p["address"]) <= 30 else p["address"][:29] + "…"
-            if st.button(label, key=f"nav_prop_{p['id']}", use_container_width=True, type="primary" if is_selected else "secondary"):
-                st.session_state.portfolio_selected_id = p["id"]
-                st.rerun()
-            st.caption(cf_text)
-
-    return next(p for p in properties_sorted if p["id"] == st.session_state.portfolio_selected_id)
+    # state_key points directly at portfolio_selected_id (not the nav's own
+    # default key) since the delete/add-property flows elsewhere in this
+    # file also read/write that exact key - a separate nav-internal key
+    # would silently fall out of sync with those.
+    selected_id = render_side_nav(items, key_prefix="portfolio_nav", state_key="portfolio_selected_id")
+    return next(p for p in properties_sorted if p["id"] == selected_id)
 
 
 def _render_property_detail(p):
@@ -932,39 +930,6 @@ def render_portfolio_page():
             padding: var(--radar-space-6) var(--radar-space-7);
             margin-bottom: var(--radar-space-5);
             border-radius: 0 0 var(--radar-radius-xl) var(--radar-radius-xl);
-        }
-        /* Compact nav rows, matching Settings' left-nav. The per-property
-        left border (cash-flow health color) is set separately per-item and
-        lives on the outer container, not the button - so it isn't touched
-        here, and "selected" is instead shown as a light background tint on
-        the button itself, keeping the two signals visually distinct. */
-        div[class*="st-key-nav_item_"] button {
-            text-align: left !important; justify-content: flex-start !important;
-            background: transparent !important; border: none !important; box-shadow: none !important;
-            border-radius: var(--radar-radius-sm) !important;
-            padding: 6px 8px !important; min-height: 0 !important; height: auto !important;
-        }
-        div[class*="st-key-nav_item_"] button div,
-        div[class*="st-key-nav_item_"] button span {
-            justify-content: flex-start !important;
-        }
-        div[class*="st-key-nav_item_"] button p {
-            font-size: 13.5px !important; font-weight: 500 !important; text-align: left !important;
-        }
-        div[class*="st-key-nav_item_"] button[kind="secondary"] {
-            color: var(--radar-text-muted) !important;
-        }
-        div[class*="st-key-nav_item_"] button[kind="secondary"] p {
-            color: var(--radar-text) !important;
-        }
-        div[class*="st-key-nav_item_"] button[kind="secondary"]:hover {
-            background: var(--radar-surface-alt) !important;
-        }
-        div[class*="st-key-nav_item_"] button[kind="primary"] {
-            background: rgba(37,99,235,0.08) !important;
-        }
-        div[class*="st-key-nav_item_"] button[kind="primary"] p {
-            color: var(--radar-primary) !important; font-weight: 700 !important;
         }
         </style>
     """, unsafe_allow_html=True)

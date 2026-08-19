@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo, available_timezones
 import database as db
 import theme
 import email_utils
+from nav import render_side_nav
 from icons import icon as svg_icon
 
 RESULTS_VIEW_OPTIONS = ["Properties Only", "Properties + Map", "Map Only", "Table View"]
@@ -97,18 +98,6 @@ def maybe_autodetect_timezone():
 def _save(settings):
     st.session_state.user_settings = settings
     db.save_user_settings(st.session_state.user_id, settings)
-
-
-def _render_nav():
-    if "settings_active_section" not in st.session_state:
-        st.session_state.settings_active_section = SETTINGS_SECTIONS[0][0]
-    for name, icon_shortcode in SETTINGS_SECTIONS:
-        is_active = st.session_state.settings_active_section == name
-        with st.container(key=f"settings_nav_item_{name}"):
-            if st.button(f"{icon_shortcode} {name}", key=f"settings_nav_btn_{name}", use_container_width=True,
-                         type="primary" if is_active else "secondary"):
-                st.session_state.settings_active_section = name
-                st.rerun()
 
 
 def _render_appearance(settings):
@@ -316,45 +305,6 @@ def render_settings_page():
             background: var(--radar-surface); border: 1px solid var(--radar-border);
             border-radius: var(--radar-radius-lg); padding: var(--radar-space-5);
         }
-        div[class*="st-key-settings_nav_item_"] {
-            margin-bottom: 1px;
-        }
-        div[class*="st-key-settings_nav_item_"] button {
-            text-align: left !important; justify-content: flex-start !important;
-            background: transparent !important; border: none !important; box-shadow: none !important;
-            border-radius: var(--radar-radius-sm) !important; border-left: 3px solid transparent !important;
-            padding: 7px 10px 7px 9px !important; min-height: 0 !important; height: auto !important;
-        }
-        /* Streamlit nests the label in button > div > span > div > p, and
-        the div/span each default to justify-content:center - overriding
-        the button's own flex-start was not enough, the text still centered
-        inside those inner wrappers. */
-        div[class*="st-key-settings_nav_item_"] button div,
-        div[class*="st-key-settings_nav_item_"] button span {
-            justify-content: flex-start !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button p {
-            font-size: 13.5px !important; font-weight: 500 !important; text-align: left !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="secondary"] {
-            color: var(--radar-text-muted) !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="secondary"] p {
-            color: var(--radar-text-muted) !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="secondary"]:hover {
-            background: var(--radar-surface-alt) !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="secondary"]:hover p {
-            color: var(--radar-text) !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="primary"] {
-            background: rgba(37,99,235,0.08) !important;
-            border-left: 3px solid var(--radar-primary) !important;
-        }
-        div[class*="st-key-settings_nav_item_"] button[kind="primary"] p {
-            color: var(--radar-primary) !important; font-weight: 700 !important;
-        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -378,7 +328,10 @@ def render_settings_page():
 
     nav_col, content_col = st.columns([1, 4])
     with nav_col:
-        _render_nav()
+        active_section = render_side_nav(
+            [{"label": name, "icon": icon} for name, icon in SETTINGS_SECTIONS],
+            key_prefix="settings_nav",
+        )
     with content_col:
         with st.container(key="settings_content"):
-            _SECTION_RENDERERS[st.session_state.settings_active_section](settings)
+            _SECTION_RENDERERS[active_section](settings)
