@@ -1378,7 +1378,8 @@ def render_analytics_dashboard():
                     "label": default_ref_address, "latitude": geo_result["latitude"], "longitude": geo_result["longitude"]
                 }
 
-    raw_profiles = db.get_all_reports(st.session_state.user_id)
+    active_category = st.session_state.get("active_category", "real_estate")
+    raw_profiles = db.get_all_reports(st.session_state.user_id, category=active_category)
 
     # Apply a pending quick-access chip click to the selectbox's own widget
     # state before that widget is instantiated below. Setting the widget's
@@ -1399,95 +1400,114 @@ def render_analytics_dashboard():
     # region regardless of where in the script it's called, so this has no
     # effect on where it visually appears.
     with st.sidebar:
-        st.markdown("""
-            <style>
-            div.st-key-sidebar_mode_track { display:flex; gap:4px; background:var(--radar-surface-alt);
-                border-radius:var(--radar-radius-pill); padding:4px; margin-bottom:var(--radar-space-4); }
-            div.st-key-sidebar_mode_track [data-testid="column"] { width:auto !important; flex:1; }
-            div.st-key-sidebar_mode_simple button, div.st-key-sidebar_mode_pro button {
-                width:100%; border-radius:var(--radar-radius-pill) !important; border:none !important;
-                font-weight:600 !important; font-size:13px !important; padding:6px 0 !important;
-                min-height:0 !important; box-shadow:none !important;
-            }
-            div.st-key-sidebar_card { background:var(--radar-surface); border:1px solid var(--radar-border);
-                border-radius:var(--radar-radius-lg); padding:var(--radar-space-4) var(--radar-space-4);
-                margin-bottom:var(--radar-space-4); }
-            [data-testid="stSidebar"] h5 {
-                color:var(--radar-text-muted) !important; font-size:11.5px !important; font-weight:700 !important;
-                letter-spacing:0.4px; text-transform:uppercase; margin-top:var(--radar-space-4) !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        if active_category == "real_estate":
+            st.markdown("""
+                <style>
+                div.st-key-sidebar_mode_track { display:flex; gap:4px; background:var(--radar-surface-alt);
+                    border-radius:var(--radar-radius-pill); padding:4px; margin-bottom:var(--radar-space-4); }
+                div.st-key-sidebar_mode_track [data-testid="column"] { width:auto !important; flex:1; }
+                div.st-key-sidebar_mode_simple button, div.st-key-sidebar_mode_pro button {
+                    width:100%; border-radius:var(--radar-radius-pill) !important; border:none !important;
+                    font-weight:600 !important; font-size:13px !important; padding:6px 0 !important;
+                    min-height:0 !important; box-shadow:none !important;
+                }
+                div.st-key-sidebar_card { background:var(--radar-surface); border:1px solid var(--radar-border);
+                    border-radius:var(--radar-radius-lg); padding:var(--radar-space-4) var(--radar-space-4);
+                    margin-bottom:var(--radar-space-4); }
+                [data-testid="stSidebar"] h5 {
+                    color:var(--radar-text-muted) !important; font-size:11.5px !important; font-weight:700 !important;
+                    letter-spacing:0.4px; text-transform:uppercase; margin-top:var(--radar-space-4) !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
 
-        _sidebar_mode = st.session_state.get("analytics_view_mode_toggle", st.session_state.user_settings["default_underwriter_mode"])
-        with st.container(key="sidebar_mode_track"):
-            mode_col1, mode_col2 = st.columns(2)
-            with mode_col1:
-                with st.container(key="sidebar_mode_simple"):
-                    if st.button("Simple", key="sidebar_mode_btn_simple", use_container_width=True,
-                                 type="primary" if _sidebar_mode == "Simple" else "secondary"):
-                        st.session_state.analytics_view_mode_toggle = "Simple"
-                        st.rerun()
-            with mode_col2:
-                with st.container(key="sidebar_mode_pro"):
-                    if st.button("Pro", key="sidebar_mode_btn_pro", use_container_width=True,
-                                 type="primary" if _sidebar_mode == "Pro" else "secondary"):
-                        st.session_state.analytics_view_mode_toggle = "Pro"
-                        st.rerun()
-        view_mode = _sidebar_mode
-        st.caption("Simple hides the detailed underwriting math and just tells you whether a deal looks good. Pro shows full investor metrics.")
+            _sidebar_mode = st.session_state.get("analytics_view_mode_toggle", st.session_state.user_settings["default_underwriter_mode"])
+            with st.container(key="sidebar_mode_track"):
+                mode_col1, mode_col2 = st.columns(2)
+                with mode_col1:
+                    with st.container(key="sidebar_mode_simple"):
+                        if st.button("Simple", key="sidebar_mode_btn_simple", use_container_width=True,
+                                     type="primary" if _sidebar_mode == "Simple" else "secondary"):
+                            st.session_state.analytics_view_mode_toggle = "Simple"
+                            st.rerun()
+                with mode_col2:
+                    with st.container(key="sidebar_mode_pro"):
+                        if st.button("Pro", key="sidebar_mode_btn_pro", use_container_width=True,
+                                     type="primary" if _sidebar_mode == "Pro" else "secondary"):
+                            st.session_state.analytics_view_mode_toggle = "Pro"
+                            st.rerun()
+            view_mode = _sidebar_mode
+            st.caption("Simple hides the detailed underwriting math and just tells you whether a deal looks good. Pro shows full investor metrics.")
 
-        if view_mode == "Pro":
-            with st.container(key="sidebar_card"):
-                st.markdown(f"""
-                    <div style='display:flex; align-items:center; gap:8px; margin-bottom:2px;'>
-                        {svg_icon("chart", size=17, color="var(--radar-primary)")}
-                        <span style='font-weight:700; font-size:14.5px; color:var(--radar-navy);'>Underwriter Pro Console</span>
-                    </div>
-                """, unsafe_allow_html=True)
-                st.caption("Fine-tune every expense assumption for a precise deal analysis.")
+            if view_mode == "Pro":
+                with st.container(key="sidebar_card"):
+                    st.markdown(f"""
+                        <div style='display:flex; align-items:center; gap:8px; margin-bottom:2px;'>
+                            {svg_icon("chart", size=17, color="var(--radar-primary)")}
+                            <span style='font-weight:700; font-size:14.5px; color:var(--radar-navy);'>Underwriter Pro Console</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    st.caption("Fine-tune every expense assumption for a precise deal analysis.")
 
-            if "live_scanned_properties_grid" in st.session_state and st.session_state.live_scanned_properties_grid.get("selection", {}).get("rows", []):
-                try:
-                    clicked_row_idx = st.session_state.live_scanned_properties_grid["selection"]["rows"][0]
-                    parsed_pts = json.loads(st.session_state.active_scanned_coords)
-                    default_sidebar_price = int(parsed_pts[clicked_row_idx]["price"])
-                except Exception:
+                if "live_scanned_properties_grid" in st.session_state and st.session_state.live_scanned_properties_grid.get("selection", {}).get("rows", []):
+                    try:
+                        clicked_row_idx = st.session_state.live_scanned_properties_grid["selection"]["rows"][0]
+                        parsed_pts = json.loads(st.session_state.active_scanned_coords)
+                        default_sidebar_price = int(parsed_pts[clicked_row_idx]["price"])
+                    except Exception:
+                        default_sidebar_price = 500000
+                else:
                     default_sidebar_price = 500000
+
+                _defaults = st.session_state.user_settings
+                calc_price = st.number_input("Target Purchase Price ($)", min_value=0, value=default_sidebar_price, step=25000, key="underwriter_price_input")
+                calc_down_pct = st.slider("Down Payment (%)", min_value=0, max_value=100, value=int(_defaults["default_down_pct"]), key="underwriter_down_slider")
+                calc_interest = st.number_input("Mortgage Interest Rate (%)", min_value=0.0, value=float(_defaults["default_interest_rate"]), step=0.25, key="underwriter_interest_input")
+
+                st.markdown("##### Monthly Revenue & Vacancy")
+                calc_rent = st.number_input("Gross Monthly Rent ($)", min_value=0, value=3500, step=100, key="underwriter_rent_input")
+                calc_vacancy_pct = st.slider("Vacancy Allowance (%)", min_value=0, max_value=20, value=int(_defaults["default_vacancy_pct"]), step=1, key="underwriter_vacancy_slider")
+
+                st.markdown("##### Expenses")
+                calc_tax_rate = st.number_input("Annual Property Tax Rate (%)", min_value=0.0, max_value=5.0, value=float(_defaults["default_tax_rate"]), step=0.1, key="underwriter_tax_rate_input")
+                calc_ins_rate = st.number_input("Annual Hazard Insurance Rate (%)", min_value=0.0, max_value=5.0, value=float(_defaults["default_insurance_rate"]), step=0.05, key="underwriter_ins_rate_input")
+
+                st.markdown("##### Target Return")
+                calc_target_yield = st.slider("Desired Cash-on-Cash Return (%)", min_value=1.0, max_value=20.0, value=float(_defaults["default_target_yield"]), step=0.5, key="underwriter_target_yield_slider")
+
+                preview_metrics = compute_deal_metrics(calc_price, calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                                         calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                st.markdown("---")
+                st.markdown("##### Results")
+                st.metric(label="Annual NOI", value=f"${preview_metrics['noi']:,.2f}")
+                st.metric(label="Cap Rate", value=f"{preview_metrics['cap_rate']:.2f}%")
+                st.metric(label="Annual Cash Flow", value=f"${preview_metrics['cashflow']:,.2f}")
+                st.metric(label="Cash-on-Cash Return", value=f"{preview_metrics['coc']:.2f}%")
+                st.markdown("---")
             else:
-                default_sidebar_price = 500000
-
-            _defaults = st.session_state.user_settings
-            calc_price = st.number_input("Target Purchase Price ($)", min_value=0, value=default_sidebar_price, step=25000, key="underwriter_price_input")
-            calc_down_pct = st.slider("Down Payment (%)", min_value=0, max_value=100, value=int(_defaults["default_down_pct"]), key="underwriter_down_slider")
-            calc_interest = st.number_input("Mortgage Interest Rate (%)", min_value=0.0, value=float(_defaults["default_interest_rate"]), step=0.25, key="underwriter_interest_input")
-
-            st.markdown("##### Monthly Revenue & Vacancy")
-            calc_rent = st.number_input("Gross Monthly Rent ($)", min_value=0, value=3500, step=100, key="underwriter_rent_input")
-            calc_vacancy_pct = st.slider("Vacancy Allowance (%)", min_value=0, max_value=20, value=int(_defaults["default_vacancy_pct"]), step=1, key="underwriter_vacancy_slider")
-
-            st.markdown("##### Expenses")
-            calc_tax_rate = st.number_input("Annual Property Tax Rate (%)", min_value=0.0, max_value=5.0, value=float(_defaults["default_tax_rate"]), step=0.1, key="underwriter_tax_rate_input")
-            calc_ins_rate = st.number_input("Annual Hazard Insurance Rate (%)", min_value=0.0, max_value=5.0, value=float(_defaults["default_insurance_rate"]), step=0.05, key="underwriter_ins_rate_input")
-
-            st.markdown("##### Target Return")
-            calc_target_yield = st.slider("Desired Cash-on-Cash Return (%)", min_value=1.0, max_value=20.0, value=float(_defaults["default_target_yield"]), step=0.5, key="underwriter_target_yield_slider")
-
-            preview_metrics = compute_deal_metrics(calc_price, calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                     calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
-            st.markdown("---")
-            st.markdown("##### Results")
-            st.metric(label="Annual NOI", value=f"${preview_metrics['noi']:,.2f}")
-            st.metric(label="Cap Rate", value=f"{preview_metrics['cap_rate']:.2f}%")
-            st.metric(label="Annual Cash Flow", value=f"${preview_metrics['cashflow']:,.2f}")
-            st.metric(label="Cash-on-Cash Return", value=f"{preview_metrics['coc']:.2f}%")
-            st.markdown("---")
+                st.caption("Using your default financing assumptions from Settings. Switch to Pro mode to fine-tune every lever.")
+                with st.expander("Quick numbers (optional)"):
+                    calc_rent = st.number_input("Expected Monthly Rent ($)", min_value=0, value=3500, step=100, key="simple_rent_input")
+                _defaults = st.session_state.user_settings
+                calc_price = 500000
+                calc_down_pct = _defaults["default_down_pct"]
+                calc_interest = _defaults["default_interest_rate"]
+                calc_vacancy_pct = _defaults["default_vacancy_pct"]
+                calc_tax_rate = _defaults["default_tax_rate"]
+                calc_ins_rate = _defaults["default_insurance_rate"]
+                calc_target_yield = _defaults["default_target_yield"]
         else:
-            st.caption("Using your default financing assumptions from Settings. Switch to Pro mode to fine-tune every lever.")
-            with st.expander("Quick numbers (optional)"):
-                calc_rent = st.number_input("Expected Monthly Rent ($)", min_value=0, value=3500, step=100, key="simple_rent_input")
-            _defaults = st.session_state.user_settings
+            # Cars: no mortgage-specific underwriter console (down
+            # payment, interest rate, etc. don't apply to a car deal -
+            # car_engine.py's grading is self-contained on price vs.
+            # estimated market value). These stay defined because
+            # _render_execute_scan_tab and friends take them
+            # positionally regardless of category; the cars results
+            # path never actually reads them.
+            view_mode = "Simple"
             calc_price = 500000
+            _defaults = st.session_state.user_settings
+            calc_rent = 3500
             calc_down_pct = _defaults["default_down_pct"]
             calc_interest = _defaults["default_interest_rate"]
             calc_vacancy_pct = _defaults["default_vacancy_pct"]
@@ -1589,17 +1609,21 @@ def render_analytics_dashboard():
         </style>
     """, unsafe_allow_html=True)
 
+    _hero_subtitle = ("Scan your active car searches and evaluate pipeline vehicle deals" if active_category == "cars"
+                       else "Scan your active targets and evaluate pipeline real estate returns")
+    _hero_icon = "car" if active_category == "cars" else "radar"
+
     with st.container(key="dashboard_hero"):
         st.markdown(f"""
             <div style='text-align:center; max-width:760px; margin:0 auto 24px auto;'>
                 <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
                     <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("radar", size=24, color="white")}
+                        {svg_icon(_hero_icon, size=24, color="white")}
                     </div>
                     <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Analytics Dashboard</div>
                 </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Scan your active targets and evaluate pipeline real estate returns</div>
+                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>{_hero_subtitle}</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -1610,7 +1634,8 @@ def render_analytics_dashboard():
                 render_empty_state(
                     "crosshair", "Set up your first search",
                     "Tell us what you're looking for - target city, budget, and property type - and we'll scan for matching deals whenever you like.",
-                    cta_label="Create Your First Search", cta_page="Manage Hunt Criteria",
+                    cta_label="Create Your First Search",
+                    cta_page="Manage Car Search Criteria" if active_category == "cars" else "Manage Hunt Criteria",
                 )
 
         if len(raw_profiles) > 1:

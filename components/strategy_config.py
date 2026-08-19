@@ -174,17 +174,19 @@ def render_strategy_configuration():
         </style>
     """, unsafe_allow_html=True)
 
+    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
+
     with st.container(key="strategy_hero"):
         st.markdown(f"""
             <div style='text-align:center; max-width:760px; margin:0 auto;'>
                 <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
                     <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
                                 border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("crosshair", size=24, color="white")}
+                        {svg_icon("car" if _is_cars else "crosshair", size=24, color="white")}
                     </div>
-                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>Manage Hunt Criteria</div>
+                    <div style='font-size:32px; font-weight:800; color:white; line-height:1.2;'>{"Manage Car Search Criteria" if _is_cars else "Manage Hunt Criteria"}</div>
                 </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Create, edit, or remove your automated property searches</div>
+                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>{"Create, edit, or remove your automated car searches" if _is_cars else "Create, edit, or remove your automated property searches"}</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -326,40 +328,10 @@ def _render_establish_tab():
         </div>
     """, unsafe_allow_html=True)
 
-    # Category picker - same pill-toggle pattern as the Simple/Pro switch
-    # in analytics.py's sidebar (two CSS-restyled buttons, not a radio or a
-    # nav list), since this is a quick "which kind of form am I filling
-    # out" choice rather than section navigation.
-    st.markdown("""
-        <style>
-        div.st-key-hunt_category_track { display:flex; gap:4px; background:var(--radar-surface-alt);
-            border-radius:var(--radar-radius-pill); padding:4px; margin-bottom:var(--radar-space-4); max-width:360px; }
-        div.st-key-hunt_category_track [data-testid="column"] { width:auto !important; flex:1; }
-        div.st-key-hunt_category_re button, div.st-key-hunt_category_cars button {
-            width:100%; border-radius:var(--radar-radius-pill) !important; border:none !important;
-            font-weight:600 !important; font-size:13px !important; padding:6px 0 !important;
-            min-height:0 !important; box-shadow:none !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    category = st.session_state.get("hunt_new_category", "Real Estate")
-    with st.container(key="hunt_category_track"):
-        cat_col1, cat_col2 = st.columns(2)
-        with cat_col1:
-            with st.container(key="hunt_category_re"):
-                if st.button(":material/home: Real Estate", key="hunt_category_btn_re", use_container_width=True,
-                             type="primary" if category == "Real Estate" else "secondary"):
-                    st.session_state.hunt_new_category = "Real Estate"
-                    st.rerun()
-        with cat_col2:
-            with st.container(key="hunt_category_cars"):
-                if st.button(":material/directions_car: Cars", key="hunt_category_btn_cars", use_container_width=True,
-                             type="primary" if category == "Cars" else "secondary"):
-                    st.session_state.hunt_new_category = "Cars"
-                    st.rerun()
-
-    if category == "Cars":
+    # Which category's form to show is driven by the top navbar's Real
+    # Estate/Cars switcher (main.py) - the single source of truth for deal
+    # type app-wide - not a second, local picker that could disagree with it.
+    if st.session_state.get("active_category", "real_estate") == "cars":
         _render_establish_cars_fields()
         return
 
@@ -435,11 +407,25 @@ def _render_establish_tab():
 
 def _render_modify_tab():
     st.markdown("### Edit a Saved Search")
+    # Scoped to the active top-nav category, same as the dashboard - so
+    # this list only ever shows the kind of search "Manage Car Search
+    # Criteria"/"Manage Hunt Criteria" actually claims to be managing.
+    # NOTE: the edit form below only has property fields (Property Type,
+    # Min Beds) - a car row can be found and deleted here, but not yet
+    # fully edited (make/model/year/mileage aren't wired into this form).
+    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
     import sqlite3
     conn = sqlite3.connect(db.DB_NAME)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code FROM reports WHERE user_id=?", (int(st.session_state.user_id),))
+        if _is_cars:
+            cursor.execute(
+                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code "
+                "FROM reports WHERE user_id=? AND category='cars'", (int(st.session_state.user_id),))
+        else:
+            cursor.execute(
+                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code "
+                "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
         rows = cursor.fetchall()
     finally:
         conn.close()
@@ -553,11 +539,19 @@ def _render_modify_tab():
 
 def _render_decommission_tab():
     st.markdown("### Delete a Saved Search")
+    _is_cars = st.session_state.get("active_category", "real_estate") == "cars"
     import sqlite3
     conn = sqlite3.connect(db.DB_NAME)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time FROM reports WHERE user_id=?", (int(st.session_state.user_id),))
+        if _is_cars:
+            cursor.execute(
+                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
+                "FROM reports WHERE user_id=? AND category='cars'", (int(st.session_state.user_id),))
+        else:
+            cursor.execute(
+                "SELECT profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time "
+                "FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')", (int(st.session_state.user_id),))
         rows = cursor.fetchall()
     finally:
         conn.close()

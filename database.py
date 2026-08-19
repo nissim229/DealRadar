@@ -1683,11 +1683,26 @@ def cache_city_coords(city, state, lat, lon):
     finally:
         conn.close()
 
-def get_all_reports(user_id):
+def get_all_reports(user_id, category=None):
+    """category=None (the default) returns every saved search regardless of
+    type - used by the duplicate-profile-name check on save, since the
+    UNIQUE(user_id, profile_name) constraint applies across categories, not
+    within one. Pass category="real_estate" or "cars" to scope the
+    top-nav-driven dashboard/hunt-criteria pages to just that type - a
+    legacy or real-estate row has category NULL, so "real_estate" matches
+    both NULL and the literal string."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT profile_name FROM reports WHERE user_id=?", (int(user_id),))
+        if category is None:
+            cursor.execute("SELECT profile_name FROM reports WHERE user_id=?", (int(user_id),))
+        elif category == "real_estate":
+            cursor.execute(
+                "SELECT profile_name FROM reports WHERE user_id=? AND (category IS NULL OR category='real_estate')",
+                (int(user_id),)
+            )
+        else:
+            cursor.execute("SELECT profile_name FROM reports WHERE user_id=? AND category=?", (int(user_id), category))
         return [row[0] for row in cursor.fetchall()]
     finally:
         conn.close()

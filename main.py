@@ -41,6 +41,12 @@ if "user_settings" not in st.session_state:
     st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Run Property Scans"
+if "active_category" not in st.session_state:
+    # "real_estate" or "cars" - the single source of truth for which deal
+    # type the app is currently scanning for, driving both the top nav's
+    # own menu items (see CATEGORY_MENUS below) and every category-aware
+    # page (analytics.py's dashboard, strategy_config.py's hunt criteria).
+    st.session_state.active_category = "real_estate"
 if "show_login_form" not in st.session_state:
     st.session_state.show_login_form = False
 
@@ -114,8 +120,28 @@ else:
                 color: #cbd5e1 !important;
                 border: none !important;
                 font-weight: 500;
-                padding: 8px 16px;
+                padding: 8px 9px;
                 border-radius: 6px;
+                white-space: nowrap;
+            }
+            div.st-key-scoutai_topbar button p {
+                font-size: 12.5px !important;
+                white-space: nowrap;
+            }
+            /* Nav button row - each button sized to fit its own text
+            (shrink-to-fit) rather than forced into an equal 1/3 share of
+            col_nav's width, which was clipping "Manage Hunt Criteria" at
+            three items sharing a narrower column now that the category
+            switcher takes space beside it. */
+            div.st-key-scoutai_nav_row div[data-testid="stHorizontalBlock"] {
+                flex-wrap: nowrap !important;
+                width: auto !important;
+                justify-content: flex-start !important;
+                gap: 4px;
+            }
+            div.st-key-scoutai_nav_row div[data-testid="stColumn"] {
+                width: auto !important;
+                flex: 0 0 auto !important;
             }
             div.st-key-scoutai_topbar button p,
             div.st-key-scoutai_topbar button span {
@@ -150,13 +176,49 @@ else:
                 color: #cbd5e1 !important;
                 border-color: transparent !important;
             }
+
+            /* Category switcher - deliberately NOT styled like the nav
+            buttons above (transparent/pill-on-hover). This picks which
+            deal type the app is scanning for, which in turn decides what
+            the nav buttons even are (see CATEGORY_MENUS) - so visually it
+            needs to read as "governs the row next to it", not as a peer
+            destination inside that row. A sunken track on the dark navbar,
+            same track+pill shape used everywhere else in the app for a
+            2-option switch (Simple/Pro, Real Estate/Cars on the old
+            Establish-tab toggle), just re-themed for a dark bar instead of
+            a light card. */
+            div.st-key-topbar_category_track {
+                display:flex; gap:3px; background:rgba(255,255,255,0.08);
+                border-radius:999px; padding:3px;
+            }
+            div.st-key-topbar_category_track [data-testid="stColumn"] { width:auto !important; flex:0 0 auto !important; }
+            div.st-key-topbar_category_track div[data-testid="stHorizontalBlock"] { flex-wrap:nowrap !important; width:auto !important; }
+            div.st-key-topbar_category_re button, div.st-key-topbar_category_cars button {
+                border-radius:999px !important; border:none !important; background:transparent !important;
+                font-weight:600 !important; font-size:12.5px !important; padding:6px 14px !important;
+                min-height:0 !important; box-shadow:none !important; color:#94a3b8 !important;
+                white-space:nowrap;
+            }
+            div.st-key-topbar_category_re button p, div.st-key-topbar_category_cars button p {
+                color:#94a3b8 !important;
+            }
+            div.st-key-topbar_category_re button[kind="primary"], div.st-key-topbar_category_cars button[kind="primary"] {
+                background:white !important;
+            }
+            div.st-key-topbar_category_re button[kind="primary"] p, div.st-key-topbar_category_cars button[kind="primary"] p {
+                color:var(--radar-navy) !important;
+            }
         </style>
     """, unsafe_allow_html=True)
 
-    menu_options = ["Run Property Scans", "Manage Hunt Criteria", "My Portfolio"]
+    CATEGORY_MENUS = {
+        "real_estate": ["Run Property Scans", "Manage Hunt Criteria", "My Portfolio"],
+        "cars": ["Run Car Scans", "Manage Car Search Criteria"],
+    }
+    menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_nav, col_user = st.columns([1.4, 2.6, 1.6])
+        col_logo, col_category, col_nav, col_user = st.columns([0.9, 0.85, 3.55, 1.15])
 
         with col_logo:
             st.markdown("""
@@ -176,16 +238,37 @@ else:
                 </div>
             """, unsafe_allow_html=True)
 
-        with col_nav:
-            nav_cols = st.columns(len(menu_options))
-            for i, option in enumerate(menu_options):
-                is_active = st.session_state.current_page == option
-                with nav_cols[i]:
-                    wrapper_key = "scoutai_topbar_active" if is_active else f"scoutai_topbar_inactive_{i}"
-                    with st.container(key=wrapper_key):
-                        if st.button(option, key=f"nav_btn_{option}", use_container_width=True):
-                            st.session_state.current_page = option
+        with col_category:
+            with st.container(key="topbar_category_track"):
+                cat_col1, cat_col2 = st.columns(2)
+                with cat_col1:
+                    with st.container(key="topbar_category_re"):
+                        if st.button(":material/home: Property", key="topbar_category_btn_re", use_container_width=True,
+                                     type="primary" if st.session_state.active_category == "real_estate" else "secondary"):
+                            st.session_state.active_category = "real_estate"
+                            if st.session_state.current_page not in CATEGORY_MENUS["real_estate"]:
+                                st.session_state.current_page = CATEGORY_MENUS["real_estate"][0]
                             st.rerun()
+                with cat_col2:
+                    with st.container(key="topbar_category_cars"):
+                        if st.button(":material/directions_car: Cars", key="topbar_category_btn_cars", use_container_width=True,
+                                     type="primary" if st.session_state.active_category == "cars" else "secondary"):
+                            st.session_state.active_category = "cars"
+                            if st.session_state.current_page not in CATEGORY_MENUS["cars"]:
+                                st.session_state.current_page = CATEGORY_MENUS["cars"][0]
+                            st.rerun()
+
+        with col_nav:
+            with st.container(key="scoutai_nav_row"):
+                nav_cols = st.columns(len(menu_options))
+                for i, option in enumerate(menu_options):
+                    is_active = st.session_state.current_page == option
+                    with nav_cols[i]:
+                        wrapper_key = "scoutai_topbar_active" if is_active else f"scoutai_topbar_inactive_{i}"
+                        with st.container(key=wrapper_key):
+                            if st.button(option, key=f"nav_btn_{option}", use_container_width=True):
+                                st.session_state.current_page = option
+                                st.rerun()
 
         with col_user:
             user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
@@ -222,6 +305,7 @@ else:
                     st.session_state.user_name = ""
                     st.session_state.user_plan = "Free"
                     st.session_state.current_page = "Run Property Scans"
+                    st.session_state.active_category = "real_estate"
                     st.session_state.show_login_form = False
                     st.session_state.settings_show_change_password_form = False
                     st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
@@ -231,10 +315,13 @@ else:
     if broadcast_message:
         st.info(broadcast_message, icon=":material/campaign:")
 
-    # Route page fragments based on top nav selection
-    if st.session_state.current_page == "Run Property Scans":
+    # Route page fragments based on top nav selection. "Run Property Scans"/
+    # "Run Car Scans" and "Manage Hunt Criteria"/"Manage Car Search Criteria"
+    # are two labels for the same page each - the page itself reads
+    # st.session_state.active_category to decide what to actually render.
+    if st.session_state.current_page in ("Run Property Scans", "Run Car Scans"):
         render_analytics_dashboard()
-    elif st.session_state.current_page == "Manage Hunt Criteria":
+    elif st.session_state.current_page in ("Manage Hunt Criteria", "Manage Car Search Criteria"):
         render_strategy_configuration()
     elif st.session_state.current_page == "My Portfolio":
         render_portfolio_page()
