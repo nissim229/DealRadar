@@ -146,6 +146,17 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Migration: last time this user opened the topbar notification
+        # bell, for a real unread count instead of just a "something's
+        # here" dot. Deliberately left NULL with no default (not backfilled
+        # to CURRENT_TIMESTAMP like created_at above) - NULL correctly
+        # means "never opened it", so every existing activity item counts
+        # as unread the first time, which is the honest answer.
+        try:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_notifications_read_at TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+
         # Backfill: every pre-existing account (created before this feature
         # existed) needs an account_id too, not just new signups.
         cursor.execute("SELECT id FROM users WHERE account_id IS NULL OR account_id=''")
@@ -406,6 +417,17 @@ def init_db():
         # there's no way to recover which they actually were.
         try:
             cursor.execute("ALTER TABLE history_logs ADD COLUMN was_live INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+
+        # Migration: which deal category this scan belongs to, so the
+        # real-estate History Log page and the topbar notification feed
+        # (which is category-aware, matching the help popover) don't mix
+        # property scans and car scans together. 'real_estate' default
+        # (a constant, unlike created_at's CURRENT_TIMESTAMP above - safe
+        # for ADD COLUMN) correctly reclassifies every pre-Cars-era row.
+        try:
+            cursor.execute("ALTER TABLE history_logs ADD COLUMN category TEXT DEFAULT 'real_estate'")
         except sqlite3.OperationalError:
             pass
 
@@ -938,7 +960,25 @@ def set_broadcast_message(message):
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (message,)
         )
+        # Own timestamp, not reused from anywhere else, so the notification
+        # bell can tell whether THIS broadcast is new since the user last
+        # opened it - a plain key/value pair fits app_settings' existing
+        # shape rather than needing a dedicated table for one extra field.
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('broadcast_message_set_at', CURRENT_TIMESTAMP) "
+            "ON CONFLICT(key) DO UPDATE SET value=CURRENT_TIMESTAMP"
+        )
         conn.commit()
+    finally:
+        conn.close()
+
+def get_broadcast_message_set_at():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='broadcast_message_set_at'")
+        row = cursor.fetchone()
+        return row[0] if row and row[0] else None
     finally:
         conn.close()
 
@@ -1832,31 +1872,72 @@ def delete_report_config(user_id, name):
 
 # --- HISTORY LOG QUERIES (UPDATED FOR DYNAMIC COORDINATES) ---
 
-def save_history_log(user_id, profile_name, location, content, coordinates_json="", was_live=False):
+def save_history_log(user_id, profile_name, location, content, coordinates_json="", was_live=False, category="real_estate"):
     """Saves a compiled AI report output and its map coordinates to the
     history archive. was_live records whether this scan pulled real
-    RentCast listings vs mock/preview data, for the admin usage dashboard."""
+    RentCast listings vs mock/preview data, for the admin usage dashboard.
+    category distinguishes property scans from Cars scans (see
+    [[cars_category_feature]]) - Cars searches log a lightweight row here
+    too (empty content, no map coordinates), purely so the notification
+    bell has real recent-activity data for that category, not just
+    real estate."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO history_logs (user_id, profile_name, location, report_content, coordinates_json, was_live) VALUES (?, ?, ?, ?, ?, ?)",
-            (int(user_id), profile_name, location, content, coordinates_json, 1 if was_live else 0)
+            "INSERT INTO history_logs (user_id, profile_name, location, report_content, coordinates_json, was_live, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (int(user_id), profile_name, location, content, coordinates_json, 1 if was_live else 0, category)
         )
         conn.commit()
     finally:
         conn.close()
 
-def get_history_logs(user_id):
-    """Fetches full past log metadata fields including map coordinates."""
+def get_history_logs(user_id, category="real_estate"):
+    """Fetches full past log metadata fields including map coordinates,
+    scoped to one category - the real-estate History Log page only ever
+    wants its own scans, not Cars' lightweight activity rows."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, profile_name, location, generated_at, report_content, coordinates_json FROM history_logs WHERE user_id=? ORDER BY generated_at DESC",
-            (int(user_id),)
+            "SELECT id, profile_name, location, generated_at, report_content, coordinates_json FROM history_logs WHERE user_id=? AND category=? ORDER BY generated_at DESC",
+            (int(user_id), category)
         )
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+def get_recent_activity(user_id, category, limit=5):
+    """Most recent scans for one user+category, for the topbar
+    notification feed - same underlying data as get_history_logs, just
+    without the heavy report_content column and with a row cap."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT profile_name, location, generated_at FROM history_logs WHERE user_id=? AND category=? ORDER BY generated_at DESC LIMIT ?",
+            (int(user_id), category, limit)
+        )
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+def get_last_notifications_read_at(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_notifications_read_at FROM users WHERE id=?", (int(user_id),))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+def mark_notifications_read(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET last_notifications_read_at=CURRENT_TIMESTAMP WHERE id=?", (int(user_id),))
+        conn.commit()
     finally:
         conn.close()
 

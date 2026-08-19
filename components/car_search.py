@@ -91,7 +91,15 @@ def _run_search(make, model, min_year, max_price, max_mileage, zip_code, radius,
 
     st.session_state.car_search_results = listings
     st.session_state.car_search_was_live = was_live
-    st.session_state.car_search_criteria_label = _criteria_label(make, model, min_year, max_price, zip_code, radius)
+    criteria_label = _criteria_label(make, model, min_year, max_price, zip_code, radius)
+    st.session_state.car_search_criteria_label = criteria_label
+
+    # Lightweight log row (no report_content/coordinates_json - this page
+    # doesn't build a saved report the way real-estate scans do) purely so
+    # the topbar notification bell has real recent-activity data for Cars,
+    # not just real estate. Same table/function real-estate scans use,
+    # tagged category="cars" - see save_history_log's docstring.
+    db.save_history_log(st.session_state.user_id, "Car Search", criteria_label, "", was_live=was_live, category="cars")
 
 
 def _criteria_label(make, model, min_year, max_price, zip_code, radius):

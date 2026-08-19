@@ -2,7 +2,31 @@
 import database as db
 import theme
 import roles
+from datetime import datetime
 from design_tokens import inject_design_tokens
+
+
+def _relative_time(timestamp_str):
+    """'2026-08-19 07:31:28' (a SQLite CURRENT_TIMESTAMP string, UTC) ->
+    '3 hours ago', for the alerts bell's activity feed. Deliberately a
+    separate, prefix-less copy of analytics.py's _format_relative_time
+    (which always prepends "Saved ") rather than importing that private
+    helper across modules for a different label shape."""
+    try:
+        dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+    except (TypeError, ValueError):
+        return timestamp_str or ""
+    seconds = (datetime.utcnow() - dt).total_seconds()
+    if seconds < 60:
+        return "just now"
+    if seconds < 3600:
+        m = int(seconds // 60)
+        return f"{m} minute{'s' if m != 1 else ''} ago"
+    if seconds < 86400:
+        h = int(seconds // 3600)
+        return f"{h} hour{'s' if h != 1 else ''} ago"
+    d = int(seconds // 86400)
+    return f"{d} day{'s' if d != 1 else ''} ago"
 
 # 1. Global Page and Theme Layout Settings
 st.set_page_config(page_title="DealRadar", layout="wide")
@@ -231,6 +255,50 @@ else:
                 color: white !important;
             }
 
+            /* Alerts bell - same ghost-circle shape as the help icon.
+            position:relative on the wrapper is what lets the unread-count
+            badge below overlay the button's corner instead of pushing
+            layout around: the badge is a sibling markdown block, but
+            position:absolute takes it out of flow and anchors it to this
+            div regardless of source order. */
+            div.st-key-topbar_alerts_popover_wrap { position: relative; display: flex !important; justify-content: center !important; }
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] {
+                background: transparent !important;
+                border: 1px solid rgba(148, 163, 184, 0.35) !important;
+                color: #cbd5e1 !important;
+                width: 30px !important; height: 30px !important; min-height: 0 !important;
+                border-radius: 50% !important; padding: 0 !important; flex: none !important;
+                display: flex !important; align-items: center !important; justify-content: center !important;
+            }
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
+                display: none !important;
+            }
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+                font-size: 17px !important;
+            }
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"]:hover {
+                background: rgba(148, 163, 184, 0.15) !important;
+                color: white !important;
+            }
+            /* Streamlit gives every element's own wrapper div (stElement
+            Container) position:relative by default - that's a closer
+            positioned ancestor than our wrap div above, so the badge's
+            position:absolute was anchoring to its own snug wrapper
+            (pushing it below the button in normal flow) instead of
+            escaping to the wrap's corner. Resetting it to static here
+            lets absolute positioning skip past it to the wrap. */
+            div.st-key-topbar_alerts_popover_wrap div[data-testid="stElementContainer"] {
+                position: static !important;
+            }
+            .dealradar-alert-badge {
+                position: absolute; top: -4px; right: calc(50% - 19px);
+                background: #ef4444; color: white; font-size: 10px; font-weight: 700;
+                min-width: 15px; height: 15px; border-radius: 999px;
+                display: flex; align-items: center; justify-content: center;
+                padding: 0 3px; line-height: 1; pointer-events: none;
+                border: 1.5px solid #0f172a;
+            }
+
             /* Category dropdown - deliberately NOT styled like the nav
             buttons beside it (transparent/pill-on-hover). This picks which
             deal type the app is scanning for, which in turn decides what
@@ -295,7 +363,7 @@ else:
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_category, col_nav, col_help, col_user = st.columns([1.35, 0.85, 2.85, 0.35, 1.0])
+        col_logo, col_category, col_nav, col_help, col_alerts, col_user = st.columns([1.35, 0.85, 2.6, 0.35, 0.35, 0.9])
 
         with col_logo:
             st.markdown("""
@@ -366,6 +434,44 @@ else:
                     st.markdown("---")
                     st.caption("A **deal grade** compares a listing to real market comps - "
                                 "if there isn't enough comparable data, we say so rather than guess.")
+
+        with col_alerts:
+            recent_activity = db.get_recent_activity(st.session_state.user_id, st.session_state.active_category, limit=5)
+            alerts_broadcast = db.get_broadcast_message()
+            alerts_broadcast_at = db.get_broadcast_message_set_at() if alerts_broadcast else None
+            last_read = db.get_last_notifications_read_at(st.session_state.user_id)
+            low_credits = st.session_state.user_credits <= 3
+
+            unread_count = sum(
+                1 for _, _, generated_at in recent_activity
+                if last_read is None or (generated_at and generated_at > last_read)
+            )
+            if alerts_broadcast and (last_read is None or (alerts_broadcast_at and alerts_broadcast_at > last_read)):
+                unread_count += 1
+
+            with st.container(key="topbar_alerts_popover_wrap"):
+                with st.popover(":material/notifications:", help="Alerts",
+                                 key=f"topbar_alerts_popover_{st.session_state.current_page}"):
+                    if low_credits:
+                        st.warning(f"Running low on credits ({st.session_state.user_credits} left).", icon=":material/bolt:")
+                    if alerts_broadcast:
+                        st.info(alerts_broadcast, icon=":material/campaign:")
+                    if recent_activity:
+                        st.caption(f"Recent {active_category['label']} activity")
+                        for profile_name, location, generated_at in recent_activity:
+                            label = f"**{profile_name}**" + (f" — {location}" if location else "")
+                            st.caption(f"{label}  ·  {_relative_time(generated_at)}")
+                    elif not low_credits and not alerts_broadcast:
+                        st.caption("Nothing yet - run a scan to see activity here.")
+                    # Marking read happens on every render of an *open*
+                    # popover (this code only executes while it's open - see
+                    # [[feedback_popover_navigation]]'s confirmed open/closed
+                    # rendering model) - idempotent, and clears the badge
+                    # starting the next rerun rather than the one that just
+                    # displayed it, matching normal bell-icon UX.
+                    db.mark_notifications_read(st.session_state.user_id)
+                if unread_count > 0:
+                    st.markdown(f"<div class='dealradar-alert-badge'>{unread_count if unread_count <= 9 else '9+'}</div>", unsafe_allow_html=True)
 
         with col_user:
             user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
