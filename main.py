@@ -21,6 +21,7 @@ from components.guest_landing import render_guest_landing
 from components.portfolio import render_portfolio_page
 from components.pricing import render_pricing_dialog
 from components.settings import render_settings_page, maybe_autodetect_timezone
+from components.car_search import render_car_search_page, render_saved_car_searches_page
 
 # Initialize User Account Session Memory Slots
 if "authenticated" not in st.session_state:
@@ -169,53 +170,77 @@ else:
             /* User popover trigger specifically - force every descendant
             transparent/light-gray, since its exact internal element structure
             isn't guaranteed and a narrower selector wasn't fully catching it.
-            Scoped tightly to just this trigger (not the whole topbar) so it
-            can't affect anything else, like the logo icon box. */
-            div.st-key-scoutai_topbar [data-testid="stPopover"],
-            div.st-key-scoutai_topbar [data-testid="stPopover"] * {
+            Scoped to its own wrapper key (not the whole topbar, and not the
+            category dropdown below, which needs the opposite - a solid white
+            trigger) so it can't leak onto anything else. */
+            div.st-key-topbar_account_popover_wrap [data-testid="stPopover"],
+            div.st-key-topbar_account_popover_wrap [data-testid="stPopover"] * {
                 background-color: transparent !important;
                 color: #cbd5e1 !important;
                 border-color: transparent !important;
             }
 
-            /* Category switcher - deliberately NOT styled like the nav
-            buttons above (transparent/pill-on-hover). This picks which
+            /* Category dropdown - deliberately NOT styled like the nav
+            buttons beside it (transparent/pill-on-hover). This picks which
             deal type the app is scanning for, which in turn decides what
             the nav buttons even are (see CATEGORY_MENUS) - so visually it
             needs to read as "governs the row next to it", not as a peer
-            destination inside that row. A sunken track on the dark navbar,
-            same track+pill shape used everywhere else in the app for a
-            2-option switch (Simple/Pro, Real Estate/Cars on the old
-            Establish-tab toggle), just re-themed for a dark bar instead of
-            a light card. */
-            div.st-key-topbar_category_track {
-                display:flex; gap:3px; background:rgba(255,255,255,0.08);
-                border-radius:999px; padding:3px;
+            destination inside that row. A solid white pill trigger (the
+            same white-pill language used for a selected state everywhere
+            else in the app) that opens a menu, so it still reads clearly
+            on the dark navbar and scales past two categories without
+            needing more navbar width per category. */
+            div.st-key-topbar_category_popover [data-testid="stPopoverButton"] {
+                background: white !important; color: var(--radar-navy) !important;
+                border: none !important; border-radius: 999px !important;
+                font-weight: 600 !important; font-size: 12.5px !important;
+                padding: 6px 14px !important; min-height: 0 !important; box-shadow: none !important;
+                white-space: nowrap;
             }
-            div.st-key-topbar_category_track [data-testid="stColumn"] { width:auto !important; flex:0 0 auto !important; }
-            div.st-key-topbar_category_track div[data-testid="stHorizontalBlock"] { flex-wrap:nowrap !important; width:auto !important; }
-            div.st-key-topbar_category_re button, div.st-key-topbar_category_cars button {
-                border-radius:999px !important; border:none !important; background:transparent !important;
-                font-weight:600 !important; font-size:12.5px !important; padding:6px 14px !important;
-                min-height:0 !important; box-shadow:none !important; color:#94a3b8 !important;
-                white-space:nowrap;
+            div.st-key-topbar_category_popover [data-testid="stPopoverButton"] p,
+            div.st-key-topbar_category_popover [data-testid="stPopoverButton"] span {
+                color: var(--radar-navy) !important;
             }
-            div.st-key-topbar_category_re button p, div.st-key-topbar_category_cars button p {
-                color:#94a3b8 !important;
+            /* Menu items inside the open dropdown - reuse the nav row's own
+            active/hover language (blue = active, dark-hover = affordance)
+            rather than inventing a third visual style for "selected". */
+            /* Streamlit renders an open popover's body in a portal appended
+            outside div.st-key-topbar_category_popover entirely (confirmed
+            by inspecting the live DOM - the option buttons' ancestor chain
+            never includes that key class), so scoping off the popover
+            container doesn't reach them. Each option button carries its
+            own per-category key class instead
+            (st-key-topbar_category_opt_<value>, from the st.button key= in
+            main.py) - matching on that substring reaches every option
+            regardless of portal placement, and automatically covers any
+            category added to CATEGORIES later without a new CSS rule. */
+            div[class*="st-key-topbar_category_opt_"] button[kind="secondary"] {
+                background: transparent !important; color: var(--radar-text) !important;
+                border-radius: var(--radar-radius-sm) !important; justify-content: flex-start !important;
             }
-            div.st-key-topbar_category_re button[kind="primary"], div.st-key-topbar_category_cars button[kind="primary"] {
-                background:white !important;
+            div[class*="st-key-topbar_category_opt_"] button[kind="secondary"]:hover {
+                background: var(--radar-surface-alt) !important;
             }
-            div.st-key-topbar_category_re button[kind="primary"] p, div.st-key-topbar_category_cars button[kind="primary"] p {
-                color:var(--radar-navy) !important;
+            div[class*="st-key-topbar_category_opt_"] button[kind="primary"] {
+                background: rgba(37,99,235,0.08) !important; color: var(--radar-primary) !important;
+                border-radius: var(--radar-radius-sm) !important; justify-content: flex-start !important;
+                font-weight: 700 !important;
             }
         </style>
     """, unsafe_allow_html=True)
 
+    # Ordered list, not just CATEGORY_MENUS' keys, so a category's display
+    # label/icon and its menu-item set can evolve independently and a new
+    # category only needs one entry added here to show up in the dropdown.
+    CATEGORIES = [
+        {"value": "real_estate", "label": "Property", "icon": ":material/home:"},
+        {"value": "cars", "label": "Cars", "icon": ":material/directions_car:"},
+    ]
     CATEGORY_MENUS = {
         "real_estate": ["Run Property Scans", "Manage Hunt Criteria", "My Portfolio"],
-        "cars": ["Run Car Scans", "Manage Car Search Criteria"],
+        "cars": ["Find a Car", "Saved Searches"],
     }
+    active_category = next(c for c in CATEGORIES if c["value"] == st.session_state.active_category)
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
@@ -240,23 +265,25 @@ else:
             """, unsafe_allow_html=True)
 
         with col_category:
-            with st.container(key="topbar_category_track"):
-                cat_col1, cat_col2 = st.columns(2)
-                with cat_col1:
-                    with st.container(key="topbar_category_re"):
-                        if st.button(":material/home: Property", key="topbar_category_btn_re", use_container_width=True,
-                                     type="primary" if st.session_state.active_category == "real_estate" else "secondary"):
-                            st.session_state.active_category = "real_estate"
-                            if st.session_state.current_page not in CATEGORY_MENUS["real_estate"]:
-                                st.session_state.current_page = CATEGORY_MENUS["real_estate"][0]
-                            st.rerun()
-                with cat_col2:
-                    with st.container(key="topbar_category_cars"):
-                        if st.button(":material/directions_car: Cars", key="topbar_category_btn_cars", use_container_width=True,
-                                     type="primary" if st.session_state.active_category == "cars" else "secondary"):
-                            st.session_state.active_category = "cars"
-                            if st.session_state.current_page not in CATEGORY_MENUS["cars"]:
-                                st.session_state.current_page = CATEGORY_MENUS["cars"][0]
+            with st.container(key="topbar_category_popover"):
+                trigger_label = f"{active_category['icon']} {active_category['label']}"
+                # Keyed on active_category, not left implicit, so picking a
+                # new category gives the popover a fresh closed identity on
+                # the next rerun instead of staying open over the page it
+                # just switched to - st.popover deliberately stays open
+                # across a rerun triggered by a widget inside it (see
+                # [[feedback-popover-navigation]]), which is right for the
+                # account popover's in-place actions but wrong here, where
+                # every option click is a navigation.
+                with st.popover(trigger_label, use_container_width=True,
+                                 key=f"topbar_category_popover_trigger_{st.session_state.active_category}"):
+                    for cat in CATEGORIES:
+                        is_active = cat["value"] == st.session_state.active_category
+                        if st.button(f"{cat['icon']} {cat['label']}", key=f"topbar_category_opt_{cat['value']}",
+                                     use_container_width=True, type="primary" if is_active else "secondary"):
+                            st.session_state.active_category = cat["value"]
+                            if st.session_state.current_page not in CATEGORY_MENUS[cat["value"]]:
+                                st.session_state.current_page = CATEGORY_MENUS[cat["value"]][0]
                             st.rerun()
 
         with col_nav:
@@ -281,49 +308,55 @@ else:
             # popovers elsewhere in the app can stay open while adjusting a
             # slider), which is right for in-place edits but wrong for a
             # full page-navigation click like this one.
-            with st.popover(f":material/account_circle: {st.session_state.user_email}", use_container_width=True,
-                             key=f"account_popover_{st.session_state.current_page}"):
-                st.caption(f"Role: **{st.session_state.user_role.upper()}**")
-                st.caption(f"Plan: **{st.session_state.user_plan}**")
-                st.caption(f"Credits: **{st.session_state.user_credits}**")
-                if st.button(":material/upgrade: Upgrade Plan", use_container_width=True, key="topbar_upgrade_btn"):
-                    render_pricing_dialog()
-                st.markdown("---")
-                if st.button(":material/settings: Settings", use_container_width=True, key="topbar_settings_btn"):
-                    st.session_state.current_page = "Settings"
-                    st.rerun()
-                st.markdown("---")
-
-                if roles.is_staff(st.session_state.user_role):
-                    if st.button(":material/shield_person: Admin Controls", use_container_width=True, key="topbar_admin_btn"):
-                        st.session_state.current_page = "Admin Controls"
+            with st.container(key="topbar_account_popover_wrap"):
+                with st.popover(f":material/account_circle: {st.session_state.user_email}", use_container_width=True,
+                                 key=f"account_popover_{st.session_state.current_page}"):
+                    st.caption(f"Role: **{st.session_state.user_role.upper()}**")
+                    st.caption(f"Plan: **{st.session_state.user_plan}**")
+                    st.caption(f"Credits: **{st.session_state.user_credits}**")
+                    if st.button(":material/upgrade: Upgrade Plan", use_container_width=True, key="topbar_upgrade_btn"):
+                        render_pricing_dialog()
+                    st.markdown("---")
+                    if st.button(":material/settings: Settings", use_container_width=True, key="topbar_settings_btn"):
+                        st.session_state.current_page = "Settings"
                         st.rerun()
-                if st.button(":material/logout: Log Out", use_container_width=True, key="topbar_logout_btn"):
-                    st.session_state.authenticated = False
-                    st.session_state.user_id = None
-                    st.session_state.user_role = "user"
-                    st.session_state.user_email = None
-                    st.session_state.user_name = ""
-                    st.session_state.user_plan = "Free"
-                    st.session_state.current_page = "Run Property Scans"
-                    st.session_state.active_category = "real_estate"
-                    st.session_state.show_login_form = False
-                    st.session_state.settings_show_change_password_form = False
-                    st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
-                    st.rerun()
+                    st.markdown("---")
+
+                    if roles.is_staff(st.session_state.user_role):
+                        if st.button(":material/shield_person: Admin Controls", use_container_width=True, key="topbar_admin_btn"):
+                            st.session_state.current_page = "Admin Controls"
+                            st.rerun()
+                    if st.button(":material/logout: Log Out", use_container_width=True, key="topbar_logout_btn"):
+                        st.session_state.authenticated = False
+                        st.session_state.user_id = None
+                        st.session_state.user_role = "user"
+                        st.session_state.user_email = None
+                        st.session_state.user_name = ""
+                        st.session_state.user_plan = "Free"
+                        st.session_state.current_page = "Run Property Scans"
+                        st.session_state.active_category = "real_estate"
+                        st.session_state.show_login_form = False
+                        st.session_state.settings_show_change_password_form = False
+                        st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
+                        st.rerun()
 
     broadcast_message = db.get_broadcast_message()
     if broadcast_message:
         st.info(broadcast_message, icon=":material/campaign:")
 
-    # Route page fragments based on top nav selection. "Run Property Scans"/
-    # "Run Car Scans" and "Manage Hunt Criteria"/"Manage Car Search Criteria"
-    # are two labels for the same page each - the page itself reads
-    # st.session_state.active_category to decide what to actually render.
-    if st.session_state.current_page in ("Run Property Scans", "Run Car Scans"):
+    # Route page fragments based on top nav selection. Cars gets its own
+    # dedicated one-page flow (components/car_search.py) rather than
+    # sharing real estate's Run Scans/Manage Criteria pair - see
+    # [[cars-category-feature]] for why (search runs immediately, no
+    # saved-profile step first).
+    if st.session_state.current_page == "Run Property Scans":
         render_analytics_dashboard()
-    elif st.session_state.current_page in ("Manage Hunt Criteria", "Manage Car Search Criteria"):
+    elif st.session_state.current_page == "Manage Hunt Criteria":
         render_strategy_configuration()
+    elif st.session_state.current_page == "Find a Car":
+        render_car_search_page()
+    elif st.session_state.current_page == "Saved Searches":
+        render_saved_car_searches_page()
     elif st.session_state.current_page == "My Portfolio":
         render_portfolio_page()
     elif st.session_state.current_page == "Admin Controls":

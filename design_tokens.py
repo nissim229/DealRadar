@@ -134,6 +134,17 @@ FONT_CSS = """
     html, body, .stApp, [class*="st-"], [data-testid] {
         font-family: var(--radar-font-body);
     }
+    /* Material icon glyphs (Streamlit's own auto-added ones, like a
+    popover's dropdown chevron - not the icon spans from a `:material/x:`
+    shortcode in a label, which already carry their own inline
+    font-family and are unaffected) rely on the icon font rendering as a
+    ligature. The broad rule above was overriding it to the body
+    typeface, which turned the icon into literal readable text like
+    "expand_more" instead of a glyph - reproduced live on the topbar's
+    category dropdown chevron. */
+    [data-testid="stIconMaterial"] {
+        font-family: "Material Symbols Rounded" !important;
+    }
     h1, h2, h3, h4, h5, h6,
     [data-testid="stMarkdownContainer"] h1,
     [data-testid="stMarkdownContainer"] h2,

@@ -187,6 +187,19 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Same shape/purpose as rentcast_usage_log above, for the Cars
+        # category's real Auto.dev listings API - a separate table (not a
+        # shared one with a "provider" column) so each vendor's monthly-cap
+        # math stays a simple row count with no filtering to get wrong.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS autodev_usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                called_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                success INTEGER,
+                user_id INTEGER
+            )
+        """)
+
         # Simulated purchase ledger - "Buy Credits" has no real payment
         # processor wired up yet (see components/pricing.py), so this is the
         # paper trail for admin revenue visibility until one exists: every
@@ -995,6 +1008,27 @@ def log_rentcast_call(success, user_id=None):
         cursor.execute("INSERT INTO rentcast_usage_log (success, user_id) VALUES (?, ?)",
                         (1 if success else 0, int(user_id) if user_id is not None else None))
         conn.commit()
+    finally:
+        conn.close()
+
+def log_autodev_call(success, user_id=None):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO autodev_usage_log (success, user_id) VALUES (?, ?)",
+                        (1 if success else 0, int(user_id) if user_id is not None else None))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_autodev_usage_this_month():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM autodev_usage_log WHERE strftime('%Y-%m', called_at) = strftime('%Y-%m', 'now')"
+        )
+        return cursor.fetchone()[0]
     finally:
         conn.close()
 

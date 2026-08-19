@@ -674,7 +674,7 @@ def render_admin_control_panel():
     """, unsafe_allow_html=True)
 
     if st.button("← Back to Dashboard", key="admin_back_to_dashboard_btn"):
-        st.session_state.current_page = "Run Car Scans" if st.session_state.get("active_category") == "cars" else "Run Property Scans"
+        st.session_state.current_page = "Find a Car" if st.session_state.get("active_category") == "cars" else "Run Property Scans"
         st.rerun()
 
     current_role = st.session_state.user_role

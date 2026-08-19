@@ -5,7 +5,8 @@
       "name": "dealradar",
       "runtimeExecutable": "venv\\Scripts\\streamlit.exe",
       "runtimeArgs": ["run", "main.py", "--server.headless", "true"],
-      "port": 8501
+      "port": 8501,
+      "autoPort": true
     }
   ]
 }

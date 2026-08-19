@@ -230,15 +230,27 @@ def build_clustered_map_data(df, cluster_grid_deg=0.008):
     return pd.DataFrame(clustered_rows)
 
 
-def _render_scan_action(raw_profiles):
+def _render_scan_action(raw_profiles, active_category):
     default_index = 0
     if st.session_state.get("dashboard_quick_selected_profile") in raw_profiles:
         default_index = raw_profiles.index(st.session_state.dashboard_quick_selected_profile)
 
+    # Keyed on active_category, not left as one shared key, because a
+    # selectbox's `index=` argument is only honored the first time its key
+    # is ever instantiated - once st.session_state has a stored value under
+    # that key, Streamlit keeps showing it on every future rerun regardless
+    # of `index`, even after `raw_profiles` (this dropdown's own options)
+    # has been re-filtered to a different category by the topbar switcher.
+    # That let a stale real-estate profile name go on showing as "selected"
+    # while looking at the Cars category's (entirely different) profile
+    # list. Splitting the key per category gives each one its own
+    # persisted selection instead, which also means switching back to a
+    # category restores whatever you'd last picked there.
+    profile_key = f"scan_profile_selectbox_{active_category}"
     col1, col2 = st.columns([3, 1])
     with col1:
         selected_profile = st.selectbox("Select Target Profile to Execute", options=raw_profiles,
-                                         index=default_index, key="scan_profile_selectbox")
+                                         index=default_index, key=profile_key)
     with col2:
         st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
         # Scanning itself is never blocked - a user out of credits still
@@ -1389,9 +1401,10 @@ def render_analytics_dashboard():
     # "cannot be modified after the widget ... is instantiated" for that.
     # Doing it here, before _render_scan_action() creates the selectbox,
     # avoids that restriction entirely.
+    profile_key = f"scan_profile_selectbox_{active_category}"
     pending_profile = st.session_state.get("dashboard_quick_selected_profile")
-    if pending_profile in raw_profiles and st.session_state.get("scan_profile_selectbox") != pending_profile:
-        st.session_state.scan_profile_selectbox = pending_profile
+    if pending_profile in raw_profiles and st.session_state.get(profile_key) != pending_profile:
+        st.session_state[profile_key] = pending_profile
 
     # ---- SIDEBAR: DISPLAY MODE + UNDERWRITER CONSOLE ----
     # Rendered here (before the hero) rather than after it, purely so its
@@ -1629,7 +1642,7 @@ def render_analytics_dashboard():
 
         with st.container(key="dashboard_action_card"):
             if raw_profiles:
-                _render_scan_action(raw_profiles)
+                _render_scan_action(raw_profiles, active_category)
             else:
                 render_empty_state(
                     "crosshair", "Set up your first search",
