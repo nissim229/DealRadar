@@ -179,6 +179,44 @@ else:
                 color: #cbd5e1 !important;
                 border-color: transparent !important;
             }
+            /* Compact avatar trigger - just the user's initial in a circular
+            badge, replacing the old icon+full-email button so the topbar
+            reclaims width (same problem class the category pill dropdown
+            solved). Hover reveals role/email via st.popover's native help=
+            tooltip; click still opens the full menu unchanged below. These
+            selectors carry equal-or-higher specificity than the generic
+            transparent rule above and are declared after it, so they win
+            the cascade instead of being flattened back to transparent. */
+            div.st-key-topbar_account_popover_wrap { display: flex !important; justify-content: flex-end !important; }
+            div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+                color: white !important;
+                width: 34px !important; height: 34px !important; min-height: 0 !important;
+                border-radius: 50% !important; padding: 0 !important; flex: none !important;
+                display: flex !important; align-items: center !important; justify-content: center !important;
+                font-weight: 700 !important; font-size: 14px !important;
+            }
+            div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] p {
+                color: white !important; margin: 0 !important;
+            }
+
+            /* Help icon trigger - small ghost circle matching the navbar's
+            muted text color, consistent with the account avatar's circular
+            shape but visually secondary (outline, not filled) since it's a
+            reference action, not identity/navigation. */
+            div.st-key-topbar_help_popover_wrap { display: flex !important; justify-content: center !important; }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] {
+                background: transparent !important;
+                border: 1px solid rgba(148, 163, 184, 0.35) !important;
+                color: #cbd5e1 !important;
+                width: 30px !important; height: 30px !important; min-height: 0 !important;
+                border-radius: 50% !important; padding: 0 !important; flex: none !important;
+                display: flex !important; align-items: center !important; justify-content: center !important;
+            }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover {
+                background: rgba(148, 163, 184, 0.15) !important;
+                color: white !important;
+            }
 
             /* Category dropdown - deliberately NOT styled like the nav
             buttons beside it (transparent/pill-on-hover). This picks which
@@ -244,7 +282,7 @@ else:
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_category, col_nav, col_user = st.columns([0.9, 0.85, 3.55, 1.15])
+        col_logo, col_category, col_nav, col_help, col_user = st.columns([0.9, 0.85, 3.3, 0.35, 1.0])
 
         with col_logo:
             st.markdown("""
@@ -257,6 +295,7 @@ else:
                             <circle cx="17" cy="7" r="1.4" fill="white" stroke="none" />
                         </svg>
                     </div>
+                    <div style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35);'></div>
                     <div style='line-height: 1.1;'>
                         <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
                         <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
@@ -298,6 +337,22 @@ else:
                                 st.session_state.current_page = option
                                 st.rerun()
 
+        with col_help:
+            with st.container(key="topbar_help_popover_wrap"):
+                with st.popover(":material/help:", help="Help",
+                                 key=f"topbar_help_popover_{st.session_state.active_category}"):
+                    st.markdown(f"**How {active_category['label']} scanning works**")
+                    if st.session_state.active_category == "real_estate":
+                        st.caption("1. **Run Property Scans** - set your criteria and scan for deals.")
+                        st.caption("2. **Manage Searches** - save criteria to re-run or edit later.")
+                        st.caption("3. **My Portfolio** - track properties you already own.")
+                    else:
+                        st.caption("1. **Find a Car** - set your criteria and scan live listings.")
+                        st.caption("2. **Saved Searches** - save criteria to re-run or edit later.")
+                    st.markdown("---")
+                    st.caption("A **deal grade** compares a listing to real market comps - "
+                                "if there isn't enough comparable data, we say so rather than guess.")
+
         with col_user:
             user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
             # Keyed on current_page so navigating away (e.g. clicking "Admin
@@ -309,8 +364,10 @@ else:
             # slider), which is right for in-place edits but wrong for a
             # full page-navigation click like this one.
             with st.container(key="topbar_account_popover_wrap"):
-                with st.popover(f":material/account_circle: {st.session_state.user_email}", use_container_width=True,
+                with st.popover(user_initial, use_container_width=False,
+                                 help=f"{st.session_state.user_email}  ·  {st.session_state.user_role.upper()}",
                                  key=f"account_popover_{st.session_state.current_page}"):
+                    st.caption(st.session_state.user_email)
                     st.caption(f"Role: **{st.session_state.user_role.upper()}**")
                     st.caption(f"Plan: **{st.session_state.user_plan}**")
                     st.caption(f"Credits: **{st.session_state.user_credits}**")
