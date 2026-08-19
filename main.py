@@ -94,6 +94,20 @@ else:
                 align-items: center;
             }
 
+            /* Logo name + tagline - set via a real <style> rule, not an
+            inline style="...!important" attribute, since Streamlit's HTML
+            sanitizer silently strips !important out of inline style
+            attributes (non-important inline properties like font-size
+            survive fine) - this was making the "DealRadar" wordmark and
+            tagline invisible against the dark navbar despite the color
+            being "set" in the markdown source. */
+            div.st-key-scoutai_topbar .dealradar-logo-name {
+                color: white !important;
+            }
+            div.st-key-scoutai_topbar .dealradar-logo-tag {
+                color: #94a3b8 !important;
+            }
+
             /* Regular nav buttons */
             div.st-key-scoutai_topbar button {
                 background-color: transparent !important;
@@ -156,8 +170,8 @@ else:
                         </svg>
                     </div>
                     <div style='line-height: 1.1;'>
-                        <span style='font-size: 16px; font-weight: 700; color: white !important;'>DealRadar</span>
-                        <span style='font-size: 10px; font-weight: 500; color: #94a3b8 !important; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
+                        <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
+                        <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)

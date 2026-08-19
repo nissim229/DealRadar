@@ -65,6 +65,13 @@ def render_guest_landing():
         div.st-key-guest_topbar button:hover {
             background-color: var(--radar-primary-dark) !important;
         }
+        /* Real <style> rule, not an inline style="...!important" attribute -
+        Streamlit's HTML sanitizer silently strips !important out of inline
+        style attributes, which was making this wordmark invisible against
+        the dark navbar (see the same fix in main.py's topbar). */
+        div.st-key-guest_topbar .dealradar-logo-name {
+            color: white !important;
+        }
         </style>
     """, unsafe_allow_html=True)
 
@@ -81,7 +88,7 @@ def render_guest_landing():
                             <circle cx="17" cy="7" r="1.4" fill="white" stroke="none" />
                         </svg>
                     </div>
-                    <span style='font-size: 16px; font-weight: 700; color: white !important;'>DealRadar</span>
+                    <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
                 </div>
             """, unsafe_allow_html=True)
         with col_signin:
