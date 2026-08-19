@@ -336,6 +336,28 @@ def init_db():
             except sqlite3.OperationalError:
                 pass
 
+        # Migration: category support (real_estate / cars) so DealRadar can
+        # scan for deals beyond property listings. NULL/"real_estate" on
+        # existing rows is exactly how a pre-category search is told apart
+        # from a new one - see roles.py-style NULL-means-legacy pattern used
+        # for state/cities_json/zip_code above. The car_* columns are unused
+        # (NULL) for real_estate searches and vice versa for property_type/
+        # min_beds - one table, category-scoped columns, rather than two
+        # separate tables, since every other part of this feature (saved-
+        # search limits, the Modify/Decommission grids, scheduling) is
+        # already built around "one row per saved search" regardless of type.
+        for column, col_type in [
+            ("category", "TEXT"),
+            ("car_make", "TEXT"),
+            ("car_model", "TEXT"),
+            ("car_min_year", "INTEGER"),
+            ("car_max_mileage", "INTEGER"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE reports ADD COLUMN {column} {col_type}")
+            except sqlite3.OperationalError:
+                pass
+
         # Caches city/state -> lat/lon lookups from the geocoder so the
         # location picker's map and repeated scans of the same saved search
         # don't re-hit Nominatim every time.
@@ -1610,19 +1632,27 @@ def create_super_user_admin(email, password, role="admin"):
         conn.close()
 
 def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
-                        state=None, cities_json=None, zip_code=None):
+                        state=None, cities_json=None, zip_code=None, category=None,
+                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None):
     """`state`/`cities_json`/`zip_code` are the new structured location
     picker's fields (see location_data.py); left as None for callers that
     still only have a free-text location string (e.g. the legacy path, or
     the quick "My First Search" seeded at registration), so those rows stay
-    correctly detectable as "legacy" (NULL state) by the scan handler."""
+    correctly detectable as "legacy" (NULL state) by the scan handler.
+
+    `category` is None/"real_estate" for every search created before the
+    cars category existed, or "cars" for one built from the car-criteria
+    form - car_* fields are only ever set together with category="cars";
+    property_type/min_beds stay whatever the caller passes (car searches
+    pass p_type=None, beds=0) since they're meaningless for that category."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (int(user_id), name, loc, int(price), int(beds), p_type, email, s_time, state, cities_json, zip_code))
+            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (int(user_id), name, loc, int(price), int(beds), p_type, email, s_time, state, cities_json, zip_code,
+              category, car_make, car_model, car_min_year, car_max_mileage))
         conn.commit()
     finally:
         conn.close()

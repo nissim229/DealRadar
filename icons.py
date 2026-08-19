@@ -127,6 +127,15 @@ _PATHS = {
         <path d="M3.5 12h2.3" /><path d="M18.2 12h2.3" />
         <path d="m6.1 17.9 1.6-1.6" /><path d="m16.3 7.7 1.6-1.6" />
     """,
+    "car": """
+        <path d="M5 16.5v-4l1.8-4.3A2 2 0 0 1 8.6 7h6.8a2 2 0 0 1 1.8 1.2L19 12.5v4" />
+        <path d="M5 16.5h14" />
+        <path d="M5 16.5v2a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-2" />
+        <path d="M16 16.5v2a1 1 0 0 0 1 1h1a1 1 0 0 0 1-1v-2" />
+        <circle cx="8" cy="16.5" r="1.4" fill="currentColor" stroke="none" />
+        <circle cx="16" cy="16.5" r="1.4" fill="currentColor" stroke="none" />
+        <path d="M5 12.5h14" />
+    """,
 }
 
 

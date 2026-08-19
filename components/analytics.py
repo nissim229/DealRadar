@@ -9,9 +9,11 @@ from datetime import datetime, timedelta
 from underwriting import compute_deal_metrics, GRADE_STYLES, render_deal_badge
 from pdf_export import generate_pdf_download_link
 from components.property_card import render_property_card
+from components.car_card import render_car_card
 from components import pricing
 import plan_limits
 import roles
+import car_engine
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
@@ -332,11 +334,36 @@ def _render_scan_action(raw_profiles):
             conn = sqlite3.connect(db.DB_NAME)
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code FROM reports WHERE user_id=? AND profile_name=?",
+                "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage "
+                "FROM reports WHERE user_id=? AND profile_name=?",
                 (int(st.session_state.user_id), selected_profile)
             )
             p_row = cursor.fetchone()
             conn.close()
+
+            # Cars category: mock listings only for now (see car_engine.py's
+            # module docstring) - deliberately skipped from the real-estate
+            # pipeline below (run_agent_workflow's written report, history
+            # log's lat/long-shaped coords, deal-found email) rather than
+            # bent to fit a shape built for property listings. Results are
+            # shown directly, not persisted to history, until this category
+            # gets its own real backing data and it's worth designing that
+            # storage properly.
+            if p_row and p_row[7] == "cars":
+                car_listings = car_engine.generate_mock_car_listings(
+                    make=p_row[8], model=p_row[9], min_year=p_row[10], max_price=int(p_row[2]),
+                    max_mileage=p_row[11], zip_code=p_row[6], count=6,
+                )
+                st.session_state.active_scanned_car_listings = car_listings
+                st.session_state.active_scanned_profile = selected_profile
+                st.session_state.active_scanned_category = "cars"
+                st.session_state.active_scanned_report = None
+                st.session_state.active_scanned_coords = None
+                st.success("Scan complete!")
+                st.rerun()
+                return
+
+            st.session_state.active_scanned_category = "real_estate"
 
             profile_location = str(p_row[0]) if p_row else "Unknown"
             profile_type = str(p_row[1]) if p_row else "Multi-Family"
@@ -1075,9 +1102,44 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
+def _render_car_scan_results(car_listings, profile_name):
+    st.markdown("---")
+    st.info(
+        ":material/science: **Preview category** - these are mock listings, not a live feed. "
+        "Deal grading here compares each listing's price to an estimated market value based on its year, mileage, and model.",
+    )
+    st.markdown(f"### :material/directions_car: {profile_name} — {len(car_listings)} {'Match' if len(car_listings) == 1 else 'Matches'}")
+
+    best = max(car_listings, key=lambda c: car_engine.compute_car_deal_metrics(c["price"], c["market_value"])["pct_below_market"])
+    best_metrics = car_engine.compute_car_deal_metrics(best["price"], best["market_value"])
+    if best_metrics["pct_below_market"] > 0:
+        st.markdown(f"""
+            <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;'>
+                <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
+                <span style='font-weight:700; color:#065f46;'>Best deal in this scan:</span>
+                <span style='color:#065f46;'>{best_metrics['pct_below_market']:.0f}% below market on the {best['year']} {best['make']} {best['model']}</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    row_indices = list(range(len(car_listings)))
+    for pair_start in range(0, len(row_indices), 3):
+        pair_indices = row_indices[pair_start:pair_start + 3]
+        grid_cols = st.columns(3)
+        for slot, idx in enumerate(pair_indices):
+            listing = car_listings[idx]
+            metrics = car_engine.compute_car_deal_metrics(listing["price"], listing["market_value"])
+            with grid_cols[slot]:
+                render_car_card(idx, listing, metrics, "car_scan")
+
+
 def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
     if raw_profiles:
-        if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
+        if st.session_state.get("active_scanned_category") == "cars" and st.session_state.get("active_scanned_car_listings"):
+            _render_car_scan_results(
+                st.session_state.active_scanned_car_listings,
+                st.session_state.get("active_scanned_profile", "Your Search"),
+            )
+        elif "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
             _render_scan_results(
                 st.session_state.active_scanned_report,
                 st.session_state.get("active_scanned_profile", "Your Search"),
