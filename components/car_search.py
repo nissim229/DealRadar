@@ -52,22 +52,30 @@ def _inject_css():
     """, unsafe_allow_html=True)
 
 
-def _render_hero():
-    with st.container(key="car_search_hero"):
-        st.markdown(f"""
-            <div style='text-align:center; max-width:760px; margin:0 auto;'>
-                <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
-                    <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
-                                border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("car", size=24, color="white")}
-                    </div>
-                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Find a Used Car</div>
+def _render_hero_title(title, subtitle, icon_name="car"):
+    """Just the title/icon/subtitle markup - deliberately doesn't wrap its
+    own st.container(key="car_search_hero"), unlike the old _render_hero,
+    so the caller can nest the action card (and, on the search page, the
+    scan-loading radar) *inside* the same dark hero block - matching how
+    analytics.py's dashboard_hero wraps its action card + stat cards, so
+    the two categories look structurally identical to a customer instead
+    of Cars' search form floating in the light page body below a
+    separate, shorter hero. See [[brand-design-admin-panel]]/
+    [[cyber-radar-button-and-loading]] for why this consistency matters."""
+    st.markdown(f"""
+        <div style='text-align:center; max-width:760px; margin:0 auto;'>
+            <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
+                <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
+                            border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
+                    {svg_icon(icon_name, size=24, color="white")}
                 </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>
-                    Search live inventory across dealers - no saved profile required. Just tell us what you're looking for.
-                </div>
+                <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>{title}</div>
             </div>
-        """, unsafe_allow_html=True)
+            <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>
+                {subtitle}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 
 def _run_search(make, model, min_year, max_price, max_mileage, zip_code, radius, use_live):
@@ -125,56 +133,71 @@ def _criteria_label(make, model, min_year, max_price, zip_code, radius):
 
 def render_car_search_page():
     _inject_css()
-    _render_hero()
 
-    # Make -> Model dependent dropdown deliberately lives outside any
-    # st.form() - a form only reruns on submit, so a dependent selectbox
-    # inside one would keep showing the *previous* Make's model options
-    # after picking a new Make (see [[cars-category-feature]]).
-    with st.container(key="car_search_action_card"):
-        row1 = st.columns(4)
-        with row1[0]:
-            make = st.selectbox("Make", ["Any make"] + car_engine.get_available_makes(user_id=st.session_state.user_id), key="car_search_make")
-        with row1[1]:
-            model_options = ["Any model"] + (car_engine.get_available_models(make, user_id=st.session_state.user_id) if make != "Any make" else [])
-            if st.session_state.get("car_search_model") not in model_options:
-                st.session_state.car_search_model = "Any model"
-            model = st.selectbox("Model", model_options, key="car_search_model")
-        with row1[2]:
-            min_year = st.number_input("Year (min)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_min_year", 2018), step=1, key="car_search_min_year")
-        with row1[3]:
-            max_price = st.number_input("Max price ($)", min_value=1000, value=st.session_state.get("car_search_max_price", 30000), step=1000, key="car_search_max_price")
+    # The action card and the scan-loading radar are nested *inside* this
+    # same dark hero container, not separate blocks in the light page body
+    # below a short hero - matching analytics.py's dashboard_hero, which
+    # wraps its action card + stat cards the same way. Cars used to be its
+    # own shorter hero with the white search card merely overlapping its
+    # bottom edge (a negative margin trick, not real nesting), which made
+    # the category look structurally different from Properties - a real
+    # inconsistency the user caught and asked to have unified so customers
+    # don't get a different mental model per category.
+    with st.container(key="car_search_hero"):
+        _render_hero_title(
+            "Find a Used Car",
+            "Search live inventory across dealers - no saved profile required. Just tell us what you're looking for.",
+            icon_name="car",
+        )
 
-        row2 = st.columns(4)
-        with row2[0]:
-            max_mileage = st.number_input("Max mileage", min_value=0, value=st.session_state.get("car_search_max_mileage", 80000), step=5000, key="car_search_max_mileage")
-        with row2[1]:
-            zip_code = st.text_input("ZIP code", value=st.session_state.get("car_search_zip", ""), placeholder="e.g., 60614", key="car_search_zip")
-        with row2[2]:
-            radius = st.selectbox("Radius (mi)", [25, 50, 100, 250], index=[25, 50, 100, 250].index(st.session_state.get("car_search_radius", 50)), key="car_search_radius")
-        with row2[3]:
-            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-            search_clicked = st.button(":material/travel_explore: Search", type="primary", use_container_width=True, key="car_search_btn")
+        # Make -> Model dependent dropdown deliberately lives outside any
+        # st.form() - a form only reruns on submit, so a dependent selectbox
+        # inside one would keep showing the *previous* Make's model options
+        # after picking a new Make (see [[cars-category-feature]]).
+        with st.container(key="car_search_action_card"):
+            row1 = st.columns(4)
+            with row1[0]:
+                make = st.selectbox("Make", ["Any make"] + car_engine.get_available_makes(user_id=st.session_state.user_id), key="car_search_make")
+            with row1[1]:
+                model_options = ["Any model"] + (car_engine.get_available_models(make, user_id=st.session_state.user_id) if make != "Any make" else [])
+                if st.session_state.get("car_search_model") not in model_options:
+                    st.session_state.car_search_model = "Any model"
+                model = st.selectbox("Model", model_options, key="car_search_model")
+            with row1[2]:
+                min_year = st.number_input("Year (min)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_min_year", 2018), step=1, key="car_search_min_year")
+            with row1[3]:
+                max_price = st.number_input("Max price ($)", min_value=1000, value=st.session_state.get("car_search_max_price", 30000), step=1000, key="car_search_max_price")
 
-        test_clicked = False
-        if roles.is_staff(st.session_state.user_role):
-            test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn",
-                                      help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
+            row2 = st.columns(4)
+            with row2[0]:
+                max_mileage = st.number_input("Max mileage", min_value=0, value=st.session_state.get("car_search_max_mileage", 80000), step=5000, key="car_search_max_mileage")
+            with row2[1]:
+                zip_code = st.text_input("ZIP code", value=st.session_state.get("car_search_zip", ""), placeholder="e.g., 60614", key="car_search_zip")
+            with row2[2]:
+                radius = st.selectbox("Radius (mi)", [25, 50, 100, 250], index=[25, 50, 100, 250].index(st.session_state.get("car_search_radius", 50)), key="car_search_radius")
+            with row2[3]:
+                st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+                search_clicked = st.button(":material/travel_explore: Search", type="primary", use_container_width=True, key="car_search_btn")
 
-    if search_clicked or test_clicked:
-        # Same big radar-scope loading state as real estate's Run Live
-        # Scan (see scan_loading.py) - a car icon instead of a house, but
-        # otherwise identical mechanic/colors. try/finally so the
-        # placeholder still clears if _run_search raises, matching what
-        # st.spinner used to guarantee for free.
-        loading_placeholder = st.empty()
-        with loading_placeholder.container():
-            render_scan_loading_radar("cars")
-        try:
-            _run_search(make, model, min_year, max_price, max_mileage, zip_code.strip(), radius, use_live=not test_clicked)
-        finally:
-            loading_placeholder.empty()
-        st.rerun()
+            test_clicked = False
+            if roles.is_staff(st.session_state.user_role):
+                test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn",
+                                          help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
+
+        if search_clicked or test_clicked:
+            # Same big radar-scope loading state as real estate's Run Live
+            # Scan (see scan_loading.py) - a car icon instead of a house, but
+            # otherwise identical mechanic/colors. try/finally so the
+            # placeholder still clears if _run_search raises, matching what
+            # st.spinner used to guarantee for free.
+            loading_placeholder = st.empty()
+            with loading_placeholder.container():
+                render_scan_loading_radar("cars")
+            try:
+                _run_search(make, model, min_year, max_price, max_mileage, zip_code.strip(), radius, use_live=not test_clicked)
+            finally:
+                loading_placeholder.empty()
+            st.rerun()
 
     results = st.session_state.get("car_search_results")
     if results is None:
@@ -283,20 +306,11 @@ def _delete_saved_car_search_dialog():
 
 def render_saved_car_searches_page():
     with st.container(key="car_search_hero"):
-        st.markdown(f"""
-            <div style='text-align:center; max-width:760px; margin:0 auto;'>
-                <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
-                    <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
-                                border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("crosshair", size=24, color="white")}
-                    </div>
-                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Saved Searches</div>
-                </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>
-                    Searches you've bookmarked from Find a Car - re-run one anytime.
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
+        _render_hero_title(
+            "Saved Searches",
+            "Searches you've bookmarked from Find a Car - re-run one anytime.",
+            icon_name="crosshair",
+        )
     _inject_css()
 
     import sqlite3
