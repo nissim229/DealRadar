@@ -344,211 +344,218 @@ def _render_scan_action(raw_profiles, active_category):
             if st.button(":material/add_card: Buy Credits for real data", use_container_width=True, key="buy_credits_trigger_btn"):
                 pricing.render_pricing_dialog()
 
-    if run_clicked or test_clicked:
-        loading_placeholder = st.empty()
-        with loading_placeholder.container():
-            # "Cyber Radar House" loading state, round 3 - the first two
-            # rounds ported the *button's* look (a rectangular panel with
-            # a grid overlay + corner blips), but that's the wrong shape
-            # for this: the user's actual reference is a self-contained
-            # circular radar SCOPE (concentric rings, crosshair, a
-            # sweeping wedge, house icon glowing in the center core).
-            # Critically, the scope carries its own near-black fill -
-            # round 2's transparent panel looked "white" because this
-            # renders inside the white "Select Target Profile" card, not
-            # over the dark hero it was tested against. A self-contained
-            # dark circle has no such dependency on whatever it sits on.
-            # Same position/scale as the original pulsing-ring design
-            # (centered, text below in the app's normal on-white
-            # colors/tokens, not the radar's cyan, since that
-            # text sits on the white card, outside the dark scope).
-            st.markdown("""
-            <style>
-            @keyframes dealradar-radar-sweep {
-                to { transform: translate(-50%, -50%) rotate(360deg); }
-            }
-            .dealradar-scan-wrap {
-                display: flex; flex-direction: column; align-items: center; justify-content: center;
-                padding: 30px 0;
-            }
-            .dealradar-radar-scope {
-                position: relative;
-                width: 110px; height: 110px;
-                border-radius: 50%;
-                margin-bottom: 16px;
-                overflow: hidden;
-                background:
-                    repeating-radial-gradient(circle at center, transparent 0, transparent 17px, rgba(34, 211, 238, 0.22) 18px, transparent 19px),
-                    radial-gradient(circle at center, #111c2e 0%, #0a0f1a 100%);
-                box-shadow: 0 0 20px rgba(34, 211, 238, 0.25), inset 0 0 20px rgba(0, 0, 0, 0.5);
-            }
-            .dealradar-radar-scope::before, .dealradar-radar-scope::after {
-                content: ""; position: absolute; background: rgba(34, 211, 238, 0.15);
-            }
-            .dealradar-radar-scope::before { top: 0; bottom: 0; left: 50%; width: 1px; }
-            .dealradar-radar-scope::after { left: 0; right: 0; top: 50%; height: 1px; }
-            .dealradar-radar-scope .sweep {
-                position: absolute; top: 50%; left: 50%;
-                width: 160px; height: 160px;
-                transform: translate(-50%, -50%);
-                background: conic-gradient(from 0deg, transparent 60%, rgba(34, 211, 238, 0.55) 100%);
-                animation: dealradar-radar-sweep 2.5s linear infinite;
-            }
-            .dealradar-radar-scope .core {
-                position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-                z-index: 10;
-                width: 46px; height: 46px; border-radius: 50%;
-                background: radial-gradient(circle at 35% 30%, #22d3ee, #0e7490);
-                box-shadow: 0 0 14px rgba(34, 211, 238, 0.8);
-                display: flex; align-items: center; justify-content: center;
-            }
-            .dealradar-radar-scope .core svg { width: 22px; height: 22px; color: #f0fdff; }
-            .dealradar-scan-title {
-                font-weight: 600; color: var(--radar-navy); font-size: 15px;
-            }
-            .dealradar-scan-sub {
-                color: var(--radar-text-muted); font-size: 13px; margin-top: 4px;
-            }
-            </style>
-            <div class="dealradar-scan-wrap">
-                <div class="dealradar-radar-scope">
-                    <span class="sweep"></span>
-                    <div class="core">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                        </svg>
-                    </div>
+    return selected_profile, run_clicked, test_clicked
+
+
+def _execute_scan(selected_profile, run_clicked, test_clicked):
+    """Runs the actual scan (credit deduction, DB lookup, engine calls,
+    history log, notification emails) and shows the loading radar while
+    it does. Deliberately called *after* the hero stat cards render (see
+    the caller), not from inside _render_scan_action alongside the
+    selectbox/buttons - the user wants the loading visual big and on the
+    dark hero background, positioned below the 3 cards, with the search
+    form staying visible the whole time (nothing hidden/replaced while
+    scanning). The 3 cards render from the *previous* scan's still-valid
+    session_state before this function ever runs, so they show up
+    immediately without waiting on this one."""
+    if not (run_clicked or test_clicked):
+        return
+    loading_placeholder = st.empty()
+    with loading_placeholder.container():
+        # "Cyber Radar House" loading state, round 4 - big, on the dark
+        # hero background (rounds 1-3 anchored it inside the white
+        # "Select Target Profile" card, which is why round 2's
+        # transparent background looked "white" - it was never on dark
+        # ground to begin with). Same rings/crosshair/sweep/glowing-core
+        # mechanic as before, scaled up (260px vs 110px) and using
+        # on-dark text tokens now that it sits on the hero, not the card.
+        st.markdown("""
+        <style>
+        @keyframes dealradar-radar-sweep {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        .dealradar-scan-wrap {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px 0 8px 0;
+        }
+        .dealradar-radar-scope {
+            position: relative;
+            width: 260px; height: 260px;
+            border-radius: 50%;
+            margin-bottom: 22px;
+            overflow: hidden;
+            background:
+                repeating-radial-gradient(circle at center, transparent 0, transparent 39px, rgba(34, 211, 238, 0.22) 40px, transparent 41px),
+                radial-gradient(circle at center, #111c2e 0%, #0a0f1a 100%);
+            box-shadow: 0 0 45px rgba(34, 211, 238, 0.3), inset 0 0 40px rgba(0, 0, 0, 0.5);
+        }
+        .dealradar-radar-scope::before, .dealradar-radar-scope::after {
+            content: ""; position: absolute; background: rgba(34, 211, 238, 0.18);
+        }
+        .dealradar-radar-scope::before { top: 0; bottom: 0; left: 50%; width: 1px; }
+        .dealradar-radar-scope::after { left: 0; right: 0; top: 50%; height: 1px; }
+        .dealradar-radar-scope .sweep {
+            position: absolute; top: 50%; left: 50%;
+            width: 380px; height: 380px;
+            transform: translate(-50%, -50%);
+            background: conic-gradient(from 0deg, transparent 60%, rgba(34, 211, 238, 0.55) 100%);
+            animation: dealradar-radar-sweep 2.5s linear infinite;
+        }
+        .dealradar-radar-scope .core {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 10;
+            width: 92px; height: 92px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 30%, #22d3ee, #0e7490);
+            box-shadow: 0 0 26px rgba(34, 211, 238, 0.85);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .dealradar-radar-scope .core svg { width: 42px; height: 42px; color: #f0fdff; }
+        .dealradar-scan-title {
+            font-weight: 700; color: white; font-size: 18px;
+        }
+        .dealradar-scan-sub {
+            color: var(--radar-text-on-dark-muted); font-size: 14px; margin-top: 4px;
+        }
+        </style>
+        <div class="dealradar-scan-wrap">
+            <div class="dealradar-radar-scope">
+                <span class="sweep"></span>
+                <div class="core">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                    </svg>
                 </div>
-                <div class="dealradar-scan-title">Scanning the market...</div>
-                <div class="dealradar-scan-sub">Matching properties against your criteria</div>
             </div>
-            """, unsafe_allow_html=True)
+            <div class="dealradar-scan-title">Scanning the market...</div>
+            <div class="dealradar-scan-sub">Matching properties against your criteria</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        try:
-            # Credits are the real-data currency, independent of plan tier -
-            # a scan with credits available spends one and pulls real
-            # RentCast listings; a scan with none left still runs (never
-            # blocked) but falls back to preview/sample data, same as a
-            # Free-plan or guest search. This lets a user who's exhausted
-            # their free credits keep experiencing the tool - grading,
-            # underwriting, the full UI - without ever hitting a wall,
-            # while still giving them a clear reason to buy more credits
-            # (real listings) rather than a hard stop.
-            allow_live = (not test_clicked) and (roles.is_admin_or_above(st.session_state.user_role) or st.session_state.user_credits > 0)
-            if allow_live and not roles.is_admin_or_above(st.session_state.user_role):
-                db.deduct_credit(st.session_state.user_id)
-                _credits_before = st.session_state.user_credits
-                st.session_state.user_credits = max(0, st.session_state.user_credits - 1)
-                # Fires once, exactly when the balance crosses into 0 - not
-                # on every subsequent 0-credit scan, since that would mean
-                # an email every single time an out-of-credits user keeps
-                # using the app's still-available preview mode.
-                if _credits_before == 1 and st.session_state.user_settings.get("notify_low_credits"):
-                    email_utils.send_low_credits_email(st.session_state.user_email)
-            st.session_state.last_scan_was_preview = not allow_live
-            st.session_state.last_scan_was_test = test_clicked
+    try:
+        # Credits are the real-data currency, independent of plan tier -
+        # a scan with credits available spends one and pulls real
+        # RentCast listings; a scan with none left still runs (never
+        # blocked) but falls back to preview/sample data, same as a
+        # Free-plan or guest search. This lets a user who's exhausted
+        # their free credits keep experiencing the tool - grading,
+        # underwriting, the full UI - without ever hitting a wall,
+        # while still giving them a clear reason to buy more credits
+        # (real listings) rather than a hard stop.
+        allow_live = (not test_clicked) and (roles.is_admin_or_above(st.session_state.user_role) or st.session_state.user_credits > 0)
+        if allow_live and not roles.is_admin_or_above(st.session_state.user_role):
+            db.deduct_credit(st.session_state.user_id)
+            _credits_before = st.session_state.user_credits
+            st.session_state.user_credits = max(0, st.session_state.user_credits - 1)
+            # Fires once, exactly when the balance crosses into 0 - not
+            # on every subsequent 0-credit scan, since that would mean
+            # an email every single time an out-of-credits user keeps
+            # using the app's still-available preview mode.
+            if _credits_before == 1 and st.session_state.user_settings.get("notify_low_credits"):
+                email_utils.send_low_credits_email(st.session_state.user_email)
+        st.session_state.last_scan_was_preview = not allow_live
+        st.session_state.last_scan_was_test = test_clicked
 
-            import sqlite3
-            conn = sqlite3.connect(db.DB_NAME)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code "
-                "FROM reports WHERE user_id=? AND profile_name=?",
-                (int(st.session_state.user_id), selected_profile)
-            )
-            p_row = cursor.fetchone()
-            conn.close()
+        import sqlite3
+        conn = sqlite3.connect(db.DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code "
+            "FROM reports WHERE user_id=? AND profile_name=?",
+            (int(st.session_state.user_id), selected_profile)
+        )
+        p_row = cursor.fetchone()
+        conn.close()
 
-            profile_location = str(p_row[0]) if p_row else "Unknown"
-            profile_type = str(p_row[1]) if p_row else "Multi-Family"
-            profile_max_price = int(p_row[2]) if p_row else 750000
-            profile_min_beds = int(p_row[3]) if p_row else 3
-            profile_state = p_row[4] if p_row else None
-            profile_cities_json = p_row[5] if p_row else None
-            profile_zip = p_row[6] if p_row else None
+        profile_location = str(p_row[0]) if p_row else "Unknown"
+        profile_type = str(p_row[1]) if p_row else "Multi-Family"
+        profile_max_price = int(p_row[2]) if p_row else 750000
+        profile_min_beds = int(p_row[3]) if p_row else 3
+        profile_state = p_row[4] if p_row else None
+        profile_cities_json = p_row[5] if p_row else None
+        profile_zip = p_row[6] if p_row else None
 
-            if profile_state is None:
-                # Legacy search, saved before the state/city picker existed
-                # (or the auto-seeded "My First Search" from registration) -
-                # unchanged behavior, exactly as it worked before this change.
-                raw_listings_data = engine.fetch_live_listings(profile_location, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id)
+        if profile_state is None:
+            # Legacy search, saved before the state/city picker existed
+            # (or the auto-seeded "My First Search" from registration) -
+            # unchanged behavior, exactly as it worked before this change.
+            raw_listings_data = engine.fetch_live_listings(profile_location, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id)
+        else:
+            selected_cities = json.loads(profile_cities_json) if profile_cities_json else []
+            targets = []
+            if selected_cities:
+                for city in selected_cities:
+                    coords = engine.resolve_city_coords(city, profile_state)
+                    if coords:
+                        targets.append({"lat": coords[0], "lon": coords[1], "label": f"{city}, {profile_state}", "city_name": city})
+            elif profile_zip:
+                geo_result = engine.validate_and_geocode_location(f"{profile_zip}, {profile_state}")
+                if geo_result:
+                    targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"{profile_zip}, {profile_state}", "city_name": None})
             else:
-                selected_cities = json.loads(profile_cities_json) if profile_cities_json else []
-                targets = []
-                if selected_cities:
-                    for city in selected_cities:
-                        coords = engine.resolve_city_coords(city, profile_state)
-                        if coords:
-                            targets.append({"lat": coords[0], "lon": coords[1], "label": f"{city}, {profile_state}", "city_name": city})
-                elif profile_zip:
-                    geo_result = engine.validate_and_geocode_location(f"{profile_zip}, {profile_state}")
-                    if geo_result:
-                        targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"{profile_zip}, {profile_state}", "city_name": None})
-                else:
-                    geo_result = engine.validate_and_geocode_location(profile_state)
-                    if geo_result:
-                        targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"Any city in {profile_state}", "city_name": None})
-                raw_listings_data = engine.fetch_live_listings_for_targets(targets, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id) if targets else []
-            report_result = engine.run_agent_workflow(selected_profile, st.session_state.user_id, raw_listings=raw_listings_data)
+                geo_result = engine.validate_and_geocode_location(profile_state)
+                if geo_result:
+                    targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"Any city in {profile_state}", "city_name": None})
+            raw_listings_data = engine.fetch_live_listings_for_targets(targets, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id) if targets else []
+        report_result = engine.run_agent_workflow(selected_profile, st.session_state.user_id, raw_listings=raw_listings_data)
 
-            coord_list = []
-            for listing in raw_listings_data:
-                if "latitude" in listing and "longitude" in listing:
-                    coord_list.append({
-                        "title": listing.get("title", "Asset Match"),
-                        "address": listing.get("address", ""),
-                        "price": listing.get("price", 0),
-                        "beds": listing.get("beds", 0),
-                        "baths": listing.get("baths", 0),
-                        "sqft": listing.get("sqft"),
-                        "property_type": listing.get("property_type"),
-                        "latitude": listing["latitude"],
-                        "longitude": listing["longitude"],
-                        "mls_number": listing.get("mls_number"),
-                        "mls_name": listing.get("mls_name"),
-                    })
+        coord_list = []
+        for listing in raw_listings_data:
+            if "latitude" in listing and "longitude" in listing:
+                coord_list.append({
+                    "title": listing.get("title", "Asset Match"),
+                    "address": listing.get("address", ""),
+                    "price": listing.get("price", 0),
+                    "beds": listing.get("beds", 0),
+                    "baths": listing.get("baths", 0),
+                    "sqft": listing.get("sqft"),
+                    "property_type": listing.get("property_type"),
+                    "latitude": listing["latitude"],
+                    "longitude": listing["longitude"],
+                    "mls_number": listing.get("mls_number"),
+                    "mls_name": listing.get("mls_name"),
+                })
 
-            coord_string_data = json.dumps(coord_list)
-            db.save_history_log(st.session_state.user_id, selected_profile, profile_location, report_result, coord_string_data, was_live=allow_live)
+        coord_string_data = json.dumps(coord_list)
+        db.save_history_log(st.session_state.user_id, selected_profile, profile_location, report_result, coord_string_data, was_live=allow_live)
 
-            # Deal-found email - only for a real live scan (never a mock/
-            # preview scan, since alerting someone about a fake randomly-
-            # generated listing would be actively misleading) and only if
-            # opted in via Settings. Graded against the user's saved default
-            # assumptions (not whatever the sidebar happens to show right
-            # now) so the trigger is stable regardless of in-session sidebar
-            # fiddling.
-            if allow_live and st.session_state.user_settings.get("notify_deal_found") and coord_list:
-                _d = st.session_state.user_settings
-                _excellent = [
-                    # Same 0.7%-of-price rule-of-thumb rent estimate used
-                    # elsewhere in this app when no real income figure is
-                    # available (see generate_offline_mock_report) - a flat
-                    # dollar rent would badly misgrade anything far from
-                    # that number.
-                    compute_deal_metrics(p["price"], p["price"] * 0.007, _d["default_vacancy_pct"], _d["default_tax_rate"],
-                                          _d["default_insurance_rate"], _d["default_down_pct"], _d["default_interest_rate"],
-                                          _d["default_target_yield"])
-                    for p in coord_list
-                ]
-                _excellent = [m for m in _excellent if m["grade"] == "excellent"]
-                if _excellent:
-                    email_utils.send_deal_found_email(
-                        st.session_state.user_email, selected_profile, len(_excellent),
-                        max(m["coc"] for m in _excellent),
-                    )
+        # Deal-found email - only for a real live scan (never a mock/
+        # preview scan, since alerting someone about a fake randomly-
+        # generated listing would be actively misleading) and only if
+        # opted in via Settings. Graded against the user's saved default
+        # assumptions (not whatever the sidebar happens to show right
+        # now) so the trigger is stable regardless of in-session sidebar
+        # fiddling.
+        if allow_live and st.session_state.user_settings.get("notify_deal_found") and coord_list:
+            _d = st.session_state.user_settings
+            _excellent = [
+                # Same 0.7%-of-price rule-of-thumb rent estimate used
+                # elsewhere in this app when no real income figure is
+                # available (see generate_offline_mock_report) - a flat
+                # dollar rent would badly misgrade anything far from
+                # that number.
+                compute_deal_metrics(p["price"], p["price"] * 0.007, _d["default_vacancy_pct"], _d["default_tax_rate"],
+                                      _d["default_insurance_rate"], _d["default_down_pct"], _d["default_interest_rate"],
+                                      _d["default_target_yield"])
+                for p in coord_list
+            ]
+            _excellent = [m for m in _excellent if m["grade"] == "excellent"]
+            if _excellent:
+                email_utils.send_deal_found_email(
+                    st.session_state.user_email, selected_profile, len(_excellent),
+                    max(m["coc"] for m in _excellent),
+                )
 
-            st.session_state.active_scanned_report = report_result
-            st.session_state.active_scanned_profile = selected_profile
-            st.session_state.active_scanned_coords = coord_string_data
-            st.session_state.focused_card_index = None
+        st.session_state.active_scanned_report = report_result
+        st.session_state.active_scanned_profile = selected_profile
+        st.session_state.active_scanned_coords = coord_string_data
+        st.session_state.focused_card_index = None
 
-            st.success("Scan complete!")
-            st.rerun()
-        except Exception:
-            st.error("Something went wrong running this scan. Please try again.")
-        finally:
-            loading_placeholder.empty()
+        st.success("Scan complete!")
+        st.rerun()
+    except Exception:
+        st.error("Something went wrong running this scan. Please try again.")
+    finally:
+        loading_placeholder.empty()
 
 
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
@@ -1704,9 +1711,10 @@ def render_analytics_dashboard():
             </div>
         """, unsafe_allow_html=True)
 
+        selected_profile, run_clicked, test_clicked = None, False, False
         with st.container(key="dashboard_action_card"):
             if raw_profiles:
-                _render_scan_action(raw_profiles, active_category)
+                selected_profile, run_clicked, test_clicked = _render_scan_action(raw_profiles, active_category)
             else:
                 render_empty_state(
                     "crosshair", "Set up your first search",
@@ -1750,6 +1758,14 @@ def render_analytics_dashboard():
              "default_row": 1, "default_col": 3, "default_span": 1},
         ]
         render_dashboard_grid("customer", hero_cards, default_grid_columns=3)
+
+        # Runs (and shows the loading radar) here, after the 3 stat cards
+        # above - not from inside _render_scan_action alongside the
+        # selectbox/buttons. Those cards render from the *previous*
+        # scan's session_state, unaffected by whether a new one is about
+        # to start, so they're already on screen by the time this either
+        # no-ops (run_clicked/test_clicked both False) or kicks off a scan.
+        _execute_scan(selected_profile, run_clicked, test_clicked)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
