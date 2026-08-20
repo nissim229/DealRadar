@@ -1064,6 +1064,15 @@ DEFAULT_BRAND_SETTINGS = {
     "logo_html_real_estate": "",
     "logo_html_cars": "",
     "logo_html_guest": "",
+    # Saved logo presets per slot - a library of {"name", "html"} dicts an
+    # admin can build up over time and re-apply later without retyping,
+    # separate from logo_html_* above (which is only ever the single
+    # currently-ACTIVE override). Applying a preset copies its html into
+    # the matching logo_html_* field; presets themselves are never
+    # rendered directly.
+    "logo_presets_real_estate": [],
+    "logo_presets_cars": [],
+    "logo_presets_guest": [],
 }
 
 def get_brand_settings():

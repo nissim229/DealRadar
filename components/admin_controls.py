@@ -703,6 +703,105 @@ def _render_design_standards_tab():
         st.markdown(current_content)
 
 
+def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_wrap_fn, inject_css_fn, brand, nonce):
+    """One category's logo editor: textarea + explicit preview button +
+    live preview + a saved-presets library (save/apply/delete). Shared by
+    all 3 slots (real_estate/cars/guest) in _render_brand_design_tab so
+    the CRUD logic exists once, not three near-identical copies. Returns
+    the textarea's current value so the caller can include it when the
+    main "Save brand settings" button is clicked.
+
+    Preset Apply/Delete act immediately (their own save + rerun) rather
+    than waiting for the main Save button - "select from the saved logo"
+    should just work, not require a second click on an unrelated button.
+    The explicit preview button is redundant with the textarea's own
+    on-blur rerun (Streamlit already reruns - and re-syncs the textarea's
+    latest value - on any button click, including this one), but the user
+    asked for something visible to click before trusting what they typed,
+    so it's here even though the preview below is already always current
+    as of the last rerun."""
+    st.markdown(f"##### {slot_title}")
+    st.caption(help_text)
+
+    text_col, btn_col = st.columns([5, 1])
+    with text_col:
+        current_html = st.text_area(
+            f"{slot_title} HTML", value=brand.get(f"logo_html_{slot_key}", ""),
+            height=140, key=f"brand_logo_html_{slot_key}_{nonce}",
+            placeholder="Leave blank for the built-in default...", label_visibility="collapsed",
+        )
+    with btn_col:
+        st.button(":material/visibility: Preview", key=f"brand_logo_preview_btn_{slot_key}", use_container_width=True)
+
+    st.caption("Preview")
+    preview_html = current_html.strip() or default_html_fn()
+    if inject_css_fn:
+        inject_css_fn()
+    st.markdown(preview_wrap_fn(preview_html), unsafe_allow_html=True)
+
+    st.markdown("###### Saved presets")
+    presets = brand.get(f"logo_presets_{slot_key}", [])
+    if presets:
+        for i, preset in enumerate(presets):
+            p_name_col, p_preview_col, p_apply_col, p_delete_col = st.columns([2, 3, 1, 1])
+            with p_name_col:
+                st.markdown(f"<div style='padding-top: 8px;'>{preset['name']}</div>", unsafe_allow_html=True)
+            with p_preview_col:
+                if inject_css_fn:
+                    inject_css_fn()
+                st.markdown(
+                    f"<div style='transform: scale(0.7); transform-origin: left center;'>{preview_wrap_fn(preset['html'])}</div>",
+                    unsafe_allow_html=True,
+                )
+            with p_apply_col:
+                if st.button(":material/check: Apply", key=f"brand_logo_preset_apply_{slot_key}_{i}", use_container_width=True):
+                    new_settings = dict(db.get_brand_settings())
+                    new_settings[f"logo_html_{slot_key}"] = preset["html"]
+                    db.save_brand_settings(new_settings)
+                    st.session_state.brand_logo_html_nonce = st.session_state.get("brand_logo_html_nonce", 0) + 1
+                    st.toast(f"Applied '{preset['name']}'.")
+                    st.rerun()
+            with p_delete_col:
+                if st.button(":material/delete:", key=f"brand_logo_preset_delete_{slot_key}_{i}", use_container_width=True):
+                    new_settings = dict(db.get_brand_settings())
+                    new_settings[f"logo_presets_{slot_key}"] = [p for j, p in enumerate(presets) if j != i]
+                    db.save_brand_settings(new_settings)
+                    st.toast(f"Deleted '{preset['name']}'.")
+                    st.rerun()
+    else:
+        st.caption("No saved presets yet - save the box above to build a library you can switch between later.")
+
+    # A separate nonce from the HTML textarea's - saving a preset should
+    # only clear the name box, not also wipe out whatever draft HTML the
+    # admin still has in the big textarea above (which isn't necessarily
+    # active yet and shouldn't disappear just because they saved a copy
+    # of it as a preset).
+    preset_name_nonce = st.session_state.setdefault(f"brand_logo_preset_name_nonce_{slot_key}", 0)
+    name_col, save_col = st.columns([3, 1])
+    with name_col:
+        preset_name = st.text_input(
+            "Preset name", key=f"brand_logo_preset_name_{slot_key}_{preset_name_nonce}", placeholder="e.g., Holiday logo",
+            label_visibility="collapsed",
+        )
+    with save_col:
+        if st.button(":material/save: Save as preset", key=f"brand_logo_preset_save_{slot_key}", use_container_width=True):
+            if not preset_name.strip():
+                st.error("Give this preset a name first.")
+            elif not current_html.strip():
+                st.error("Nothing to save - the box above is empty (that's just the built-in default).")
+            else:
+                new_settings = dict(db.get_brand_settings())
+                new_presets = list(new_settings.get(f"logo_presets_{slot_key}", []))
+                new_presets.append({"name": preset_name.strip(), "html": current_html.strip()})
+                new_settings[f"logo_presets_{slot_key}"] = new_presets
+                db.save_brand_settings(new_settings)
+                st.session_state[f"brand_logo_preset_name_nonce_{slot_key}"] = preset_name_nonce + 1
+                st.toast(f"Saved preset '{preset_name.strip()}'.")
+                st.rerun()
+
+    return current_html
+
+
 def _render_brand_design_tab():
     st.markdown("### Brand & Design")
     st.caption(
@@ -765,59 +864,48 @@ def _render_brand_design_tab():
     if brand["logo_data_uri"]:
         remove_logo = st.checkbox("Remove custom logo on save (revert to the built-in mark)", key="brand_logo_remove")
 
-    st.markdown("##### Category logo overrides")
+    st.markdown("##### Logo overrides")
     st.caption(
-        "The house/car badge lockup shown in the topbar is the default for each category - paste raw HTML "
-        "here to replace it entirely, per category. Leave blank to keep the default. Inline styles and this "
-        "app's CSS variables (e.g. `var(--radar-accent)`, `var(--radar-navy)`) work; Tailwind utility classes "
-        "don't, since this app doesn't load Tailwind - translate any Tailwind class to inline CSS first. "
-        "The preview below updates as soon as you leave the box (Ctrl+Enter or click away), before you save."
+        "Each of the app's 3 logo slots (Real Estate and Cars in the main topbar, Guest for the anonymous "
+        "landing page AND the Sign In/Register page, which share one logo) defaults to a coded badge - paste "
+        "raw HTML below to replace one entirely, or build a library of saved presets to switch between over "
+        "time. Leave the box blank to keep the built-in default. Inline styles and this app's CSS variables "
+        "(e.g. `var(--radar-accent)`, `var(--radar-navy)`) work; Tailwind utility classes don't, since this "
+        "app doesn't load Tailwind - translate any Tailwind class to inline CSS first."
     )
-    logo_html_col1, logo_html_col2 = st.columns(2)
-    logo_html_inputs = {}
-    for category_value, category_label, col in (
-        ("real_estate", "Real Estate logo HTML", logo_html_col1),
-        ("cars", "Cars logo HTML", logo_html_col2),
-    ):
-        with col:
-            logo_html_inputs[category_value] = st.text_area(
-                category_label, value=brand.get(f"logo_html_{category_value}", ""),
-                height=140, key=f"brand_logo_html_{category_value}_{logo_html_nonce}",
-                placeholder="Leave blank for the built-in default...",
-            )
-            st.caption("Preview")
-            # Reusing the real topbar's own class (not a fresh
-            # st.container(key=...), which would collide with the actual
-            # topbar's key) is what makes this an accurate, not
-            # approximate, preview - main.py's <style> block (already
-            # injected earlier in this same page render) targets
-            # `div.st-key-scoutai_topbar` by class, and CSS doesn't care
-            # whether that class came from Streamlit's own container
-            # machinery or a plain div in raw markdown.
-            preview_html = logo_html_inputs[category_value].strip() or topbar_logo.build_default_logo_html(category_value)
-            st.markdown(f"<div class='st-key-scoutai_topbar' style='border-radius: 8px;'>{preview_html}</div>", unsafe_allow_html=True)
 
-    st.markdown("##### Guest landing page logo")
-    st.caption(
-        "The anonymous/guest experience (before signing in) has its own logo, separate from the two above - "
-        "same override mechanism, blank keeps the built-in default."
+    def _scoutai_wrap(html):
+        # Reusing the real topbar's own class (not a fresh
+        # st.container(key=...), which would collide with the actual
+        # topbar's key) is what makes this an accurate, not approximate,
+        # preview - main.py's <style> block (already injected earlier in
+        # this same page render) targets `div.st-key-scoutai_topbar` by
+        # class, and CSS doesn't care whether that class came from
+        # Streamlit's own container machinery or a plain div in raw markdown.
+        return f"<div class='st-key-scoutai_topbar' style='border-radius: 8px;'>{html}</div>"
+
+    def _guest_wrap(html):
+        return f"<div style='background: var(--radar-navy); padding: 14px 20px; border-radius: 8px;'>{html}</div>"
+
+    real_estate_html = _render_logo_slot(
+        "real_estate", "Real Estate logo",
+        "Shown in the main topbar's Property view.",
+        lambda: topbar_logo.build_default_logo_html("real_estate"), _scoutai_wrap, None,
+        brand, logo_html_nonce,
     )
-    guest_logo_html_input = st.text_area(
-        "Guest Landing logo HTML", value=brand.get("logo_html_guest", ""),
-        height=140, key=f"brand_logo_html_guest_{logo_html_nonce}",
-        placeholder="Leave blank for the built-in default...",
+    st.markdown("---")
+    cars_html = _render_logo_slot(
+        "cars", "Cars logo",
+        "Shown in the main topbar's Cars view.",
+        lambda: topbar_logo.build_default_logo_html("cars"), _scoutai_wrap, None,
+        brand, logo_html_nonce,
     )
-    st.caption("Preview")
-    # The guest topbar's own CSS never loads on this (authenticated-only)
-    # admin page the way main.py's does, so topbar_logo.py's guest-logo
-    # styling is self-contained and injected right here instead of relying
-    # on a shared ancestor class - see build_default_guest_logo_html's
-    # module-level comment in topbar_logo.py.
-    guest_preview_html = guest_logo_html_input.strip() or topbar_logo.build_default_guest_logo_html()
-    topbar_logo.inject_guest_logo_css()
-    st.markdown(
-        f"<div style='background: var(--radar-navy); padding: 14px 20px; border-radius: 8px;'>{guest_preview_html}</div>",
-        unsafe_allow_html=True,
+    st.markdown("---")
+    guest_html = _render_logo_slot(
+        "guest", "Guest logo",
+        "Shown on the anonymous landing page and the Sign In/Register page (they share this one logo).",
+        topbar_logo.build_default_guest_logo_html, _guest_wrap, topbar_logo.inject_guest_logo_css,
+        brand, logo_html_nonce,
     )
 
     st.markdown("---")
@@ -829,9 +917,9 @@ def _render_brand_design_tab():
             new_settings["font_display"] = font_display
             new_settings["font_body"] = font_body
             new_settings["font_mono"] = font_mono
-            new_settings["logo_html_real_estate"] = logo_html_inputs["real_estate"].strip()
-            new_settings["logo_html_cars"] = logo_html_inputs["cars"].strip()
-            new_settings["logo_html_guest"] = guest_logo_html_input.strip()
+            new_settings["logo_html_real_estate"] = real_estate_html.strip()
+            new_settings["logo_html_cars"] = cars_html.strip()
+            new_settings["logo_html_guest"] = guest_html.strip()
             if remove_logo:
                 new_settings["logo_data_uri"] = ""
             elif uploaded_logo is not None:
@@ -847,7 +935,14 @@ def _render_brand_design_tab():
             st.rerun()
     with reset_col:
         if st.button(":material/restart_alt: Reset to defaults", use_container_width=True):
-            db.clear_brand_settings()
+            # Presets are a saved library the admin builds up over time,
+            # separate from what's currently ACTIVE - clear_brand_settings
+            # would delete the whole settings row (presets included), so
+            # reset everything else but carry the presets forward instead
+            # of wiping out a library just because the admin wanted the
+            # active color/fonts/logos back to default.
+            preserved_presets = {k: v for k, v in brand.items() if k.startswith("logo_presets_")}
+            db.save_brand_settings({**db.DEFAULT_BRAND_SETTINGS, **preserved_presets})
             # Widgets keep their session_state value across reruns once
             # touched, ignoring a changed `value=`/`index=` default - so
             # without this, the picker/dropdowns would keep showing the
