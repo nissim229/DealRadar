@@ -4,24 +4,53 @@ import agent_engine as engine
 import email_utils
 import google_oauth
 from icons import icon as svg_icon
+from topbar_logo import render_guest_logo_html
 
 # Local dev only - if this app is ever deployed to a real domain, the reset
 # link needs to point there instead of localhost.
 APP_BASE_URL = "http://localhost:8501"
 
 
-def _render_auth_header():
-    st.markdown(f"""
-        <div style='text-align: center; margin-bottom: var(--radar-space-6);'>
-            <div style='background: var(--radar-gradient-brand); width: 56px; height: 56px; border-radius: var(--radar-radius-md);
-                        display: flex; align-items: center; justify-content: center; margin: 0 auto var(--radar-space-4) auto;
-                        box-shadow: var(--radar-shadow-md);'>
-                {svg_icon("radar", size=28, color="white")}
-            </div>
-            <div style='font-family: var(--radar-font-display); font-size: var(--radar-text-3xl); font-weight: var(--radar-weight-black); color: var(--radar-navy);'>DealRadar</div>
-            <div style='margin-top: 4px; color: var(--radar-text-muted); font-size: var(--radar-text-md);'>Precision Deal Scanning for Real Estate Investors</div>
-        </div>
+def _render_auth_topbar():
+    """The dark navbar this page never had - it used to be just a bare
+    "Back to browsing" button floating above a plain, off-standard
+    icon+wordmark header (see the removed _render_auth_header). Now
+    carries the same guest logo lockup used on the landing page
+    (topbar_logo.render_guest_logo_html - "DEAL RADAR GUEST", admin-
+    overridable from Brand & Design), so a visitor sees one consistent
+    brand mark across guest landing -> sign in/register -> the app
+    itself, instead of a different logo treatment per page."""
+    st.markdown("""
+        <style>
+        div.st-key-auth_topbar {
+            background-color: var(--radar-navy);
+            padding: 14px 28px;
+            margin-bottom: 32px;
+        }
+        div.st-key-auth_topbar button {
+            background-color: transparent !important;
+            color: #cbd5e1 !important;
+            border: 1px solid var(--radar-navy-light) !important;
+            font-weight: 500 !important;
+            white-space: nowrap !important;
+        }
+        div.st-key-auth_topbar button p {
+            white-space: nowrap !important;
+        }
+        div.st-key-auth_topbar button:hover {
+            border-color: rgba(var(--radar-accent-rgb), 0.4) !important;
+            color: white !important;
+        }
+        </style>
     """, unsafe_allow_html=True)
+    with st.container(key="auth_topbar"):
+        col_logo, col_spacer, col_back = st.columns([2, 2.5, 1.5])
+        with col_logo:
+            render_guest_logo_html()
+        with col_back:
+            if st.button("← Back to browsing", key="auth_back_to_browsing_btn", use_container_width=True):
+                st.session_state.show_login_form = False
+                st.rerun()
 
 
 def _inject_card_styles():
@@ -196,14 +225,13 @@ def handle_google_oauth_callback(code):
 
 
 def render_auth_portal():
+    _render_auth_topbar()
     _inject_card_styles()
     if "prefill_register_email" in st.session_state:
         st.session_state.auth_email_input = st.session_state.pop("prefill_register_email")
 
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        _render_auth_header()
-
         with st.container(key="auth_card"):
             if st.session_state.get("show_forgot_password_form"):
                 _render_forgot_password_form()

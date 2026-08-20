@@ -92,9 +92,10 @@ elif (oauth_code or st.session_state.get("google_pending_signup")) and not st.se
     handle_google_oauth_callback(oauth_code)
 elif not st.session_state.authenticated:
     if st.session_state.show_login_form:
-        if st.button("← Back to browsing"):
-            st.session_state.show_login_form = False
-            st.rerun()
+        # render_auth_portal() now renders its own dark navbar (logo +
+        # "Back to browsing") - see components/auth_portal.py's
+        # _render_auth_topbar - matching the standard navbar every other
+        # page has instead of a bare, unstyled button.
         render_auth_portal()
     else:
         render_guest_landing()
