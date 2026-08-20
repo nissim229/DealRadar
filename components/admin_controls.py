@@ -496,7 +496,15 @@ def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _r
     dashboard_cards.append({"id": "autodev_usage", "title": "Auto.dev Usage", "render": _render_autodev_card,
                              "default_row": 2, "default_col": 1, "default_span": 1})
 
-    render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4)
+    # A fixed card_height (not just the same span-derived width every
+    # card already got) is what actually makes all 1x1 cards land at the
+    # same size regardless of content - the zero-credit card's list is
+    # variable-length (0 to N users), which was the actual case that
+    # broke the row's rhythm; overflow-y:auto lets a long list scroll
+    # inside its own card instead of growing it. 300px comfortably fits
+    # the tallest card (signup_trend's header + 180px chart + padding)
+    # with a little room to spare.
+    render_dashboard_grid("admin", dashboard_cards, default_grid_columns=4, card_height=300)
 
 
 def _render_api_usage_tab(scan_breakdown):

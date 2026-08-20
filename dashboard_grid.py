@@ -18,7 +18,7 @@ import streamlit as st
 import database as db
 
 
-def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4):
+def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4, card_height=None):
     """cards: list of {"id": str, "title": str, "render": callable(),
     "default_row": int, "default_col": int, "default_span": int}.
 
@@ -28,6 +28,16 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4):
     every known card (including currently-hidden ones, so they can be
     re-shown) rather than a separate settings screen - every change is
     written immediately, nothing to explicitly "save".
+
+    card_height: optional fixed pixel height applied to every card
+    regardless of span - width already scales with span for free via
+    st.columns, but nothing previously constrained height, so a card
+    with more content (e.g. a variable-length user list) grew taller
+    than its neighbors and broke the row's visual rhythm. Left as None
+    (no change from prior behavior) for callers like the customer
+    dashboard's short button-cards, which are already naturally uniform
+    and don't need it - opt in per dashboard_type instead of forcing one
+    height on every grid this function has ever been used for.
     """
     user_id = st.session_state.user_id
     card_by_id = {c["id"]: c for c in cards}
@@ -146,6 +156,38 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4):
         st.caption("No cards are visible - turn on Customize Layout to show one.")
         return
 
+    if card_height:
+        # One substring-match rule covers every card's shell, since they
+        # all share the `{dashboard_type}_card_shell_` prefix in their key
+        # (each still gets its own unique key - `..._{cid}` - so Streamlit
+        # doesn't collide two cards on one container) - same substring-
+        # selector technique already used for the customer dashboard's
+        # hero-card buttons (see analytics.py).
+        #
+        # flex: none is the actual load-bearing declaration here, not
+        # height alone. Streamlit's own container class sets
+        # `flex: 1 1 0%` on every stVerticalBlock - with an explicit
+        # (non-auto) flex-basis of 0%, the flexbox sizing algorithm
+        # ignores the `height` property entirely for main-axis sizing
+        # and grows the item via flex-grow instead, so `height: 300px
+        # !important` alone was silently having zero effect (confirmed
+        # via getComputedStyle: still 474px for a long zero-credit-user
+        # list vs. 260px for a short usage card, identical to before
+        # adding the height rule). min-height: 0 additionally overrides
+        # the flex-item default of min-height: auto, which otherwise
+        # refuses to shrink below content size even once flex-grow is
+        # disabled. This is the same "stVerticalBlock defaults to
+        # flex: 1 1 0% at multiple nesting levels" root cause already
+        # hit elsewhere in this app - see architecture_patterns memory.
+        st.markdown(f"""<style>
+            div[class*="st-key-{dashboard_type}_card_shell_"] {{
+                flex: none !important;
+                height: {card_height}px !important;
+                min-height: 0 !important;
+                overflow-y: auto;
+            }}
+        </style>""", unsafe_allow_html=True)
+
     rows = sorted({c["row"] for c in visible_cards})
     for row_num in rows:
         row_cards = sorted([c for c in visible_cards if c["row"] == row_num], key=lambda c: c["col"])
@@ -171,4 +213,8 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4):
         for col_widget, cid in zip(row_cols, placements):
             if cid:
                 with col_widget:
-                    card_by_id[cid]["render"]()
+                    if card_height:
+                        with st.container(key=f"{dashboard_type}_card_shell_{cid}"):
+                            card_by_id[cid]["render"]()
+                    else:
+                        card_by_id[cid]["render"]()
