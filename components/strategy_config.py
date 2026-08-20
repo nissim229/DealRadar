@@ -10,6 +10,7 @@ import location_data
 from icons import icon as svg_icon
 from components import pricing
 from nav import render_side_nav
+from guest_mode import render_guest_banner
 
 MAX_CITIES_PER_SEARCH = 5
 SEARCH_RADIUS_MILES = 8
@@ -161,7 +162,7 @@ def _render_empty_state(icon_name, title, description):
     """, unsafe_allow_html=True)
 
 
-def render_strategy_configuration():
+def render_strategy_configuration(is_guest=False):
     st.markdown("""
         <style>
         div.st-key-strategy_hero {
@@ -187,6 +188,9 @@ def render_strategy_configuration():
             </div>
         """, unsafe_allow_html=True)
 
+    if is_guest:
+        render_guest_banner("your searches aren't saved in a demo session")
+
     if "save_success_flash" in st.session_state and st.session_state.save_success_flash:
         st.success(st.session_state.save_success_flash)
         st.session_state.save_success_flash = None
@@ -203,12 +207,18 @@ def render_strategy_configuration():
 
     with content_col:
         if active_section == "New Search":
-            _render_establish_tab()
+            _render_establish_tab(is_guest=is_guest)
+        elif is_guest:
+            _render_guest_searches_placeholder()
         else:
             _render_your_searches_tab()
 
 
-def _render_establish_tab():
+def _render_guest_searches_placeholder():
+    st.info(":material/login: Sign in to save a search and re-run it anytime, or set up scheduled email reports.")
+
+
+def _render_establish_tab(is_guest=False):
     st.markdown("""
         <div style='background-color: var(--radar-surface-alt); padding: var(--radar-space-5); border-radius: var(--radar-radius-md); border-left: 4px solid var(--radar-primary); margin-bottom: var(--radar-space-6);'>
             <h3 style='margin: 0 0 5px 0; color: var(--radar-navy);'>Set Up a New Search</h3>
@@ -247,7 +257,11 @@ def _render_establish_tab():
         st.markdown("<br>", unsafe_allow_html=True)
         submit_button = st.form_submit_button(":material/rocket_launch: Save Search", type="primary", use_container_width=True)
 
-        if submit_button:
+        if submit_button and is_guest:
+            st.toast("Sign in to save a search.", icon=":material/lock:")
+            st.session_state.show_login_form = True
+            st.rerun()
+        elif submit_button:
             if profile_name and selected_state and recipient_email:
                 existing_names = db.get_all_reports(st.session_state.user_id)
                 if profile_name not in existing_names and not plan_limits.is_within_limit(

@@ -17,6 +17,7 @@ from photo_carousel import render_photo_carousel_html
 from components import pricing
 from icons import icon as svg_icon
 from data_utils import clean_value
+from guest_mode import guest_action_button
 
 
 def render_grade_explanation(metrics, calc_target_yield):
@@ -192,12 +193,16 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
                 st.json(raw, expanded=False)
 
     def _render_notes():
-        existing_notes = db.get_property_notes(user_id, address)
+        # user_id is None for a guest session - never reaches the DB (a
+        # fake id isn't used here either, see guest_mode.py), so there's
+        # simply no saved note to read yet.
+        existing_notes = db.get_property_notes(user_id, address) if user_id else ""
         note_text = st.text_area("Personal notes", value=existing_notes, key=f"{key_prefix}_notes_{idx}",
                                   placeholder="e.g., Call agent Tuesday, check roof condition...")
         note_col1, note_col2 = st.columns([1, 3])
         with note_col1:
-            if st.button("Save Note", key=f"{key_prefix}_save_note_{idx}", type="primary", disabled=note_text == existing_notes):
+            if guest_action_button("Save Note", "save notes", key=f"{key_prefix}_save_note_{idx}",
+                                    type="primary", disabled=note_text == existing_notes):
                 if not db.is_property_saved(user_id, address):
                     if plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan,
                                                     "saved_properties", db.count_saved_properties(user_id)):
@@ -435,10 +440,13 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
                 mls_label = f"MLS# {mls_number}" + (f" · {row_item['mls_name']}" if row_item.get('mls_name') else "")
                 st.caption(mls_label)
         with action_col:
-            is_saved = db.is_property_saved(user_id, address)
+            # user_id is None for a guest session - nothing is ever saved
+            # for one, so it can't be "already saved" either.
+            is_saved = db.is_property_saved(user_id, address) if user_id else False
             with st.container(key=f"{card_key}_favbtn"):
                 fav_icon = "★" if is_saved else "☆"
-                if st.button(fav_icon, key=f"{key_prefix}_fav_{idx}", help="Saved" if is_saved else "Save"):
+                if guest_action_button(fav_icon, "save this property", key=f"{key_prefix}_fav_{idx}",
+                                        help="Saved" if is_saved else "Save"):
                     if is_saved:
                         db.unsave_property(user_id, address)
                         st.rerun()

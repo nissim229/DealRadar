@@ -21,6 +21,7 @@ import car_engine
 from components.car_card import render_car_card
 from icons import icon as svg_icon
 from scan_loading import render_scan_loading_radar
+from guest_mode import guest_action_button, render_guest_banner
 
 
 def _inject_css():
@@ -103,6 +104,9 @@ def _run_search(make, model, min_year, max_price, max_mileage, zip_code, radius,
     criteria_label = _criteria_label(make, model, min_year, max_price, zip_code, radius)
     st.session_state.car_search_criteria_label = criteria_label
 
+    if st.session_state.get("is_guest"):
+        return
+
     # Lightweight log row (no report_content/coordinates_json - this page
     # doesn't build a saved report the way real-estate scans do) purely so
     # the topbar notification bell has real recent-activity data for Cars,
@@ -131,8 +135,10 @@ def _criteria_label(make, model, min_year, max_price, zip_code, radius):
     return " · ".join(bits) if bits else "All listings"
 
 
-def render_car_search_page():
+def render_car_search_page(is_guest=False):
     _inject_css()
+    if is_guest:
+        render_guest_banner("live results are sample listings, not real Auto.dev inventory")
 
     # The action card and the scan-loading radar are nested *inside* this
     # same dark hero container, not separate blocks in the light page body
@@ -194,7 +200,8 @@ def render_car_search_page():
             with loading_placeholder.container():
                 render_scan_loading_radar("cars")
             try:
-                _run_search(make, model, min_year, max_price, max_mileage, zip_code.strip(), radius, use_live=not test_clicked)
+                _run_search(make, model, min_year, max_price, max_mileage, zip_code.strip(), radius,
+                             use_live=(not test_clicked) and not is_guest)
             finally:
                 loading_placeholder.empty()
             st.rerun()
@@ -226,7 +233,8 @@ def render_car_search_page():
                 with st.popover(":material/bookmark: Save this search", use_container_width=True):
                     st.caption("Get notified by email when a new match like these appears.")
                     save_name = st.text_input("Name this search", key="car_search_save_name", placeholder="e.g., Family SUV under $30k")
-                    if st.button(":material/save: Save", key="car_search_save_confirm_btn", type="primary", use_container_width=True):
+                    if guest_action_button(":material/save: Save", "save this search", key="car_search_save_confirm_btn",
+                                            type="primary", use_container_width=True):
                         if save_name.strip():
                             db.save_report_config(
                                 st.session_state.user_id, save_name.strip(), zip_code or "Nationwide",
@@ -304,7 +312,7 @@ def _delete_saved_car_search_dialog():
             st.rerun()
 
 
-def render_saved_car_searches_page():
+def render_saved_car_searches_page(is_guest=False):
     with st.container(key="car_search_hero"):
         _render_hero_title(
             "Saved Searches",
@@ -312,6 +320,11 @@ def render_saved_car_searches_page():
             icon_name="crosshair",
         )
     _inject_css()
+
+    if is_guest:
+        render_guest_banner("searches aren't saved in a demo session")
+        st.info("Sign in to bookmark a search from Find a Car and get notified when new matches appear.", icon=":material/bookmark_border:")
+        return
 
     import sqlite3
     conn = sqlite3.connect(db.DB_NAME)

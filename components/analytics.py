@@ -15,6 +15,7 @@ import roles
 from icons import icon as svg_icon
 from data_utils import clean_value, relative_time
 from dashboard_grid import render_dashboard_grid
+from guest_mode import guest_action_button, render_guest_banner
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
 from nav import render_side_nav
 from scan_loading import render_scan_loading_radar
@@ -345,6 +346,119 @@ def _render_scan_action(raw_profiles, active_category):
     return selected_profile, run_clicked, test_clicked
 
 
+GUEST_QUICK_SEARCH_CITIES = ["Denver, Colorado", "Austin, Texas", "Miami, Florida", "Boulder, Colorado"]
+
+
+def _build_coord_list(raw_listings_data):
+    """Turns raw listing dicts (from RentCast or the mock generator) into
+    the reduced, hand-picked field set that actually survives into
+    history/reload and every card-rendering/grading code path downstream
+    (see [[rentcast_raw_data_and_hoa]] for why this, not the raw listing
+    itself, is the real choke point). Shared between a real scan
+    (_execute_scan) and the guest ad-hoc demo scan below so both build
+    results in the identical shape."""
+    coord_list = []
+    for listing in raw_listings_data:
+        if "latitude" in listing and "longitude" in listing:
+            coord_list.append({
+                "title": listing.get("title", "Asset Match"),
+                "address": listing.get("address", ""),
+                "price": listing.get("price", 0),
+                "beds": listing.get("beds", 0),
+                "baths": listing.get("baths", 0),
+                "sqft": listing.get("sqft"),
+                "property_type": listing.get("property_type"),
+                "latitude": listing["latitude"],
+                "longitude": listing["longitude"],
+                "mls_number": listing.get("mls_number"),
+                "mls_name": listing.get("mls_name"),
+                "hoa_monthly": listing.get("hoa_monthly"),
+                "year_built": listing.get("year_built"),
+                "lot_size": listing.get("lot_size"),
+                "days_on_market": listing.get("days_on_market"),
+                "listed_date": listing.get("listed_date"),
+                "listing_type": listing.get("listing_type"),
+                "status": listing.get("status"),
+                "county": listing.get("county"),
+                "state": listing.get("state"),
+                "zip_code": listing.get("zip_code"),
+                "listing_agent_name": listing.get("listing_agent_name"),
+                "listing_agent_phone": listing.get("listing_agent_phone"),
+                "listing_office_name": listing.get("listing_office_name"),
+                "listing_office_phone": listing.get("listing_office_phone"),
+                "listing_office_email": listing.get("listing_office_email"),
+                "rentcast_raw": listing.get("rentcast_raw"),
+            })
+    return coord_list
+
+
+def _render_guest_scan_action():
+    """The guest equivalent of _render_scan_action - an ad-hoc city/price/
+    beds form instead of a saved-profile dropdown, since a guest has no
+    saved profiles and agent_engine.run_agent_workflow hard-requires one
+    (see [[guest_browsing_read_only_mode]] for why this couldn't just
+    reuse the real dropdown-based flow)."""
+    with st.form("guest_scan_form"):
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+        with c1:
+            location = st.text_input("City", placeholder="e.g., Denver, Colorado",
+                                      value=st.session_state.get("guest_scan_location", ""))
+        with c2:
+            max_price = st.number_input("Max price ($)", min_value=50000, value=750000, step=25000)
+        with c3:
+            min_beds = st.number_input("Min beds", min_value=0, value=3, step=1)
+        with c4:
+            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+            search_clicked = st.form_submit_button(":material/travel_explore: Run Live Scan",
+                                                     type="primary", use_container_width=True)
+
+    st.markdown("<span style='color:var(--radar-text-muted); font-size:12px; margin-right:8px;'>Popular:</span>", unsafe_allow_html=True)
+    chip_cols = st.columns([1, 1, 1, 1, 4])
+    chip_clicked_city = None
+    for i, chip_city in enumerate(GUEST_QUICK_SEARCH_CITIES):
+        with chip_cols[i]:
+            if st.button(chip_city.split(",")[0], key=f"guest_scan_chip_{i}", use_container_width=True):
+                chip_clicked_city = chip_city
+
+    if chip_clicked_city:
+        return chip_clicked_city, 750000, 3, True
+    if search_clicked and location:
+        return location, max_price, min_beds, True
+    if search_clicked and not location:
+        st.warning("Enter a city to search.")
+    return location, max_price, min_beds, False
+
+
+def _run_guest_demo_scan(location, property_type, max_price, min_beds):
+    """The guest-only equivalent of _execute_scan. Never touches the DB -
+    no saved-profile lookup (agent_engine.run_agent_workflow hard-requires
+    one that a guest session doesn't have), no credit deduction, no
+    history log - but builds st.session_state.active_scanned_coords in
+    the exact shape a real scan does via the shared _build_coord_list, so
+    the existing _render_scan_results pipeline (filters, map/grid/table
+    views, best-deal banner, real property cards) renders guest results
+    identically to a real scan instead of a separate simplified view."""
+    loading_placeholder = st.empty()
+    with loading_placeholder.container():
+        render_scan_loading_radar("real_estate")
+    try:
+        raw_listings_data = engine.fetch_live_listings(location, property_type, int(max_price), int(min_beds), allow_live=False)
+        coord_list = _build_coord_list(raw_listings_data)
+        report_result = engine.generate_offline_mock_report(
+            "Guest Preview", location, property_type, max_price, min_beds, raw_listings_data)
+
+        st.session_state.active_scanned_report = report_result
+        st.session_state.active_scanned_profile = "Guest Preview"
+        st.session_state.active_scanned_coords = json.dumps(coord_list)
+        st.session_state.guest_scan_location = location
+        st.session_state.focused_card_index = None
+        st.session_state.last_scan_was_preview = True
+        st.session_state.last_scan_was_test = False
+        st.rerun()
+    finally:
+        loading_placeholder.empty()
+
+
 def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
     """Runs the actual scan (credit deduction, DB lookup, engine calls,
     history log, notification emails) and shows the loading radar while
@@ -436,48 +550,7 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
             raw_listings_data = engine.fetch_live_listings_for_targets(targets, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id) if targets else []
         report_result = engine.run_agent_workflow(selected_profile, st.session_state.user_id, raw_listings=raw_listings_data)
 
-        coord_list = []
-        for listing in raw_listings_data:
-            if "latitude" in listing and "longitude" in listing:
-                coord_list.append({
-                    "title": listing.get("title", "Asset Match"),
-                    "address": listing.get("address", ""),
-                    "price": listing.get("price", 0),
-                    "beds": listing.get("beds", 0),
-                    "baths": listing.get("baths", 0),
-                    "sqft": listing.get("sqft"),
-                    "property_type": listing.get("property_type"),
-                    "latitude": listing["latitude"],
-                    "longitude": listing["longitude"],
-                    "mls_number": listing.get("mls_number"),
-                    "mls_name": listing.get("mls_name"),
-                    # Everything else RentCast (or the mock generator, for
-                    # parity) provides that this app wasn't persisting
-                    # before - HOA specifically so it can factor into
-                    # compute_deal_metrics's grading, the rest so the
-                    # "Full Details" section on the property card has
-                    # something real to show instead of just re-deriving
-                    # from the summary fields above. This dict (not
-                    # `listing` itself) is what actually survives into
-                    # history/reload, so a field missing here is a field
-                    # that's gone the moment this scan isn't the active one.
-                    "hoa_monthly": listing.get("hoa_monthly"),
-                    "year_built": listing.get("year_built"),
-                    "lot_size": listing.get("lot_size"),
-                    "days_on_market": listing.get("days_on_market"),
-                    "listed_date": listing.get("listed_date"),
-                    "listing_type": listing.get("listing_type"),
-                    "status": listing.get("status"),
-                    "county": listing.get("county"),
-                    "state": listing.get("state"),
-                    "zip_code": listing.get("zip_code"),
-                    "listing_agent_name": listing.get("listing_agent_name"),
-                    "listing_agent_phone": listing.get("listing_agent_phone"),
-                    "listing_office_name": listing.get("listing_office_name"),
-                    "listing_office_phone": listing.get("listing_office_phone"),
-                    "listing_office_email": listing.get("listing_office_email"),
-                    "rentcast_raw": listing.get("rentcast_raw"),
-                })
+        coord_list = _build_coord_list(raw_listings_data)
 
         coord_string_data = json.dumps(coord_list)
         db.save_history_log(st.session_state.user_id, selected_profile, profile_location, report_result, coord_string_data, was_live=allow_live)
@@ -526,7 +599,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                           calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield,
                           show_preview_notice=False, pdf_button_label="Export Report to Document PDF / Print",
-                          pdf_filename_prefix="DealRadar_Report"):
+                          pdf_filename_prefix="DealRadar_Report", is_guest=False):
     """The full scan-results view (report, best-deal banner, view toggle,
     quick filters, deal-grade chips, distance reference, property
     cards/map in all three view modes, Pro underwriting tabs, PDF export) -
@@ -554,7 +627,9 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     st.markdown(f"### :material/apartment: {profile_name} — {_header_count} {match_word}")
 
     if show_preview_notice and st.session_state.get("last_scan_was_preview"):
-        if st.session_state.get("last_scan_was_test"):
+        if is_guest:
+            st.info(":material/visibility: You're viewing sample data as a guest. Sign in for a free account and real listings.")
+        elif st.session_state.get("last_scan_was_test"):
             st.info(":material/science: This was a **Test Scan** - showing mock/sample data so you can check the UI without spending real RentCast quota. Use Run Live Scan when you want real listings.")
         else:
             notice_col1, notice_col2 = st.columns([4, 1])
@@ -1037,7 +1112,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                         m = compute_deal_metrics(float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
                                                   calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
                                                   hoa_monthly=_safe_hoa(row_item))
-                        is_saved = db.is_property_saved(st.session_state.user_id, row_item.get("address", ""))
+                        is_saved = db.is_property_saved(st.session_state.user_id, row_item.get("address", "")) if st.session_state.user_id else False
                         table_rows.append({
                             "Address": row_item.get("address", ""),
                             "Price": float(row_item["price"]),
@@ -1070,7 +1145,12 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     )
 
                     save_click = st.session_state.get(f"{key_prefix}_table_save_click")
-                    if save_click and save_click.get("row") is not None:
+                    if save_click and save_click.get("row") is not None and is_guest:
+                        st.toast("Sign in to save this property.", icon=":material/lock:")
+                        st.session_state.show_login_form = True
+                        st.session_state[f"{key_prefix}_table_save_click"] = None
+                        st.rerun()
+                    elif save_click and save_click.get("row") is not None:
                         clicked_row = df_listings_page.iloc[save_click["row"]]
                         clicked_address = clicked_row.get("address", "")
                         if db.is_property_saved(st.session_state.user_id, clicked_address):
@@ -1195,8 +1275,10 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
-def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
-    if raw_profiles:
+def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
+    if is_guest:
+        render_guest_banner("this is a live preview scan, not your own saved search")
+    if raw_profiles or is_guest:
         if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
             _render_scan_results(
                 st.session_state.active_scanned_report,
@@ -1205,7 +1287,7 @@ def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pc
                 "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                 calc_down_pct, calc_interest, calc_target_yield,
                 show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
-                pdf_filename_prefix="DealRadar_Report",
+                pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
             )
     else:
         st.info("No searches set up yet. Head to 'Manage Searches' to create one.")
@@ -1452,12 +1534,13 @@ def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_ta
         )
 
 
-def render_analytics_dashboard():
+def render_analytics_dashboard(is_guest=False):
     # Apply the user's saved default distance reference point (Settings)
     # once per session, only if they haven't already set/cleared one during
     # this session - a real geocode call, so it's guarded to run at most
-    # once rather than on every rerun.
-    if not st.session_state.get("_default_reference_point_checked"):
+    # once rather than on every rerun. Guests have no saved Settings to
+    # read, so this simply doesn't apply to them.
+    if not is_guest and not st.session_state.get("_default_reference_point_checked"):
         st.session_state._default_reference_point_checked = True
         default_ref_address = st.session_state.user_settings.get("default_reference_address")
         if default_ref_address and not st.session_state.get("distance_reference_point"):
@@ -1468,7 +1551,9 @@ def render_analytics_dashboard():
                 }
 
     active_category = st.session_state.get("active_category", "real_estate")
-    raw_profiles = db.get_all_reports(st.session_state.user_id, category=active_category)
+    # A guest has no saved Hunt Profiles (and no user_id to look any up
+    # under) - skip the DB read entirely rather than pass a fake id.
+    raw_profiles = [] if is_guest else db.get_all_reports(st.session_state.user_id, category=active_category)
 
     # Apply a pending quick-access chip click to the selectbox's own widget
     # state before that widget is instantiated below. Setting the widget's
@@ -1723,8 +1808,11 @@ def render_analytics_dashboard():
         """, unsafe_allow_html=True)
 
         selected_profile, run_clicked, test_clicked = None, False, False
+        guest_location, guest_max_price, guest_min_beds, guest_search_clicked = None, None, None, False
         with st.container(key="dashboard_action_card"):
-            if raw_profiles:
+            if is_guest:
+                guest_location, guest_max_price, guest_min_beds, guest_search_clicked = _render_guest_scan_action()
+            elif raw_profiles:
                 selected_profile, run_clicked, test_clicked = _render_scan_action(raw_profiles, active_category)
             else:
                 render_empty_state(
@@ -1776,7 +1864,16 @@ def render_analytics_dashboard():
         # scan's session_state, unaffected by whether a new one is about
         # to start, so they're already on screen by the time this either
         # no-ops (run_clicked/test_clicked both False) or kicks off a scan.
-        _execute_scan(selected_profile, run_clicked, test_clicked, active_category)
+        if is_guest:
+            if guest_search_clicked:
+                _run_guest_demo_scan(guest_location, "Multi-Family", guest_max_price, guest_min_beds)
+            elif "active_scanned_report" not in st.session_state:
+                # First-load default so the page never looks empty for a
+                # brand-new guest, matching the old guest_landing.py's own
+                # "auto-run a sample search" behavior.
+                _run_guest_demo_scan(GUEST_QUICK_SEARCH_CITIES[0], "Multi-Family", 750000, 3)
+        else:
+            _execute_scan(selected_profile, run_clicked, test_clicked, active_category)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
@@ -1794,8 +1891,23 @@ def render_analytics_dashboard():
 
     with content_col:
         if active_section == "Execute Live Scan":
-            _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+            _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
         elif active_section == "Scanned Reports History Log":
-            _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+            if is_guest:
+                render_guest_banner("your scan history isn't tracked in a demo session")
+                render_empty_state(
+                    "clock", "Sign in to keep a history",
+                    "Every real scan you run gets saved here automatically once you have an account.",
+                )
+            else:
+                _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
         else:
-            _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+            if is_guest:
+                render_guest_banner("saved properties aren't kept in a demo session")
+                render_empty_state(
+                    "star-outline", "Sign in to save properties",
+                    "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
+                    accent="var(--radar-warning)",
+                )
+            else:
+                _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)

@@ -25,6 +25,7 @@ import theme
 import email_utils
 from nav import render_side_nav
 from icons import icon as svg_icon
+from guest_mode import guest_action_button, render_guest_banner
 
 RESULTS_VIEW_OPTIONS = ["Properties Only", "Properties + Map", "Map Only", "Table View"]
 UNDERWRITER_MODE_OPTIONS = ["Simple", "Pro"]
@@ -97,13 +98,25 @@ def maybe_autodetect_timezone():
 
 def _save(settings):
     st.session_state.user_settings = settings
+    if st.session_state.get("is_guest"):
+        # Keeps the change visible for the rest of this demo session
+        # (settings widgets read back from st.session_state.user_settings),
+        # just never persisted - matches every other guest write action.
+        st.toast("Preview only - sign in to keep this setting.", icon=":material/lock:")
+        return
     db.save_user_settings(st.session_state.user_id, settings)
+
+
+def _on_theme_change(mode):
+    if st.session_state.get("is_guest"):
+        st.toast("Preview only - sign in to keep this setting.", icon=":material/lock:")
+        return
+    db.update_user_theme_preference(st.session_state.user_id, mode)
 
 
 def _render_appearance(settings):
     st.markdown("##### Appearance")
-    theme.theme_toggle_control(key="settings_theme_toggle",
-                                on_change=lambda mode: db.update_user_theme_preference(st.session_state.user_id, mode))
+    theme.theme_toggle_control(key="settings_theme_toggle", on_change=_on_theme_change)
 
 
 def _render_timezone(settings):
@@ -185,7 +198,8 @@ def _render_notifications(settings):
         st.toast("Notification preferences updated.")
 
     st.markdown("---")
-    if st.button(":material/mail: Send test email", key="settings_send_test_email", disabled=not email_utils.is_email_configured()):
+    if guest_action_button(":material/mail: Send test email", "send a test email", key="settings_send_test_email",
+                            disabled=not email_utils.is_email_configured()):
         if email_utils.send_test_email(st.session_state.user_email):
             st.success(f"Test email sent to {st.session_state.user_email} - check your inbox.")
         else:
@@ -195,7 +209,15 @@ def _render_notifications(settings):
 def _render_account(settings):
     st.markdown("##### Account")
 
+    if st.session_state.get("is_guest"):
+        render_guest_banner("there's no real account to show")
+        st.caption("Sign in to manage your profile, password, and billing.")
+        return
+
     profile = db.get_own_profile(st.session_state.user_id)
+    if profile is None:
+        st.error("Couldn't load your account profile. Please try again or contact support.")
+        return
     st.caption(f"Account ID: **{profile['account_id']}** - reference this if you ever contact support.")
 
     st.markdown("**Profile**")
@@ -290,7 +312,7 @@ _SECTION_RENDERERS = {
 }
 
 
-def render_settings_page():
+def render_settings_page(is_guest=False):
     settings = dict(st.session_state.user_settings)
 
     st.markdown("""

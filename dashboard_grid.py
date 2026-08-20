@@ -41,7 +41,11 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4, card_he
     """
     user_id = st.session_state.user_id
     card_by_id = {c["id"]: c for c in cards}
-    saved = db.get_dashboard_layout(user_id, dashboard_type)
+    # A guest session has no user_id to persist a layout under - always
+    # show the default layout, and skip "Customize Layout" entirely below
+    # (nothing to save it against) rather than read/write against a
+    # nonexistent id.
+    saved = db.get_dashboard_layout(user_id, dashboard_type) if user_id is not None else None
     if saved and saved.get("cards"):
         layout = saved
         saved_ids = {c["id"] for c in layout["cards"]}
@@ -70,14 +74,15 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4, card_he
         c.setdefault("col", default_card.get("default_col", 1))
 
     customize_key = f"dashboard_customize_{dashboard_type}"
-    customizing = st.session_state.get(customize_key, False)
+    customizing = st.session_state.get(customize_key, False) and user_id is not None
 
-    toggle_col1, toggle_col2 = st.columns([3, 1])
-    with toggle_col2:
-        if st.button(":material/tune: Customize Layout" if not customizing else ":material/check: Done Customizing",
-                     key=f"{customize_key}_btn", use_container_width=True):
-            st.session_state[customize_key] = not customizing
-            st.rerun()
+    if user_id is not None:
+        toggle_col1, toggle_col2 = st.columns([3, 1])
+        with toggle_col2:
+            if st.button(":material/tune: Customize Layout" if not customizing else ":material/check: Done Customizing",
+                         key=f"{customize_key}_btn", use_container_width=True):
+                st.session_state[customize_key] = not customizing
+                st.rerun()
 
     grid_columns = layout["grid_columns"]
     if customizing:
