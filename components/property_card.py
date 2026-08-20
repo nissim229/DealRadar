@@ -30,7 +30,15 @@ def render_grade_explanation(metrics, calc_target_yield):
     rows = [
         ("💵 Rental income after vacancy", f"${metrics['eff_gross_income']:,.0f}/yr", "Rent you'd actually collect, assuming it sits empty sometimes"),
         ("🏛️ Taxes + insurance", f"${metrics['annual_taxes'] + metrics['annual_insurance']:,.0f}/yr", "Ongoing ownership costs, before the mortgage"),
-        ("📊 Net Operating Income (NOI)", f"${metrics['noi']:,.0f}/yr", "Income minus taxes/insurance - your profit before the mortgage"),
+    ]
+    # Only shown when there actually is one - most single-family listings
+    # have none, and a $0 row for every property would just be noise.
+    # When it's non-zero, it's a real cost this grade already accounts
+    # for (see underwriting.py's compute_deal_metrics), not an omission.
+    if metrics.get("annual_hoa"):
+        rows.append(("🏘️ HOA fees", f"${metrics['annual_hoa']:,.0f}/yr", f"${metrics['monthly_hoa']:,.0f}/mo homeowners association dues"))
+    rows += [
+        ("📊 Net Operating Income (NOI)", f"${metrics['noi']:,.0f}/yr", "Income minus taxes/insurance/HOA - your profit before the mortgage"),
         ("🏦 Mortgage payment", f"${metrics['a_debt']:,.0f}/yr", "What you pay the bank each year on the loan"),
         ("💰 Cash flow", f"${metrics['cashflow']:,.0f}/yr", "NOI minus mortgage payment - what's left in your pocket"),
         ("🎯 Cash-on-Cash Return (your ROI)", f"{metrics['coc']:.2f}%", "Cash flow ÷ your down payment - your real return on the cash you put in"),
@@ -106,6 +114,68 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             with redfin_col:
                 st.link_button(":material/open_in_new: Search Redfin", engine.build_redfin_search_url(address, mls_number), use_container_width=True)
 
+    def _render_details():
+        # Everything RentCast returns for this listing that isn't already
+        # shown elsewhere on the card - the user's own framing was "it
+        # brings lots of data, we should show all of it for the
+        # property", not just the price/beds/baths summary this app
+        # extracted before. Blank/missing fields (a mock listing, or a
+        # real one RentCast didn't populate for) are simply omitted
+        # rather than shown as "N/A" clutter.
+        detail_rows = []
+        if row_item.get("monthly_hoa") or row_item.get("hoa_monthly"):
+            hoa_val = row_item.get("hoa_monthly") if row_item.get("hoa_monthly") is not None else metrics.get("monthly_hoa")
+            detail_rows.append(("HOA fee", f"${float(hoa_val):,.0f}/mo"))
+        if row_item.get("year_built"):
+            detail_rows.append(("Year built", str(int(row_item["year_built"]))))
+        if row_item.get("lot_size"):
+            detail_rows.append(("Lot size", f"{int(row_item['lot_size']):,} sqft"))
+        if row_item.get("days_on_market") is not None:
+            detail_rows.append(("Days on market", str(int(row_item["days_on_market"]))))
+        if row_item.get("listed_date"):
+            detail_rows.append(("Listed", str(row_item["listed_date"])[:10]))
+        if row_item.get("listing_type"):
+            detail_rows.append(("Listing type", str(row_item["listing_type"])))
+        if row_item.get("status"):
+            detail_rows.append(("Status", str(row_item["status"])))
+        if row_item.get("county"):
+            loc_bits = [row_item.get("county")]
+            if row_item.get("state"):
+                loc_bits.append(row_item["state"])
+            if row_item.get("zip_code"):
+                loc_bits.append(str(row_item["zip_code"]))
+            detail_rows.append(("County / State / ZIP", ", ".join(str(b) for b in loc_bits)))
+
+        if detail_rows:
+            st.markdown("##### :material/info: Property Details")
+            details_df = pd.DataFrame(detail_rows, columns=["Field", "Value"])
+            st.dataframe(details_df, hide_index=True, use_container_width=True, height=len(details_df) * 35 + 38)
+        else:
+            st.caption("No additional property details available for this listing.")
+
+        agent_name = row_item.get("listing_agent_name")
+        office_name = row_item.get("listing_office_name")
+        if agent_name or office_name:
+            st.markdown("##### :material/contact_phone: Listing Contact")
+            if agent_name:
+                agent_line = agent_name
+                if row_item.get("listing_agent_phone"):
+                    agent_line += f" · {row_item['listing_agent_phone']}"
+                st.caption(f"Agent: {agent_line}")
+            if office_name:
+                office_line = office_name
+                if row_item.get("listing_office_phone"):
+                    office_line += f" · {row_item['listing_office_phone']}"
+                if row_item.get("listing_office_email"):
+                    office_line += f" · {row_item['listing_office_email']}"
+                st.caption(f"Office: {office_line}")
+
+        raw = row_item.get("rentcast_raw")
+        if raw:
+            with st.expander(":material/data_object: Full RentCast response for this listing"):
+                st.caption("Everything RentCast's API returned for this property, unedited - including fields this app doesn't have a dedicated place for yet.")
+                st.json(raw, expanded=False)
+
     def _render_notes():
         existing_notes = db.get_property_notes(user_id, address)
         note_text = st.text_area("Personal notes", value=existing_notes, key=f"{key_prefix}_notes_{idx}",
@@ -171,6 +241,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
 
     tab_defs = [
         ("why", ":material/menu_book: Why This Grade", _render_why),
+        ("details", ":material/info: Property Details", _render_details),
         ("whatif", ":material/tune: What-If Calculator", _render_whatif),
         ("photos", ":material/photo_camera: Photos", _render_photos),
         ("notes", ":material/edit_note: Notes & Neighborhood", _render_notes),
@@ -329,6 +400,14 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
             prop_type = row_item.get('property_type')
             if prop_type:
                 info_parts.append(str(prop_type))
+            hoa_summary = row_item.get('hoa_monthly')
+            if hoa_summary:
+                # A real, per-listing dollar cost from RentCast - shown
+                # right in the summary line (not just inside the detail
+                # dialog) since it directly affects whether this is
+                # actually a good deal, same reasoning as beds/baths/sqft
+                # being visible without a click.
+                info_parts.append(f"HOA ${float(hoa_summary):,.0f}/mo")
             st.caption(" · ".join(info_parts))
             mls_number = row_item.get('mls_number')
             if mls_number:

@@ -19,6 +19,14 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
     tax_rate = float(defaults.get('tax_rate', 1.2))
     ins_rate = float(defaults.get('ins_rate', 0.4))
     target = float(calc_target_yield)
+    # Pre-fill with the listing's real HOA when RentCast provided one,
+    # instead of always starting this slider at 0 and leaving it to the
+    # user to notice and re-enter a number the app already has.
+    hoa_default = row_item.get('hoa_monthly') or 0
+    try:
+        hoa_default = int(float(hoa_default))
+    except (TypeError, ValueError):
+        hoa_default = 0
 
     html = f"""
     <div id="wi-root">
@@ -193,8 +201,8 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
                 </div>
                 <div class="wi-field-grid wi-field-grid-2">
                     <div class="wi-field">
-                        <div class="wi-row"><span class="wi-label">HOA ($/month)</span><span class="wi-value" id="v-hoa">$0</span></div>
-                        <input type="number" id="hoa" value="0" step="25">
+                        <div class="wi-row"><span class="wi-label">HOA ($/month)</span><span class="wi-value" id="v-hoa">${hoa_default}</span></div>
+                        <input type="number" id="hoa" value="{hoa_default}" step="25">
                     </div>
                 </div>
             </div>

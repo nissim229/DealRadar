@@ -201,6 +201,8 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
                 continue
             if price > max_p or beds < min_b:
                 continue
+            listing_agent = item.get("listingAgent") or {}
+            listing_office = item.get("listingOffice") or {}
             listings.append({
                 "title": item.get("addressLine1") or item.get("formattedAddress", "Property"),
                 "address": item.get("formattedAddress", ""),
@@ -225,6 +227,37 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
                 # has no real MLS record behind it.
                 "mls_number": item.get("mlsNumber"),
                 "mls_name": item.get("mlsName"),
+                # Real HOA fee, confirmed live against RentCast's actual
+                # response shape (an {"fee": <monthly dollars>} object, not
+                # a flat field) rather than assumed - previously fetched
+                # and silently discarded, so a listing with a real monthly
+                # HOA was graded as if it had none. See underwriting.py's
+                # compute_deal_metrics(hoa_monthly=...).
+                "hoa_monthly": (item.get("hoa") or {}).get("fee"),
+                # The rest of what RentCast returns per listing that this
+                # app wasn't surfacing at all - the user's ask was "it
+                # brings lots of data, we should show all of it", not just
+                # HOA specifically.
+                "year_built": item.get("yearBuilt"),
+                "lot_size": item.get("lotSize"),
+                "days_on_market": item.get("daysOnMarket"),
+                "listed_date": item.get("listedDate"),
+                "listing_type": item.get("listingType"),
+                "status": item.get("status"),
+                "county": item.get("county"),
+                "state": item.get("state"),
+                "zip_code": item.get("zipCode"),
+                "listing_agent_name": listing_agent.get("name"),
+                "listing_agent_phone": listing_agent.get("phone"),
+                "listing_office_name": listing_office.get("name"),
+                "listing_office_phone": listing_office.get("phone"),
+                "listing_office_email": listing_office.get("email"),
+                # The full, unmodified response for this listing - a catch-
+                # all so nothing RentCast sends is silently dropped just
+                # because this app doesn't have a named field for it yet
+                # (e.g. `history`, which isn't worth its own column but is
+                # still real data the user paid quota for).
+                "rentcast_raw": item,
             })
         db.log_rentcast_call(success=True, user_id=user_id)
         return listings
@@ -360,6 +393,17 @@ def fetch_live_listings(location, property_type, max_price, min_beds, allow_live
         listing_baths = round(random.uniform(1.5, 3.5) * 2) / 2
         listing_sqft = int((900 + listing_beds * 400) * random.uniform(0.85, 1.25))
 
+        # Mock listings exercise the exact same underwriting/rendering code
+        # path as real RentCast ones (see compute_deal_metrics's
+        # hoa_monthly and the "Full Details" property card section), so
+        # they need to carry the same fields, not just enough to look
+        # plausible in a card summary. HOA presence/amount is condo- and
+        # townhouse-biased, matching how it actually skews in practice -
+        # a single-family home has one some of the time (planned
+        # communities), a condo/townhouse almost always does.
+        has_hoa = random.random() < (0.8 if property_type in ("Condo", "Townhouse") else 0.25)
+        mock_hoa = round(random.uniform(150, 450) if property_type in ("Condo", "Townhouse") else random.uniform(35, 180), -1) if has_hoa else 0
+
         listings.append({
             "title": f"{loc_display} Asset #{i + 1}",
             "address": f"{street_number} {street_name}, {loc_display}",
@@ -371,6 +415,12 @@ def fetch_live_listings(location, property_type, max_price, min_beds, allow_live
             "url": "#",
             "latitude": jitter_lat,
             "longitude": jitter_lon,
+            "hoa_monthly": mock_hoa,
+            "year_built": random.randint(1965, 2023),
+            "lot_size": int(listing_sqft * random.uniform(1.2, 4.0)) if property_type not in ("Condo",) else None,
+            "days_on_market": random.randint(1, 120),
+            "listing_type": "Standard",
+            "status": "Active",
         })
 
     return listings

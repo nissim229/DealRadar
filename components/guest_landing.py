@@ -230,7 +230,8 @@ def render_guest_landing():
         # uses, so it's a genuine preview of the real product's value.
         all_metrics = [
             compute_deal_metrics(float(item["price"]), GUEST_RENT, GUEST_VACANCY, GUEST_TAX_RATE,
-                                  GUEST_INS_RATE, GUEST_DOWN_PCT, GUEST_INTEREST, GUEST_TARGET_YIELD)
+                                  GUEST_INS_RATE, GUEST_DOWN_PCT, GUEST_INTEREST, GUEST_TARGET_YIELD,
+                                  hoa_monthly=item.get("hoa_monthly") or 0)
             for item in results
         ]
         best_idx = max(range(len(all_metrics)), key=lambda i: all_metrics[i]["coc"])
@@ -282,7 +283,8 @@ def _render_pro_calculator_teaser():
 def _render_guest_card(listing, idx=0):
     metrics = compute_deal_metrics(
         float(listing["price"]), GUEST_RENT, GUEST_VACANCY, GUEST_TAX_RATE,
-        GUEST_INS_RATE, GUEST_DOWN_PCT, GUEST_INTEREST, GUEST_TARGET_YIELD
+        GUEST_INS_RATE, GUEST_DOWN_PCT, GUEST_INTEREST, GUEST_TARGET_YIELD,
+        hoa_monthly=listing.get("hoa_monthly") or 0
     )
     card_key = f"guest_card_{idx}_{listing.get('address', '')[:10].replace(' ', '_')}"
     entrance_delay = min(idx * 0.06, 0.6)

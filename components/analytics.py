@@ -32,6 +32,23 @@ def _format_price_short(price):
     return f"${price / 1_000:.0f}K"
 
 
+def _safe_hoa(source):
+    """Extracts a usable hoa_monthly value from a listing dict OR a pandas
+    Series/DataFrame row - a DataFrame column with some listings missing
+    HOA mixed with others that have it gets upcast to float, turning the
+    missing ones into NaN rather than None. `NaN or 0` doesn't catch that
+    (NaN is truthy in Python), same trap already hit elsewhere in this
+    app for zip_code/car_make - see [[history_results_parity]]."""
+    val = source.get("hoa_monthly")
+    if val is None:
+        return 0
+    try:
+        val = float(val)
+    except (TypeError, ValueError):
+        return 0
+    return 0 if val != val else val
+
+
 def _format_relative_time(timestamp_str):
     """Turns a SQLite CURRENT_TIMESTAMP string ('2026-08-16 07:31:28', UTC)
     into a relative label like 'Saved 3 hours ago'. This is deliberately a
@@ -454,6 +471,32 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
                     "longitude": listing["longitude"],
                     "mls_number": listing.get("mls_number"),
                     "mls_name": listing.get("mls_name"),
+                    # Everything else RentCast (or the mock generator, for
+                    # parity) provides that this app wasn't persisting
+                    # before - HOA specifically so it can factor into
+                    # compute_deal_metrics's grading, the rest so the
+                    # "Full Details" section on the property card has
+                    # something real to show instead of just re-deriving
+                    # from the summary fields above. This dict (not
+                    # `listing` itself) is what actually survives into
+                    # history/reload, so a field missing here is a field
+                    # that's gone the moment this scan isn't the active one.
+                    "hoa_monthly": listing.get("hoa_monthly"),
+                    "year_built": listing.get("year_built"),
+                    "lot_size": listing.get("lot_size"),
+                    "days_on_market": listing.get("days_on_market"),
+                    "listed_date": listing.get("listed_date"),
+                    "listing_type": listing.get("listing_type"),
+                    "status": listing.get("status"),
+                    "county": listing.get("county"),
+                    "state": listing.get("state"),
+                    "zip_code": listing.get("zip_code"),
+                    "listing_agent_name": listing.get("listing_agent_name"),
+                    "listing_agent_phone": listing.get("listing_agent_phone"),
+                    "listing_office_name": listing.get("listing_office_name"),
+                    "listing_office_phone": listing.get("listing_office_phone"),
+                    "listing_office_email": listing.get("listing_office_email"),
+                    "rentcast_raw": listing.get("rentcast_raw"),
                 })
 
         coord_string_data = json.dumps(coord_list)
@@ -476,7 +519,7 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
                 # that number.
                 compute_deal_metrics(p["price"], p["price"] * 0.007, _d["default_vacancy_pct"], _d["default_tax_rate"],
                                       _d["default_insurance_rate"], _d["default_down_pct"], _d["default_interest_rate"],
-                                      _d["default_target_yield"])
+                                      _d["default_target_yield"], hoa_monthly=_safe_hoa(p))
                 for p in coord_list
             ]
             _excellent = [m for m in _excellent if m["grade"] == "excellent"]
@@ -547,7 +590,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
         _best_deal_points = json.loads(coords_json)
         for p in _best_deal_points:
             m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                      calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                      calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                      hoa_monthly=_safe_hoa(p))
             if best_deal_coc is None or m["coc"] > best_deal_coc:
                 best_deal_coc, best_deal_address = m["coc"], p.get("address", "")
     except Exception:
@@ -737,7 +781,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     grade_mask = []
                     for _, r in df_listings_grid.iterrows():
                         m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                  hoa_monthly=_safe_hoa(r))
                         grade_mask.append(m["grade"] in filter_grades)
                     df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
 
@@ -753,7 +798,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                             with grid_cols[slot]:
                                 metrics = compute_deal_metrics(
                                     float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                    hoa_monthly=_safe_hoa(row_item)
                                 )
                                 is_focused = st.session_state[focused_key] == idx
                                 if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_grid_only_card", is_focused,
@@ -801,7 +847,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     grade_mask = []
                     for _, r in df_listings_grid.iterrows():
                         m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                  hoa_monthly=_safe_hoa(r))
                         grade_mask.append(m["grade"] in filter_grades)
                     df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
 
@@ -819,7 +866,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                 with grid_cols[slot]:
                                     metrics = compute_deal_metrics(
                                         float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                        hoa_monthly=_safe_hoa(row_item)
                                     )
                                     is_focused = st.session_state[focused_key] == idx
                                     if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_split_card_focus", is_focused,
@@ -883,7 +931,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     grades_for_map = []
                     for _, r in df_listings_grid.iterrows():
                         m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                  hoa_monthly=_safe_hoa(r))
                         grades_for_map.append(m["grade"])
                     df_listings_grid["_grade"] = grades_for_map
 
@@ -943,7 +992,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                     sel_row = df_listings_grid.iloc[sel_idx]
                                     sel_metrics = compute_deal_metrics(
                                         float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                        hoa_monthly=_safe_hoa(sel_row)
                                     )
                                     render_property_card(sel_idx, sel_row, sel_metrics, view_mode, f"{key_prefix}_map_view_card", True,
                                                           st.session_state.user_id, st.session_state.get("distance_reference_point"),
@@ -972,7 +1022,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     grade_mask = []
                     for _, r in df_listings_grid.iterrows():
                         m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                  hoa_monthly=_safe_hoa(r))
                         grade_mask.append(m["grade"] in filter_grades)
                     df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
 
@@ -1004,7 +1055,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     table_rows = []
                     for idx, row_item in df_listings_page.iterrows():
                         m = compute_deal_metrics(float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                  hoa_monthly=_safe_hoa(row_item))
                         is_saved = db.is_property_saved(st.session_state.user_id, row_item.get("address", ""))
                         table_rows.append({
                             "Address": row_item.get("address", ""),
@@ -1065,7 +1117,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                         sel_row = df_listings_page.iloc[table_selected_idx]
                         sel_metrics = compute_deal_metrics(
                             float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                            calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                            calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                            hoa_monthly=_safe_hoa(sel_row)
                         )
                         render_property_card(table_selected_idx, sel_row, sel_metrics, view_mode, f"{key_prefix}_table_view_card", True,
                                               st.session_state.user_id, st.session_state.get("distance_reference_point"),
@@ -1096,7 +1149,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     prop_address = row_item["address"]
 
                     metrics = compute_deal_metrics(prop_price, calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                    hoa_monthly=_safe_hoa(row_item))
 
                     with asset_sub_tabs[idx]:
                         col_b1, col_b2 = st.columns([2.5, 1])
@@ -1276,7 +1330,8 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
                 grade_counts = {"excellent": 0, "average": 0, "critical": 0}
                 for p in pts:
                     m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                              hoa_monthly=_safe_hoa(p))
                     grade_counts[m["grade"]] += 1
                 grades_str = f"🟢{grade_counts['excellent']} 🟡{grade_counts['average']} 🔴{grade_counts['critical']}"
                 return str(len(pts)), price_range, grades_str
@@ -1374,7 +1429,16 @@ def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_ta
                 }
                 metrics = compute_deal_metrics(
                     float(price), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield
+                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                    # Saved-property rows don't carry HOA yet - the
+                    # saved_properties table predates this field and
+                    # only stores address/title/price/beds/baths/lat/lon
+                    # (see database.py's save_property). Safe no-op via
+                    # _safe_hoa (returns 0, matching prior behavior)
+                    # rather than a schema migration, which is a bigger
+                    # change than this pass covers - see [[deferred-
+                    # rentcast-raw-data-and-hoa]] for the follow-up.
+                    hoa_monthly=_safe_hoa(row_item)
                 )
                 with grid_cols[slot]:
                     st.caption(_format_relative_time(saved_at))
@@ -1483,10 +1547,17 @@ def render_analytics_dashboard():
                         clicked_row_idx = st.session_state.live_scanned_properties_grid["selection"]["rows"][0]
                         parsed_pts = json.loads(st.session_state.active_scanned_coords)
                         default_sidebar_price = int(parsed_pts[clicked_row_idx]["price"])
+                        # So this console's own preview numbers match what
+                        # the clicked property's card actually shows below
+                        # it, instead of quietly assuming no HOA just
+                        # because this sidebar has no HOA input of its own.
+                        default_sidebar_hoa = _safe_hoa(parsed_pts[clicked_row_idx])
                     except Exception:
                         default_sidebar_price = 500000
+                        default_sidebar_hoa = 0
                 else:
                     default_sidebar_price = 500000
+                    default_sidebar_hoa = 0
 
                 _defaults = st.session_state.user_settings
                 calc_price = st.number_input("Target Purchase Price ($)", min_value=0, value=default_sidebar_price, step=25000, key="underwriter_price_input")
@@ -1505,7 +1576,8 @@ def render_analytics_dashboard():
                 calc_target_yield = st.slider("Desired Cash-on-Cash Return (%)", min_value=1.0, max_value=20.0, value=float(_defaults["default_target_yield"]), step=0.5, key="underwriter_target_yield_slider")
 
                 preview_metrics = compute_deal_metrics(calc_price, calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                         calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                                         calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                                         hoa_monthly=default_sidebar_hoa)
                 st.markdown("---")
                 st.markdown("##### Results")
                 st.metric(label="Annual NOI", value=f"${preview_metrics['noi']:,.2f}")
@@ -1560,7 +1632,8 @@ def render_analytics_dashboard():
             if _pts:
                 scan_metrics = [
                     compute_deal_metrics(p["price"], calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                          calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+                                          calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                          hoa_monthly=_safe_hoa(p))
                     for p in _pts
                 ]
                 best_coc = max(m["coc"] for m in scan_metrics)

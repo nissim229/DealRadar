@@ -5,14 +5,25 @@ module has zero dependency on the app framework and is easy to unit test.
 """
 
 def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                          calc_down_pct, calc_interest, calc_target_yield):
+                          calc_down_pct, calc_interest, calc_target_yield, hoa_monthly=0.0):
     """Shared underwriting math - used identically by the summary cards, the property
-    cards, and the detailed Pro tabs, so the numbers never disagree with each other."""
+    cards, and the detailed Pro tabs, so the numbers never disagree with each other.
+
+    hoa_monthly defaults to 0 (not None) so every existing call site that
+    doesn't know a listing's HOA - a manual what-if entry, a portfolio
+    property with no HOA, mock data that predates this field - keeps
+    computing exactly what it did before this was added, rather than
+    needing to be touched. Real/mock RentCast listings pass their actual
+    hoa_monthly (see agent_engine.py) so a $300/mo HOA condo doesn't get
+    graded as if it had none - a real gap flagged by the user: "i dont
+    think we [are] adding that to the calculation to decide if it [is a]
+    good outstanding deal."""
     v_loss = (calc_rent * 12) * (calc_vacancy_pct / 100)
     eff_gross = (calc_rent * 12) - v_loss
     taxes = price * (calc_tax_rate / 100)
     insurance = price * (calc_ins_rate / 100)
-    expenses = taxes + insurance
+    hoa_annual = (hoa_monthly or 0) * 12
+    expenses = taxes + insurance + hoa_annual
     noi = max(0.0, eff_gross - expenses)
     cap_rate = (noi / price) * 100 if price > 0 else 0.0
 
@@ -39,7 +50,14 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     else:
         debt_factor = 0.0
     denom = tax_ins_ratio + (debt_factor * (1 - down_ratio)) + (target_yield * down_ratio)
-    mao = eff_gross / denom if denom > 0 else price
+    # HOA is a fixed dollar cost, not a rate-of-price like tax/insurance,
+    # so it can't be folded into tax_ins_ratio the same way (that ratio
+    # is what makes this formula solvable for price in the first place).
+    # Treating it as a straight reduction of the income available to
+    # cover everything else is a simplification, but it's directionally
+    # correct: a higher HOA lowers the max price this deal can still
+    # justify, instead of MAO silently ignoring it.
+    mao = (eff_gross - hoa_annual) / denom if denom > 0 else price
     mao_delta = price - mao
 
     if cashflow < 0:
@@ -54,7 +72,7 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
         "down_amt": down_amt, "loan_amt": loan_amt, "a_debt": a_debt,
         "mao": mao, "mao_delta": mao_delta, "grade": grade,
         "eff_gross_income": eff_gross, "annual_taxes": taxes, "annual_insurance": insurance,
-        "vacancy_loss": v_loss,
+        "vacancy_loss": v_loss, "annual_hoa": hoa_annual, "monthly_hoa": hoa_monthly or 0,
     }
 
 
