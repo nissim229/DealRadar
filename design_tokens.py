@@ -239,8 +239,15 @@ FONT_CSS = """
     ligature. The broad rule above was overriding it to the body
     typeface, which turned the icon into literal readable text like
     "expand_more" instead of a glyph - reproduced live on the topbar's
-    category dropdown chevron. */
-    [data-testid="stIconMaterial"] {
+    category dropdown chevron. stAlertDynamicIcon is the same problem on
+    a different testid - the icon= argument on st.info/warning/error/
+    success renders through this one instead of stIconMaterial, and was
+    still showing literal text ("info", "lightbulb", "visibility")
+    overlapping the message body until this was added too - reproduced
+    live on the guest-mode banners and the pre-existing Simple-mode
+    notice on the scan results page. */
+    [data-testid="stIconMaterial"],
+    [data-testid="stAlertDynamicIcon"] {
         font-family: "Material Symbols Rounded" !important;
     }
     h1, h2, h3, h4, h5, h6,
