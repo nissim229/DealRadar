@@ -251,11 +251,78 @@ def _render_scan_action(raw_profiles, active_category):
                                          index=default_index, key=profile_key)
     with col2:
         st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+        # Final "Secure Sector" treatment (user-approved after prototyping
+        # separately as a standalone artifact) - dark bg, faint border at
+        # rest, and on hover: border/glow brighten, an 8px grid overlay
+        # reveals, and a 128px conic-gradient "radar sweep" behind the
+        # icon spins continuously. Streamlit's <button> has no child spans
+        # to hang the grid/sweep layers on (unlike the raw HTML artifact),
+        # so both are built as ::before (grid) / ::after (sweep)
+        # pseudo-elements instead - only 2 available, so this button
+        # can't also carry the earlier prototype's corner-accent/scanline
+        # (dropped in favor of the approved design).
+        st.markdown("""
+            <style>
+            div.st-key-run_scan_btn_glow button[kind="primary"] {
+                position: relative !important;
+                background: #0f172a !important;
+                border: 1px solid rgba(59, 130, 246, 0.3) !important;
+                border-radius: 8px !important;
+                color: #60a5fa !important;
+                overflow: hidden !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.05em !important;
+                font-weight: 800 !important;
+                transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+            }
+            div.st-key-run_scan_btn_glow button[kind="primary"] p,
+            div.st-key-run_scan_btn_glow button[kind="primary"] span {
+                color: #60a5fa !important;
+                position: relative !important;
+                z-index: 10 !important;
+            }
+            /* Grid overlay - hidden at rest, revealed on hover */
+            div.st-key-run_scan_btn_glow button[kind="primary"]::before {
+                content: "" !important; position: absolute !important; inset: 0 !important;
+                z-index: 1 !important; opacity: 0 !important;
+                transition: opacity 0.3s ease !important;
+                background-image:
+                    repeating-linear-gradient(0deg, rgba(59, 130, 246, 0.18) 0 1px, transparent 1px 8px),
+                    repeating-linear-gradient(90deg, rgba(59, 130, 246, 0.18) 0 1px, transparent 1px 8px) !important;
+            }
+            /* Radar sweep - centered circle behind the icon/label, spins on hover */
+            div.st-key-run_scan_btn_glow button[kind="primary"]::after {
+                content: "" !important; position: absolute !important;
+                top: 50% !important; left: 50% !important;
+                width: 128px !important; height: 128px !important;
+                border-radius: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                z-index: 1 !important; opacity: 0 !important;
+                background: conic-gradient(from 0deg, transparent 50%, rgba(59, 130, 246, 0.25) 100%) !important;
+                transition: opacity 0.3s ease !important;
+            }
+            div.st-key-run_scan_btn_glow button[kind="primary"]:hover {
+                border-color: #60a5fa !important;
+                box-shadow: 0 0 25px rgba(59, 130, 246, 0.4) !important;
+            }
+            div.st-key-run_scan_btn_glow button[kind="primary"]:hover::before {
+                opacity: 1 !important;
+            }
+            div.st-key-run_scan_btn_glow button[kind="primary"]:hover::after {
+                opacity: 1 !important;
+                animation: dealradar-sweep 2.5s linear infinite !important;
+            }
+            @keyframes dealradar-sweep {
+                to { transform: translate(-50%, -50%) rotate(360deg); }
+            }
+            </style>
+        """, unsafe_allow_html=True)
         # Scanning itself is never blocked - a user out of credits still
         # gets a full, useful preview scan (sample data), so they can see
         # what the tool does before ever paying. Credits only decide
         # whether THIS scan pulls real market data instead of a preview.
-        run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
+        with st.container(key="run_scan_btn_glow"):
+            run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
         # Staff-only (any of the 3 tiers - see roles.py): forces mock/sample
         # data regardless of role or credits, so staff can exercise the UI
         # (new views, filters, pagination...) without burning real RentCast
