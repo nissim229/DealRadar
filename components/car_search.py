@@ -20,6 +20,7 @@ import roles
 import car_engine
 from components.car_card import render_car_card
 from icons import icon as svg_icon
+from scan_loading import render_scan_loading_radar
 
 
 def _inject_css():
@@ -161,8 +162,18 @@ def render_car_search_page():
                                       help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
 
     if search_clicked or test_clicked:
-        with st.spinner("Searching live inventory..." if not test_clicked else "Generating sample results..."):
+        # Same big radar-scope loading state as real estate's Run Live
+        # Scan (see scan_loading.py) - a car icon instead of a house, but
+        # otherwise identical mechanic/colors. try/finally so the
+        # placeholder still clears if _run_search raises, matching what
+        # st.spinner used to guarantee for free.
+        loading_placeholder = st.empty()
+        with loading_placeholder.container():
+            render_scan_loading_radar("cars")
+        try:
             _run_search(make, model, min_year, max_price, max_mileage, zip_code.strip(), radius, use_live=not test_clicked)
+        finally:
+            loading_placeholder.empty()
         st.rerun()
 
     results = st.session_state.get("car_search_results")

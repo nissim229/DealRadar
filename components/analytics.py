@@ -16,6 +16,7 @@ from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
 from nav import render_side_nav
+from scan_loading import render_scan_loading_radar
 
 
 def _format_price_short(price):
@@ -347,7 +348,7 @@ def _render_scan_action(raw_profiles, active_category):
     return selected_profile, run_clicked, test_clicked
 
 
-def _execute_scan(selected_profile, run_clicked, test_clicked):
+def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
     """Runs the actual scan (credit deduction, DB lookup, engine calls,
     history log, notification emails) and shows the loading radar while
     it does. Deliberately called *after* the hero stat cards render (see
@@ -362,74 +363,14 @@ def _execute_scan(selected_profile, run_clicked, test_clicked):
         return
     loading_placeholder = st.empty()
     with loading_placeholder.container():
-        # "Cyber Radar House" loading state, round 4 - big, on the dark
-        # hero background (rounds 1-3 anchored it inside the white
-        # "Select Target Profile" card, which is why round 2's
-        # transparent background looked "white" - it was never on dark
-        # ground to begin with). Same rings/crosshair/sweep/glowing-core
-        # mechanic as before, scaled up (260px vs 110px) and using
-        # on-dark text tokens now that it sits on the hero, not the card.
-        st.markdown("""
-        <style>
-        @keyframes dealradar-radar-sweep {
-            to { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        .dealradar-scan-wrap {
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            padding: 20px 0 8px 0;
-        }
-        .dealradar-radar-scope {
-            position: relative;
-            width: 260px; height: 260px;
-            border-radius: 50%;
-            margin-bottom: 22px;
-            overflow: hidden;
-            background:
-                repeating-radial-gradient(circle at center, transparent 0, transparent 39px, rgba(var(--radar-accent-rgb), 0.22) 40px, transparent 41px),
-                radial-gradient(circle at center, #111c2e 0%, #0a0f1a 100%);
-            box-shadow: 0 0 45px rgba(var(--radar-accent-rgb), 0.3), inset 0 0 40px rgba(0, 0, 0, 0.5);
-        }
-        .dealradar-radar-scope::before, .dealradar-radar-scope::after {
-            content: ""; position: absolute; background: rgba(var(--radar-accent-rgb), 0.18);
-        }
-        .dealradar-radar-scope::before { top: 0; bottom: 0; left: 50%; width: 1px; }
-        .dealradar-radar-scope::after { left: 0; right: 0; top: 50%; height: 1px; }
-        .dealradar-radar-scope .sweep {
-            position: absolute; top: 50%; left: 50%;
-            width: 380px; height: 380px;
-            transform: translate(-50%, -50%);
-            background: conic-gradient(from 0deg, transparent 60%, rgba(var(--radar-accent-rgb), 0.55) 100%);
-            animation: dealradar-radar-sweep 2.5s linear infinite;
-        }
-        .dealradar-radar-scope .core {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 10;
-            width: 92px; height: 92px; border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, var(--radar-accent), var(--radar-accent-dark));
-            box-shadow: 0 0 26px rgba(var(--radar-accent-rgb), 0.85);
-            display: flex; align-items: center; justify-content: center;
-        }
-        .dealradar-radar-scope .core svg { width: 42px; height: 42px; color: #f0fdff; }
-        .dealradar-scan-title {
-            font-weight: 700; color: white; font-size: 18px;
-        }
-        .dealradar-scan-sub {
-            color: var(--radar-text-on-dark-muted); font-size: 14px; margin-top: 4px;
-        }
-        </style>
-        <div class="dealradar-scan-wrap">
-            <div class="dealradar-radar-scope">
-                <span class="sweep"></span>
-                <div class="core">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                    </svg>
-                </div>
-            </div>
-            <div class="dealradar-scan-title">Scanning the market...</div>
-            <div class="dealradar-scan-sub">Matching properties against your criteria</div>
-        </div>
-        """, unsafe_allow_html=True)
+        # "Cyber Radar" loading state, round 4 - big, on the dark hero
+        # background (rounds 1-3 anchored it inside the white "Select
+        # Target Profile" card, which is why round 2's transparent
+        # background looked "white" - it was never on dark ground to
+        # begin with). Shared with Cars' Find a Car page (scan_loading.py)
+        # so both categories get the same visual, just with the icon/copy
+        # swapped to match what's being searched.
+        render_scan_loading_radar(active_category)
 
     try:
         # Credits are the real-data currency, independent of plan tier -
@@ -1765,7 +1706,7 @@ def render_analytics_dashboard():
         # scan's session_state, unaffected by whether a new one is about
         # to start, so they're already on screen by the time this either
         # no-ops (run_clicked/test_clicked both False) or kicks off a scan.
-        _execute_scan(selected_profile, run_clicked, test_clicked)
+        _execute_scan(selected_profile, run_clicked, test_clicked, active_category)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
