@@ -13,6 +13,7 @@ from components import pricing
 import plan_limits
 import roles
 from icons import icon as svg_icon
+from data_utils import clean_value
 from dashboard_grid import render_dashboard_grid
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
 from nav import render_side_nav
@@ -33,20 +34,16 @@ def _format_price_short(price):
 
 
 def _safe_hoa(source):
-    """Extracts a usable hoa_monthly value from a listing dict OR a pandas
-    Series/DataFrame row - a DataFrame column with some listings missing
-    HOA mixed with others that have it gets upcast to float, turning the
-    missing ones into NaN rather than None. `NaN or 0` doesn't catch that
-    (NaN is truthy in Python), same trap already hit elsewhere in this
-    app for zip_code/car_make - see [[history_results_parity]]."""
-    val = source.get("hoa_monthly")
+    """hoa_monthly, defaulting to 0 - the 0-default (not None) is what
+    every compute_deal_metrics call site here expects. Missing-value
+    normalization itself lives in data_utils.clean_value."""
+    val = clean_value(source.get("hoa_monthly"))
     if val is None:
         return 0
     try:
-        val = float(val)
+        return float(val)
     except (TypeError, ValueError):
         return 0
-    return 0 if val != val else val
 
 
 def _format_relative_time(timestamp_str):

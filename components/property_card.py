@@ -16,6 +16,7 @@ from whatif_calculator import render_whatif_calculator_html
 from photo_carousel import render_photo_carousel_html
 from components import pricing
 from icons import icon as svg_icon
+from data_utils import clean_value
 
 
 def render_grade_explanation(metrics, calc_target_yield):
@@ -122,24 +123,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         # extracted before. Blank/missing fields (a mock listing, or a
         # real one RentCast didn't populate for) are simply omitted
         # rather than shown as "N/A" clutter.
-        def _clean(val):
-            # row_item is sometimes a plain dict (from a JSON-loaded
-            # scan) and sometimes a pandas Series (a DataFrame row from
-            # the grid/table/map views) - a DataFrame column with some
-            # listings missing a field upcasts it to NaN, not None,
-            # which is truthy in Python (`if row_item.get("x"):` would
-            # pass for NaN and print "$nan/mo" or similar). Same trap
-            # already on file for zip_code/car_make/hoa elsewhere in
-            # this app - normalize both to a clean None here once,
-            # instead of repeating a NaN check at every field below.
-            if val is None:
-                return None
-            try:
-                if isinstance(val, float) and val != val:
-                    return None
-            except TypeError:
-                pass
-            return val
+        _clean = clean_value
 
         detail_rows = []
         hoa_val = _clean(row_item.get("hoa_monthly"))
@@ -435,15 +419,8 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
             prop_type = row_item.get('property_type')
             if prop_type:
                 info_parts.append(str(prop_type))
-            hoa_summary = row_item.get('hoa_monthly')
-            # row_item can be a pandas Series here (grid/table/map views
-            # pass a DataFrame row) - a column with some listings missing
-            # HOA upcasts the missing ones to NaN, not None, and NaN is
-            # truthy in Python (`if hoa_summary:` would pass and print
-            # "HOA $nan/mo"). Same trap already on file elsewhere in this
-            # app - explicit float-NaN check, not just a plain truthiness
-            # test.
-            if hoa_summary and not (isinstance(hoa_summary, float) and hoa_summary != hoa_summary):
+            hoa_summary = clean_value(row_item.get('hoa_monthly'))
+            if hoa_summary:
                 # A real, per-listing dollar cost from RentCast - shown
                 # right in the summary line (not just inside the detail
                 # dialog) since it directly affects whether this is
