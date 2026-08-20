@@ -84,3 +84,128 @@ def get_logo_html(category_value):
 
 def render_topbar_logo_html(category_value):
     st.markdown(get_logo_html(category_value), unsafe_allow_html=True)
+
+
+# --- Guest landing logo (a third, separate variant - not the circular
+# real_estate/cars style above, but the earlier rounded-square badge with
+# a spinning dashed ring + glow ping dot + small mono tag, per the user's
+# own HTML spec built specifically for the anonymous/guest experience).
+# Its CSS is self-contained (injected here, not scoped under any
+# particular `.st-key-*` container) because - unlike real_estate/cars,
+# whose CSS lives in main.py and is already on every authenticated page
+# including Admin Controls - guest_landing.py's own topbar never renders
+# on an authenticated page, so the admin's live preview in Brand & Design
+# would have no matching stylesheet to inherit from if this were scoped
+# the same way. Injecting the CSS wherever the markup is used (both the
+# real guest page and the admin preview) makes it portable instead.
+_GUEST_ICON_PATH = (
+    '<path d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 '
+    '21.75c-2.676 0-5.216-.584-7.499-1.632z" />'
+)
+
+_GUEST_LOGO_CSS = """
+<style>
+@keyframes dealradar-guestlogo-spin {
+    to { transform: rotate(360deg); }
+}
+.dealradar-guestlogo-group {
+    display: flex; align-items: center; gap: 14px; cursor: pointer;
+}
+.dealradar-guestlogo-scope {
+    position: relative; width: 36px; height: 36px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.6);
+    border: 1px solid var(--radar-navy-light);
+    transition: border-color 0.5s ease, box-shadow 0.5s ease;
+}
+.dealradar-guestlogo-group:hover .dealradar-guestlogo-scope {
+    border-color: rgba(var(--radar-accent-rgb), 0.4);
+    box-shadow: 0 0 20px rgba(var(--radar-accent-rgb), 0.15);
+}
+.dealradar-guestlogo-ring {
+    position: absolute; inset: 4px;
+    border: 1px dashed rgba(var(--radar-accent-rgb), 0.2);
+    border-radius: 50%;
+    animation: dealradar-guestlogo-spin 20s linear infinite;
+}
+.dealradar-guestlogo-icon {
+    position: relative; z-index: 1;
+    width: 14px; height: 14px; color: var(--radar-accent) !important;
+    transition: transform 0.5s ease;
+}
+.dealradar-guestlogo-group:hover .dealradar-guestlogo-icon {
+    transform: scale(1.1);
+}
+.dealradar-guestlogo-ping {
+    position: absolute; top: 6px; right: 6px;
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--radar-accent);
+    box-shadow: 0 0 6px var(--radar-accent);
+}
+.dealradar-guestlogo-word-deal {
+    font-family: var(--radar-font-display) !important;
+    font-size: 16px; font-weight: 900; color: var(--radar-text-on-dark) !important;
+    text-transform: uppercase; letter-spacing: normal;
+    transition: color 0.3s ease;
+}
+.dealradar-guestlogo-group:hover .dealradar-guestlogo-word-deal {
+    color: white !important;
+}
+.dealradar-guestlogo-word-radar {
+    font-family: var(--radar-font-display) !important;
+    font-size: 16px; font-weight: 300; color: var(--radar-accent) !important;
+    text-transform: uppercase; letter-spacing: 0.025em;
+}
+.dealradar-guestlogo-tag {
+    font-family: var(--radar-font-mono) !important;
+    font-size: 7px; font-weight: 700; letter-spacing: 0.15em;
+    color: #94a3b8 !important; text-transform: uppercase;
+    margin-left: 8px; background: var(--radar-navy);
+    padding: 2px 6px; border-radius: 4px;
+    border: 1px solid var(--radar-navy-light);
+}
+</style>
+"""
+
+
+def build_default_guest_logo_html():
+    custom_logo = db.get_brand_settings()["logo_data_uri"]
+    if custom_logo:
+        scope_content = f"<img src='{custom_logo}' style='width: 100%; height: 100%; object-fit: cover; border-radius: 8px;' />"
+    else:
+        scope_content = (
+            "<span class='dealradar-guestlogo-ring'></span>"
+            '<svg class="dealradar-guestlogo-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" '
+            'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+            f"{_GUEST_ICON_PATH}</svg>"
+            "<span class='dealradar-guestlogo-ping'></span>"
+        )
+    return (
+        "<div class='dealradar-guestlogo-group'>"
+        f"<div class='dealradar-guestlogo-scope'>{scope_content}</div>"
+        "<div style='display: flex; align-items: center; gap: 6px;'>"
+        "<span class='dealradar-guestlogo-word-deal'>DEAL</span>"
+        "<span class='dealradar-guestlogo-word-radar'>RADAR</span>"
+        "<span class='dealradar-guestlogo-tag'>GUEST</span>"
+        "</div>"
+        "</div>"
+    )
+
+
+def get_guest_logo_html():
+    brand = db.get_brand_settings()
+    override = brand.get("logo_html_guest", "")
+    return override if override else build_default_guest_logo_html()
+
+
+def inject_guest_logo_css():
+    """Public so callers outside this module (the admin preview) can pull
+    in the guest-logo CSS without reaching into a private module
+    attribute - render_guest_logo_html itself just uses this internally."""
+    st.markdown(_GUEST_LOGO_CSS, unsafe_allow_html=True)
+
+
+def render_guest_logo_html():
+    inject_guest_logo_css()
+    st.markdown(get_guest_logo_html(), unsafe_allow_html=True)

@@ -797,6 +797,29 @@ def _render_brand_design_tab():
             preview_html = logo_html_inputs[category_value].strip() or topbar_logo.build_default_logo_html(category_value)
             st.markdown(f"<div class='st-key-scoutai_topbar' style='border-radius: 8px;'>{preview_html}</div>", unsafe_allow_html=True)
 
+    st.markdown("##### Guest landing page logo")
+    st.caption(
+        "The anonymous/guest experience (before signing in) has its own logo, separate from the two above - "
+        "same override mechanism, blank keeps the built-in default."
+    )
+    guest_logo_html_input = st.text_area(
+        "Guest Landing logo HTML", value=brand.get("logo_html_guest", ""),
+        height=140, key=f"brand_logo_html_guest_{logo_html_nonce}",
+        placeholder="Leave blank for the built-in default...",
+    )
+    st.caption("Preview")
+    # The guest topbar's own CSS never loads on this (authenticated-only)
+    # admin page the way main.py's does, so topbar_logo.py's guest-logo
+    # styling is self-contained and injected right here instead of relying
+    # on a shared ancestor class - see build_default_guest_logo_html's
+    # module-level comment in topbar_logo.py.
+    guest_preview_html = guest_logo_html_input.strip() or topbar_logo.build_default_guest_logo_html()
+    topbar_logo.inject_guest_logo_css()
+    st.markdown(
+        f"<div style='background: var(--radar-navy); padding: 14px 20px; border-radius: 8px;'>{guest_preview_html}</div>",
+        unsafe_allow_html=True,
+    )
+
     st.markdown("---")
     save_col, reset_col = st.columns([1, 1])
     with save_col:
@@ -808,6 +831,7 @@ def _render_brand_design_tab():
             new_settings["font_mono"] = font_mono
             new_settings["logo_html_real_estate"] = logo_html_inputs["real_estate"].strip()
             new_settings["logo_html_cars"] = logo_html_inputs["cars"].strip()
+            new_settings["logo_html_guest"] = guest_logo_html_input.strip()
             if remove_logo:
                 new_settings["logo_data_uri"] = ""
             elif uploaded_logo is not None:

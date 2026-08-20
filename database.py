@@ -1063,6 +1063,7 @@ DEFAULT_BRAND_SETTINGS = {
     # admin pastes, one per deal category.
     "logo_html_real_estate": "",
     "logo_html_cars": "",
+    "logo_html_guest": "",
 }
 
 def get_brand_settings():
