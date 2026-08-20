@@ -186,6 +186,20 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4, card_he
                 min-height: 0 !important;
                 overflow-y: auto;
             }}
+            /* The shell itself is now a uniform 300px slot, but each
+            card's own inner container (the one with the actual visible
+            border/background, e.g. admin_signup_trend_card) still only
+            sizes to its own content and sits at the top of that slot -
+            confirmed live via DevTools: the shell measured exactly
+            300px on every card, but the visible bordered box still
+            stopped short for the shorter cards, leaving blank,
+            border-less space below it. Force the direct child to
+            stretch and fill the slot instead of just sitting in it. */
+            div[class*="st-key-{dashboard_type}_card_shell_"] > div {{
+                flex: 1 1 auto !important;
+                height: 100% !important;
+                box-sizing: border-box !important;
+            }}
         </style>""", unsafe_allow_html=True)
 
     rows = sorted({c["row"] for c in visible_cards})
