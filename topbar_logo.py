@@ -165,6 +165,18 @@ _GUEST_LOGO_CSS = """
     padding: 2px 6px; border-radius: 4px;
     border: 1px solid var(--radar-navy-light);
 }
+.dealradar-guestlogo-text {
+    display: flex; flex-direction: column; line-height: 1.2;
+}
+.dealradar-guestlogo-word-row {
+    display: flex; align-items: center; gap: 6px;
+}
+.dealradar-guestlogo-caption {
+    font-family: var(--radar-font-mono) !important;
+    font-size: 8px; font-weight: 600; letter-spacing: 0.1em;
+    color: #64748b !important; text-transform: uppercase;
+    margin-top: 1px;
+}
 </style>
 """
 
@@ -184,10 +196,13 @@ def build_default_guest_logo_html():
     return (
         "<div class='dealradar-guestlogo-group'>"
         f"<div class='dealradar-guestlogo-scope'>{scope_content}</div>"
-        "<div style='display: flex; align-items: center; gap: 6px;'>"
+        "<div class='dealradar-guestlogo-text'>"
+        "<div class='dealradar-guestlogo-word-row'>"
         "<span class='dealradar-guestlogo-word-deal'>DEAL</span>"
         "<span class='dealradar-guestlogo-word-radar'>RADAR</span>"
         "<span class='dealradar-guestlogo-tag'>GUEST</span>"
+        "</div>"
+        "<span class='dealradar-guestlogo-caption'>ANONYMOUS TRACKING NODE ACTIVE</span>"
         "</div>"
         "</div>"
     )
