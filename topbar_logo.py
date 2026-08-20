@@ -166,7 +166,7 @@ _GUEST_LOGO_CSS = """
     background: var(--radar-accent);
     box-shadow: 0 0 6px var(--radar-accent);
 }
-.dealradar-guestlogo-word-deal {
+.dealradar-guestlogo-group .dealradar-guestlogo-word-deal {
     font-family: var(--radar-font-display) !important;
     font-size: 16px; font-weight: 900; color: var(--radar-text-on-dark) !important;
     text-transform: uppercase; letter-spacing: normal;
@@ -175,12 +175,12 @@ _GUEST_LOGO_CSS = """
 .dealradar-guestlogo-group:hover .dealradar-guestlogo-word-deal {
     color: white !important;
 }
-.dealradar-guestlogo-word-radar {
+.dealradar-guestlogo-group .dealradar-guestlogo-word-radar {
     font-family: var(--radar-font-display) !important;
     font-size: 16px; font-weight: 300; color: var(--radar-accent) !important;
     text-transform: uppercase; letter-spacing: 0.025em;
 }
-.dealradar-guestlogo-tag {
+.dealradar-guestlogo-group .dealradar-guestlogo-tag {
     font-family: var(--radar-font-mono) !important;
     font-size: 7px; font-weight: 700; letter-spacing: 0.15em;
     color: #94a3b8 !important; text-transform: uppercase;
@@ -194,7 +194,7 @@ _GUEST_LOGO_CSS = """
 .dealradar-guestlogo-word-row {
     display: flex; align-items: center; gap: 6px;
 }
-.dealradar-guestlogo-caption {
+.dealradar-guestlogo-group .dealradar-guestlogo-caption {
     font-family: var(--radar-font-mono) !important;
     font-size: 8px; font-weight: 600; letter-spacing: 0.1em;
     color: #64748b !important; text-transform: uppercase;
