@@ -8,7 +8,7 @@ import plotly.express as px
 from datetime import datetime, timedelta
 from underwriting import compute_deal_metrics, GRADE_STYLES, render_deal_badge
 from pdf_export import generate_pdf_download_link
-from components.property_card import render_property_card
+from components.property_card import render_property_card, render_property_detail_dialog
 from components import pricing
 import plan_limits
 import roles
@@ -1106,25 +1106,42 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                             st.toast(f"Your {st.session_state.user_plan} plan's saved-properties limit is reached.", icon=":material/lock:")
                             pricing.render_pricing_dialog()
 
+                    # Jumps straight to the same floating detail dialog
+                    # "View Full Details" opens elsewhere, instead of
+                    # setting a flag that rendered an inline "Selected
+                    # Property" card below the (often long) table - easy
+                    # to miss without scrolling, per direct user feedback
+                    # ("its not easy for me to see that the information
+                    # is down the page"). The dialog is also naturally
+                    # width-capped (st.dialog(width="large")), which
+                    # fixes a second complaint for free: the same photo
+                    # carousel rendered at full page width here before
+                    # was being cropped into an extreme, ugly-looking
+                    # wide strip - not actually "stretched" (the carousel
+                    # already uses object-fit:cover, which preserves
+                    # aspect ratio), but a wide-open container made the
+                    # crop itself look distorted. A bounded dialog width
+                    # gives the image a sane aspect ratio to fit into.
                     view_click = st.session_state.get(f"{key_prefix}_table_view_click")
                     if view_click and view_click.get("row") is not None:
-                        st.session_state[f"{key_prefix}_table_selected_idx"] = view_click["row"]
-
-                    table_selected_idx = st.session_state.get(f"{key_prefix}_table_selected_idx")
-                    if table_selected_idx is not None and table_selected_idx < len(df_listings_page):
-                        st.markdown("---")
-                        st.markdown("#### :material/location_on: Selected Property")
-                        sel_row = df_listings_page.iloc[table_selected_idx]
-                        sel_metrics = compute_deal_metrics(
-                            float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                            calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                            hoa_monthly=_safe_hoa(sel_row)
-                        )
-                        render_property_card(table_selected_idx, sel_row, sel_metrics, view_mode, f"{key_prefix}_table_view_card", True,
-                                              st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                              calc_target_yield,
-                                              {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                               "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
+                        idx = view_click["row"]
+                        if idx < len(df_listings_page):
+                            sel_row = df_listings_page.iloc[idx]
+                            sel_metrics = compute_deal_metrics(
+                                float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                hoa_monthly=_safe_hoa(sel_row)
+                            )
+                            st.session_state.property_dialog_ctx = {
+                                "row_item": sel_row, "metrics": sel_metrics, "address": sel_row.get("address", ""),
+                                "user_id": st.session_state.user_id,
+                                "reference_point": st.session_state.get("distance_reference_point"),
+                                "calc_target_yield": calc_target_yield,
+                                "current_assumptions": {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                                         "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
+                                "key_prefix": f"{key_prefix}_table_view_dialog", "idx": idx,
+                            }
+                            render_property_detail_dialog()
             except Exception:
                 st.caption("Unable to load the table for this scan.")
 

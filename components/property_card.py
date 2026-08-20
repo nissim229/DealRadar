@@ -122,28 +122,56 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         # extracted before. Blank/missing fields (a mock listing, or a
         # real one RentCast didn't populate for) are simply omitted
         # rather than shown as "N/A" clutter.
+        def _clean(val):
+            # row_item is sometimes a plain dict (from a JSON-loaded
+            # scan) and sometimes a pandas Series (a DataFrame row from
+            # the grid/table/map views) - a DataFrame column with some
+            # listings missing a field upcasts it to NaN, not None,
+            # which is truthy in Python (`if row_item.get("x"):` would
+            # pass for NaN and print "$nan/mo" or similar). Same trap
+            # already on file for zip_code/car_make/hoa elsewhere in
+            # this app - normalize both to a clean None here once,
+            # instead of repeating a NaN check at every field below.
+            if val is None:
+                return None
+            try:
+                if isinstance(val, float) and val != val:
+                    return None
+            except TypeError:
+                pass
+            return val
+
         detail_rows = []
-        if row_item.get("monthly_hoa") or row_item.get("hoa_monthly"):
-            hoa_val = row_item.get("hoa_monthly") if row_item.get("hoa_monthly") is not None else metrics.get("monthly_hoa")
+        hoa_val = _clean(row_item.get("hoa_monthly"))
+        if hoa_val:
             detail_rows.append(("HOA fee", f"${float(hoa_val):,.0f}/mo"))
-        if row_item.get("year_built"):
-            detail_rows.append(("Year built", str(int(row_item["year_built"]))))
-        if row_item.get("lot_size"):
-            detail_rows.append(("Lot size", f"{int(row_item['lot_size']):,} sqft"))
-        if row_item.get("days_on_market") is not None:
-            detail_rows.append(("Days on market", str(int(row_item["days_on_market"]))))
-        if row_item.get("listed_date"):
-            detail_rows.append(("Listed", str(row_item["listed_date"])[:10]))
-        if row_item.get("listing_type"):
-            detail_rows.append(("Listing type", str(row_item["listing_type"])))
-        if row_item.get("status"):
-            detail_rows.append(("Status", str(row_item["status"])))
-        if row_item.get("county"):
-            loc_bits = [row_item.get("county")]
-            if row_item.get("state"):
-                loc_bits.append(row_item["state"])
-            if row_item.get("zip_code"):
-                loc_bits.append(str(row_item["zip_code"]))
+        year_built = _clean(row_item.get("year_built"))
+        if year_built:
+            detail_rows.append(("Year built", str(int(year_built))))
+        lot_size = _clean(row_item.get("lot_size"))
+        if lot_size:
+            detail_rows.append(("Lot size", f"{int(lot_size):,} sqft"))
+        days_on_market = _clean(row_item.get("days_on_market"))
+        if days_on_market is not None:
+            detail_rows.append(("Days on market", str(int(days_on_market))))
+        listed_date = _clean(row_item.get("listed_date"))
+        if listed_date:
+            detail_rows.append(("Listed", str(listed_date)[:10]))
+        listing_type = _clean(row_item.get("listing_type"))
+        if listing_type:
+            detail_rows.append(("Listing type", str(listing_type)))
+        status = _clean(row_item.get("status"))
+        if status:
+            detail_rows.append(("Status", str(status)))
+        county = _clean(row_item.get("county"))
+        if county:
+            loc_bits = [county]
+            state = _clean(row_item.get("state"))
+            if state:
+                loc_bits.append(state)
+            zip_code = _clean(row_item.get("zip_code"))
+            if zip_code:
+                loc_bits.append(str(zip_code))
             detail_rows.append(("County / State / ZIP", ", ".join(str(b) for b in loc_bits)))
 
         if detail_rows:
@@ -153,24 +181,27 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         else:
             st.caption("No additional property details available for this listing.")
 
-        agent_name = row_item.get("listing_agent_name")
-        office_name = row_item.get("listing_office_name")
+        agent_name = _clean(row_item.get("listing_agent_name"))
+        office_name = _clean(row_item.get("listing_office_name"))
         if agent_name or office_name:
             st.markdown("##### :material/contact_phone: Listing Contact")
             if agent_name:
                 agent_line = agent_name
-                if row_item.get("listing_agent_phone"):
-                    agent_line += f" · {row_item['listing_agent_phone']}"
+                agent_phone = _clean(row_item.get("listing_agent_phone"))
+                if agent_phone:
+                    agent_line += f" · {agent_phone}"
                 st.caption(f"Agent: {agent_line}")
             if office_name:
                 office_line = office_name
-                if row_item.get("listing_office_phone"):
-                    office_line += f" · {row_item['listing_office_phone']}"
-                if row_item.get("listing_office_email"):
-                    office_line += f" · {row_item['listing_office_email']}"
+                office_phone = _clean(row_item.get("listing_office_phone"))
+                if office_phone:
+                    office_line += f" · {office_phone}"
+                office_email = _clean(row_item.get("listing_office_email"))
+                if office_email:
+                    office_line += f" · {office_email}"
                 st.caption(f"Office: {office_line}")
 
-        raw = row_item.get("rentcast_raw")
+        raw = _clean(row_item.get("rentcast_raw"))
         if raw:
             with st.expander(":material/data_object: Full RentCast response for this listing"):
                 st.caption("Everything RentCast's API returned for this property, unedited - including fields this app doesn't have a dedicated place for yet.")
@@ -256,12 +287,16 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
 
 
 @st.dialog("Property Details", width="large")
-def _property_detail_dialog():
+def render_property_detail_dialog():
     """Native Streamlit modal - opens as a true overlay layer on top of the
     page (with its own close button and background dim), rather than
     expanding inline. Reads whichever property was last clicked from
     session_state, since st.dialog's title/decoration is fixed at import
-    time and can't take per-call arguments directly."""
+    time and can't take per-call arguments directly. Exported (not
+    module-private) so a caller that already has a row/metrics in hand -
+    e.g. the table view's own "eye" icon column - can jump straight to
+    this floating dialog instead of routing through render_property_card's
+    inline card + its own "View Full Details" button first."""
     ctx = st.session_state.get("property_dialog_ctx")
     if not ctx:
         st.write("No property selected.")
@@ -385,7 +420,7 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
                             "calc_target_yield": calc_target_yield, "current_assumptions": current_assumptions,
                             "key_prefix": key_prefix, "idx": idx, "open_tab": "photos",
                         }
-                        _property_detail_dialog()
+                        render_property_detail_dialog()
 
         info_col, action_col = st.columns([4, 1])
         with info_col:
@@ -401,7 +436,14 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
             if prop_type:
                 info_parts.append(str(prop_type))
             hoa_summary = row_item.get('hoa_monthly')
-            if hoa_summary:
+            # row_item can be a pandas Series here (grid/table/map views
+            # pass a DataFrame row) - a column with some listings missing
+            # HOA upcasts the missing ones to NaN, not None, and NaN is
+            # truthy in Python (`if hoa_summary:` would pass and print
+            # "HOA $nan/mo"). Same trap already on file elsewhere in this
+            # app - explicit float-NaN check, not just a plain truthiness
+            # test.
+            if hoa_summary and not (isinstance(hoa_summary, float) and hoa_summary != hoa_summary):
                 # A real, per-listing dollar cost from RentCast - shown
                 # right in the summary line (not just inside the detail
                 # dialog) since it directly affects whether this is
