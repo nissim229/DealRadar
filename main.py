@@ -209,14 +209,34 @@ else:
             div.st-key-scoutai_topbar button:hover span {
                 color: white !important;
             }
+            /* Nav labels specifically: no filled pill for the active
+            item anymore - color/weight alone carry the distinction now
+            (muted gray at rest, bold cyan when active), matching the
+            reference caption's "plain text / bold cyan emphasis"
+            contrast instead of a highlight box. Overrides the broader
+            topbar button rules above for just the nav row. */
+            div.st-key-scoutai_nav_row button,
+            div.st-key-scoutai_nav_row button:hover {
+                background-color: transparent !important;
+            }
+            div.st-key-scoutai_nav_row button p,
+            div.st-key-scoutai_nav_row button span {
+                color: #64748b !important;
+                font-weight: 500 !important;
+            }
+            div.st-key-scoutai_nav_row button:hover p,
+            div.st-key-scoutai_nav_row button:hover span {
+                color: #94a3b8 !important;
+            }
             div.st-key-scoutai_topbar_active button {
-                background-color: #2563eb !important;
-                color: white !important;
-                font-weight: 600;
+                background-color: transparent !important;
+                color: #22d3ee !important;
+                font-weight: 700;
             }
             div.st-key-scoutai_topbar_active button p,
             div.st-key-scoutai_topbar_active button span {
-                color: white !important;
+                color: #22d3ee !important;
+                font-weight: 700 !important;
             }
 
             /* User popover trigger specifically - force every descendant
