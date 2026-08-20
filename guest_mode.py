@@ -4,8 +4,8 @@ Shared building blocks for the anonymous "browse the real app" experience -
 st.session_state.is_guest is the single source of truth for whether this is
 a guest session, and every page that needs to gate a write action or show a
 "this is sample data" note does it through the two functions below, instead
-of five separate ad-hoc checks scattered across analytics.py, portfolio.py,
-strategy_config.py, car_search.py, and settings.py.
+of separate ad-hoc checks scattered across analytics.py, portfolio.py,
+car_search.py, and settings.py.
 """
 
 import streamlit as st

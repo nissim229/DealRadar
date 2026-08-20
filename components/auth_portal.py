@@ -135,6 +135,14 @@ def _apply_login_session(user_record, email):
     st.session_state.theme_mode = user_record.get("theme_preference", "light")
     st.session_state.user_plan = user_record.get("plan", "Free")
     st.session_state.user_settings = db.get_user_settings(user_record["id"])
+    # These session keys aren't scoped to a user_id - without clearing
+    # them, a guest's sample scan (or another account's, on a shared
+    # machine) would still be showing on Run Property Scans/History right
+    # after this login, as if it were this account's own real data. Mirrors
+    # the same clear on logout in topbar.py.
+    st.session_state.pop("active_scanned_report", None)
+    st.session_state.pop("active_scanned_coords", None)
+    st.session_state.pop("active_scanned_profile", None)
 
 
 def _render_no_account_found():

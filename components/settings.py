@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo, available_timezones
 import database as db
 import theme
 import email_utils
-from nav import render_side_nav
+from nav import render_top_style_subnav
 from icons import icon as svg_icon
 from guest_mode import guest_action_button, render_guest_banner
 
@@ -348,12 +348,9 @@ def render_settings_page(is_guest=False):
             </div>
         """, unsafe_allow_html=True)
 
-    nav_col, content_col = st.columns([1, 4])
-    with nav_col:
-        active_section = render_side_nav(
-            [{"label": name, "icon": icon} for name, icon in SETTINGS_SECTIONS],
-            key_prefix="settings_nav",
-        )
-    with content_col:
-        with st.container(key="settings_content"):
-            _SECTION_RENDERERS[active_section](settings)
+    active_section = render_top_style_subnav(
+        [{"label": name, "icon": icon} for name, icon in SETTINGS_SECTIONS],
+        key_prefix="settings_nav",
+    )
+    with st.container(key="settings_content"):
+        _SECTION_RENDERERS[active_section](settings)

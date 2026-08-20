@@ -529,11 +529,11 @@ def run_agent_workflow(profile_name, user_id, raw_listings=None):
     guarantees uniqueness per (user_id, profile_name) pair - looking up by
     profile_name alone risked pulling another tenant's saved criteria.
 
-    raw_listings: pass the already-fetched listings for this scan (the caller
-    typically needs them anyway, e.g. for map coordinates) to avoid a second
-    live RentCast call for the same profile - each real API call spends
-    metered quota, so fetching twice per scan would silently halve the
-    effective monthly limit. Only fetched here if the caller didn't already."""
+    Looks the scan's criteria up from a saved `reports` row by name - for a
+    scan whose criteria already lives in memory (an ad-hoc real-estate
+    search or a guest preview), use run_agent_workflow_adhoc instead, which
+    skips this lookup entirely rather than requiring a profile row to exist
+    first (see [[nav_simplification_ad_hoc_search]])."""
     conn = sqlite3.connect(db.DB_NAME)
     try:
         cursor = conn.cursor()
@@ -549,6 +549,15 @@ def run_agent_workflow(profile_name, user_id, raw_listings=None):
         raise ValueError(f"Profile configuration '{profile_name}' not found.")
 
     location, max_price, min_beds, property_type = row
+    return run_agent_workflow_adhoc(profile_name, user_id, location, property_type, max_price, min_beds, raw_listings)
+
+
+def run_agent_workflow_adhoc(profile_name, user_id, location, property_type, max_price, min_beds, raw_listings=None):
+    """The actual report-generation logic (OpenAI with local-simulator
+    failover) - shared by run_agent_workflow (looks criteria up from a
+    saved profile row first) and called directly by an ad-hoc scan that
+    already has its criteria in memory and doesn't need - or might not
+    even have - a saved profile row to look them up from."""
     if raw_listings is None:
         raw_listings = fetch_live_listings(location, property_type, max_price, min_beds)
 

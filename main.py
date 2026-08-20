@@ -14,8 +14,7 @@ inject_design_tokens()
 
 # 2. Modular Component Imports from the new Components Folder
 from components.auth_portal import render_auth_portal, render_reset_password_view, handle_google_oauth_callback
-from components.analytics import render_analytics_dashboard
-from components.strategy_config import render_strategy_configuration
+from components.analytics import render_analytics_dashboard, render_history_page
 from components.admin_controls import render_admin_control_panel
 from components.portfolio import render_portfolio_page
 from components.settings import render_settings_page, maybe_autodetect_timezone
@@ -90,10 +89,9 @@ else:
     render_main_topbar(is_guest)
 
     # Route page fragments based on top nav selection. Cars gets its own
-    # dedicated one-page flow (components/car_search.py) rather than
-    # sharing real estate's Run Scans/Manage Criteria pair - see
-    # [[cars-category-feature]] for why (search runs immediately, no
-    # saved-profile step first).
+    # dedicated one-page flow (components/car_search.py); real estate's
+    # own scan flow now works the same way (search runs immediately, no
+    # saved-profile step first) - see [[nav_simplification_ad_hoc_search]].
     # Admin Controls is never offered to a guest (the guest account popover
     # has no Admin entry, so this only guards a stale/manually-set
     # current_page) - fall back to the default page rather than let a
@@ -103,8 +101,8 @@ else:
 
     if st.session_state.current_page == "Run Property Scans":
         render_analytics_dashboard(is_guest=is_guest)
-    elif st.session_state.current_page == "Manage Searches":
-        render_strategy_configuration(is_guest=is_guest)
+    elif st.session_state.current_page == "History":
+        render_history_page(is_guest=is_guest)
     elif st.session_state.current_page == "Find a Car":
         render_car_search_page(is_guest=is_guest)
     elif st.session_state.current_page == "Saved Searches":

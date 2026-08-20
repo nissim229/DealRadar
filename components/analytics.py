@@ -17,8 +17,9 @@ from data_utils import clean_value, relative_time
 from dashboard_grid import render_dashboard_grid
 from guest_mode import guest_action_button, render_guest_banner
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
-from nav import render_side_nav
+from nav import render_top_style_subnav
 from scan_loading import render_scan_loading_radar
+from location_picker import render_location_picker, location_display_label
 
 
 def _format_price_short(price):
@@ -227,126 +228,143 @@ def build_clustered_map_data(df, cluster_grid_deg=0.008):
     return pd.DataFrame(clustered_rows)
 
 
-def _render_scan_action(raw_profiles, active_category):
-    default_index = 0
-    if st.session_state.get("dashboard_quick_selected_profile") in raw_profiles:
-        default_index = raw_profiles.index(st.session_state.dashboard_quick_selected_profile)
+def _render_scan_search_form(is_guest=False):
+    """Ad-hoc search form for a real-estate scan - mirrors car_search.py's
+    own pattern (search runs immediately, no saved profile required first)
+    instead of requiring a "Manage Searches" profile to exist before
+    scanning at all, per real feedback that a separate nav item just to
+    set up a search before you could ever run one was confusing. Used
+    identically for both a real session and a guest preview - the same
+    rich location picker either way, matching the "almost identical to
+    the real page" parity guest mode is built around; only what happens
+    after Run Live Scan differs (see the caller). Returns
+    (criteria, run_clicked, test_clicked) - criteria always has usable
+    defaults even before a scan runs."""
+    selected_state, selected_cities, zip_code = render_location_picker("scan_form")
 
-    # Keyed on active_category, not left as one shared key, because a
-    # selectbox's `index=` argument is only honored the first time its key
-    # is ever instantiated - once st.session_state has a stored value under
-    # that key, Streamlit keeps showing it on every future rerun regardless
-    # of `index`, even after `raw_profiles` (this dropdown's own options)
-    # has been re-filtered to a different category by the topbar switcher.
-    # That let a stale real-estate profile name go on showing as "selected"
-    # while looking at the Cars category's (entirely different) profile
-    # list. Splitting the key per category gives each one its own
-    # persisted selection instead, which also means switching back to a
-    # category restores whatever you'd last picked there.
-    profile_key = f"scan_profile_selectbox_{active_category}"
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        selected_profile = st.selectbox("Select Target Profile to Execute", options=raw_profiles,
-                                         index=default_index, key=profile_key)
-    with col2:
-        st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-        # Final "Secure Sector" treatment (user-approved after prototyping
-        # separately as a standalone artifact) - dark bg, faint border at
-        # rest, and on hover: border/glow brighten, an 8px grid overlay
-        # reveals, and a 128px conic-gradient "radar sweep" behind the
-        # icon spins continuously. Streamlit's <button> has no child spans
-        # to hang the grid/sweep layers on (unlike the raw HTML artifact),
-        # so both are built as ::before (grid) / ::after (sweep)
-        # pseudo-elements instead - only 2 available, so this button
-        # can't also carry the earlier prototype's corner-accent/scanline
-        # (dropped in favor of the approved design). Colors are the
-        # artifact's own cyan (#22d3ee), not DealRadar's usual blue - a
-        # first pass here quietly swapped to the app's blue and missed
-        # that the approved version was cyan. font-weight:900 also needs
-        # Work Sans' 900 file actually loaded (design_tokens.py's Google
-        # Fonts link only pulled 400/500/600 before) or the browser just
-        # fake-bolds a lighter weight instead of true black.
-        st.markdown("""
-            <style>
-            div.st-key-run_scan_btn_glow button[kind="primary"] {
-                position: relative !important;
-                background: var(--radar-navy) !important;
-                border: 1px solid rgba(var(--radar-accent-rgb), 0.2) !important;
-                border-radius: 8px !important;
-                color: var(--radar-accent) !important;
-                overflow: hidden !important;
-                text-transform: uppercase !important;
-                letter-spacing: 0.05em !important;
-                font-weight: 900 !important;
-                transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
-            }
-            div.st-key-run_scan_btn_glow button[kind="primary"] p,
-            div.st-key-run_scan_btn_glow button[kind="primary"] span {
-                color: var(--radar-accent) !important;
-                font-weight: 900 !important;
-                position: relative !important;
-                z-index: 10 !important;
-            }
-            /* Grid overlay - hidden at rest, revealed on hover */
-            div.st-key-run_scan_btn_glow button[kind="primary"]::before {
-                content: "" !important; position: absolute !important; inset: 0 !important;
-                z-index: 1 !important; opacity: 0 !important;
-                transition: opacity 0.3s ease !important;
-                background-image:
-                    repeating-linear-gradient(0deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px),
-                    repeating-linear-gradient(90deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px) !important;
-            }
-            /* Radar sweep - centered circle behind the icon/label, spins on hover */
-            div.st-key-run_scan_btn_glow button[kind="primary"]::after {
-                content: "" !important; position: absolute !important;
-                top: 50% !important; left: 50% !important;
-                width: 128px !important; height: 128px !important;
-                border-radius: 50% !important;
-                transform: translate(-50%, -50%) !important;
-                z-index: 1 !important; opacity: 0 !important;
-                background: conic-gradient(from 0deg, transparent 50%, rgba(var(--radar-accent-rgb), 0.25) 100%) !important;
-                transition: opacity 0.3s ease !important;
-            }
-            div.st-key-run_scan_btn_glow button[kind="primary"]:hover {
-                border-color: var(--radar-accent) !important;
-                box-shadow: 0 0 30px rgba(var(--radar-accent-rgb), 0.3) !important;
-            }
-            div.st-key-run_scan_btn_glow button[kind="primary"]:hover::before {
-                opacity: 1 !important;
-            }
-            div.st-key-run_scan_btn_glow button[kind="primary"]:hover::after {
-                opacity: 1 !important;
-                animation: dealradar-sweep 2.5s linear infinite !important;
-            }
-            @keyframes dealradar-sweep {
-                to { transform: translate(-50%, -50%) rotate(360deg); }
-            }
-            </style>
-        """, unsafe_allow_html=True)
+    prop_col, price_col, beds_col = st.columns(3)
+    with prop_col:
+        property_type = st.selectbox("Property Type", ["Single Family Home", "Condo", "Multi-Family", "Townhouse"],
+                                      key="scan_form_property_type")
+    with price_col:
+        max_price = st.number_input("Maximum Budget ($)", min_value=0, value=750000, step=25000, key="scan_form_max_price")
+    with beds_col:
+        min_beds = st.number_input("Minimum Bedrooms", min_value=0, value=3, step=1, key="scan_form_min_beds")
+
+    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    # Final "Secure Sector" treatment (user-approved after prototyping
+    # separately as a standalone artifact) - dark bg, faint border at
+    # rest, and on hover: border/glow brighten, an 8px grid overlay
+    # reveals, and a 128px conic-gradient "radar sweep" behind the
+    # icon spins continuously. Streamlit's <button> has no child spans
+    # to hang the grid/sweep layers on (unlike the raw HTML artifact),
+    # so both are built as ::before (grid) / ::after (sweep)
+    # pseudo-elements instead - only 2 available, so this button
+    # can't also carry the earlier prototype's corner-accent/scanline
+    # (dropped in favor of the approved design). Colors are the
+    # artifact's own cyan (#22d3ee), not DealRadar's usual blue - a
+    # first pass here quietly swapped to the app's blue and missed
+    # that the approved version was cyan. font-weight:900 also needs
+    # Work Sans' 900 file actually loaded (design_tokens.py's Google
+    # Fonts link only pulled 400/500/600 before) or the browser just
+    # fake-bolds a lighter weight instead of true black.
+    st.markdown("""
+        <style>
+        div.st-key-run_scan_btn_glow button[kind="primary"] {
+            position: relative !important;
+            background: var(--radar-navy) !important;
+            border: 1px solid rgba(var(--radar-accent-rgb), 0.2) !important;
+            border-radius: 8px !important;
+            color: var(--radar-accent) !important;
+            overflow: hidden !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.05em !important;
+            font-weight: 900 !important;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
+        }
+        div.st-key-run_scan_btn_glow button[kind="primary"] p,
+        div.st-key-run_scan_btn_glow button[kind="primary"] span {
+            color: var(--radar-accent) !important;
+            font-weight: 900 !important;
+            position: relative !important;
+            z-index: 10 !important;
+        }
+        /* Grid overlay - hidden at rest, revealed on hover */
+        div.st-key-run_scan_btn_glow button[kind="primary"]::before {
+            content: "" !important; position: absolute !important; inset: 0 !important;
+            z-index: 1 !important; opacity: 0 !important;
+            transition: opacity 0.3s ease !important;
+            background-image:
+                repeating-linear-gradient(0deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px),
+                repeating-linear-gradient(90deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px) !important;
+        }
+        /* Radar sweep - centered circle behind the icon/label, spins on hover */
+        div.st-key-run_scan_btn_glow button[kind="primary"]::after {
+            content: "" !important; position: absolute !important;
+            top: 50% !important; left: 50% !important;
+            width: 128px !important; height: 128px !important;
+            border-radius: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            z-index: 1 !important; opacity: 0 !important;
+            background: conic-gradient(from 0deg, transparent 50%, rgba(var(--radar-accent-rgb), 0.25) 100%) !important;
+            transition: opacity 0.3s ease !important;
+        }
+        div.st-key-run_scan_btn_glow button[kind="primary"]:hover {
+            border-color: var(--radar-accent) !important;
+            box-shadow: 0 0 30px rgba(var(--radar-accent-rgb), 0.3) !important;
+        }
+        div.st-key-run_scan_btn_glow button[kind="primary"]:hover::before {
+            opacity: 1 !important;
+        }
+        div.st-key-run_scan_btn_glow button[kind="primary"]:hover::after {
+            opacity: 1 !important;
+            animation: dealradar-sweep 2.5s linear infinite !important;
+        }
+        @keyframes dealradar-sweep {
+            to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    btn_col1, btn_col2, btn_col3 = st.columns(3)
+    with btn_col1:
         # Scanning itself is never blocked - a user out of credits still
         # gets a full, useful preview scan (sample data), so they can see
         # what the tool does before ever paying. Credits only decide
         # whether THIS scan pulls real market data instead of a preview.
         with st.container(key="run_scan_btn_glow"):
             run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
+    test_clicked = False
+    with btn_col2:
         # Staff-only (any of the 3 tiers - see roles.py): forces mock/sample
         # data regardless of role or credits, so staff can exercise the UI
         # (new views, filters, pagination...) without burning real RentCast
         # quota - previously the only way to get preview data as staff was
         # to hand-edit a test account's credits to 0, since being staff
         # always granted allow_live=True.
-        test_clicked = False
         if roles.is_staff(st.session_state.user_role):
             test_clicked = st.button(":material/science: Run Test Scan", use_container_width=True, key="run_test_scan_btn",
                                       help="Uses mock/sample data - doesn't spend real RentCast quota.")
-        if st.session_state.user_credits <= 0 and not roles.is_admin_or_above(st.session_state.user_role):
+    with btn_col3:
+        if not is_guest and st.session_state.user_credits <= 0 and not roles.is_admin_or_above(st.session_state.user_role):
             if st.button(":material/add_card: Buy Credits for real data", use_container_width=True, key="buy_credits_trigger_btn"):
                 pricing.render_pricing_dialog()
 
-    return selected_profile, run_clicked, test_clicked
+    criteria = {
+        "location": location_display_label(selected_state, selected_cities, zip_code),
+        "property_type": property_type, "max_price": max_price, "min_beds": min_beds,
+        "state": selected_state, "selected_cities": selected_cities, "zip_code": zip_code,
+    }
+    return criteria, run_clicked, test_clicked
 
 
-GUEST_QUICK_SEARCH_CITIES = ["Denver, Colorado", "Austin, Texas", "Miami, Florida", "Boulder, Colorado"]
+# (state, city) pairs, not free text - each must be a real curated city in
+# location_data.py so the location picker's own map/coords resolution
+# handles them identically to a manually-picked one. Used for the guest
+# preview's quick-search chips and its default first-load search.
+GUEST_QUICK_SEARCH_CITIES = [
+    ("Colorado", "Denver"), ("Texas", "Austin"), ("Florida", "Miami"), ("Colorado", "Boulder"),
+]
 
 
 def _build_coord_list(raw_listings_data):
@@ -372,6 +390,16 @@ def _build_coord_list(raw_listings_data):
                 "longitude": listing["longitude"],
                 "mls_number": listing.get("mls_number"),
                 "mls_name": listing.get("mls_name"),
+                # Everything else RentCast (or the mock generator, for
+                # parity) provides that this app wasn't persisting
+                # before - HOA specifically so it can factor into
+                # compute_deal_metrics's grading, the rest so the
+                # "Full Details" section on the property card has
+                # something real to show instead of just re-deriving
+                # from the summary fields above. This dict (not
+                # `listing` itself) is what actually survives into
+                # history/reload, so a field missing here is a field
+                # that's gone the moment this scan isn't the active one.
                 "hoa_monthly": listing.get("hoa_monthly"),
                 "year_built": listing.get("year_built"),
                 "lot_size": listing.get("lot_size"),
@@ -392,65 +420,92 @@ def _build_coord_list(raw_listings_data):
     return coord_list
 
 
-def _render_guest_scan_action():
-    """The guest equivalent of _render_scan_action - an ad-hoc city/price/
-    beds form instead of a saved-profile dropdown, since a guest has no
-    saved profiles and agent_engine.run_agent_workflow hard-requires one
-    (see [[guest_browsing_read_only_mode]] for why this couldn't just
-    reuse the real dropdown-based flow)."""
-    with st.form("guest_scan_form"):
-        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        with c1:
-            location = st.text_input("City", placeholder="e.g., Denver, Colorado",
-                                      value=st.session_state.get("guest_scan_location", ""))
-        with c2:
-            max_price = st.number_input("Max price ($)", min_value=50000, value=750000, step=25000)
-        with c3:
-            min_beds = st.number_input("Min beds", min_value=0, value=3, step=1)
-        with c4:
-            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-            search_clicked = st.form_submit_button(":material/travel_explore: Run Live Scan",
-                                                     type="primary", use_container_width=True)
+def _fetch_listings_for_criteria(criteria, allow_live, user_id=None):
+    """Resolves a search's criteria (state + specific cities OR a ZIP OR
+    "any city in this state", from the location picker) into actual
+    listings - shared by the real ad-hoc scan path and the guest demo
+    path below, which differ only in allow_live and what happens to the
+    result afterward. state=None is the legacy shape (a saved search from
+    before the state/city picker existed, resolved by free-text location
+    instead) - preserved so those old saved searches still work."""
+    location = criteria["location"]
+    property_type = criteria["property_type"]
+    max_price = criteria["max_price"]
+    min_beds = criteria["min_beds"]
+    state = criteria.get("state")
 
-    st.markdown("<span style='color:var(--radar-text-muted); font-size:12px; margin-right:8px;'>Popular:</span>", unsafe_allow_html=True)
-    chip_cols = st.columns([1, 1, 1, 1, 4])
-    chip_clicked_city = None
-    for i, chip_city in enumerate(GUEST_QUICK_SEARCH_CITIES):
-        with chip_cols[i]:
-            if st.button(chip_city.split(",")[0], key=f"guest_scan_chip_{i}", use_container_width=True):
-                chip_clicked_city = chip_city
+    if state is None:
+        return engine.fetch_live_listings(location, property_type, max_price, min_beds, allow_live=allow_live, user_id=user_id)
 
-    if chip_clicked_city:
-        return chip_clicked_city, 750000, 3, True
-    if search_clicked and location:
-        return location, max_price, min_beds, True
-    if search_clicked and not location:
-        st.warning("Enter a city to search.")
-    return location, max_price, min_beds, False
+    selected_cities = criteria.get("selected_cities") or []
+    zip_code = criteria.get("zip_code")
+    targets = []
+    if selected_cities:
+        for city in selected_cities:
+            coords = engine.resolve_city_coords(city, state)
+            if coords:
+                targets.append({"lat": coords[0], "lon": coords[1], "label": f"{city}, {state}", "city_name": city})
+    elif zip_code:
+        geo_result = engine.validate_and_geocode_location(f"{zip_code}, {state}")
+        if geo_result:
+            targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"{zip_code}, {state}", "city_name": None})
+    else:
+        geo_result = engine.validate_and_geocode_location(state)
+        if geo_result:
+            targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"Any city in {state}", "city_name": None})
+
+    if not targets:
+        return []
+    return engine.fetch_live_listings_for_targets(targets, property_type, max_price, min_beds, allow_live=allow_live, user_id=user_id)
 
 
-def _run_guest_demo_scan(location, property_type, max_price, min_beds):
+def _load_saved_criteria(name, user_id):
+    """Loads one auto-saved search's criteria back from the reports table
+    by name, for a Quick Access chip click - re-running a past search is
+    a single click (load criteria, then run), not "select it, then also
+    click Run" the way the old profile dropdown required."""
+    import sqlite3
+    conn = sqlite3.connect(db.DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code "
+            "FROM reports WHERE user_id=? AND profile_name=?",
+            (int(user_id), name)
+        )
+        row = cursor.fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    return {
+        "location": row[0], "property_type": row[1], "max_price": row[2], "min_beds": row[3],
+        "state": row[4], "selected_cities": json.loads(row[5]) if row[5] else [], "zip_code": row[6],
+    }
+
+
+def _run_guest_demo_scan(criteria):
     """The guest-only equivalent of _execute_scan. Never touches the DB -
-    no saved-profile lookup (agent_engine.run_agent_workflow hard-requires
-    one that a guest session doesn't have), no credit deduction, no
-    history log - but builds st.session_state.active_scanned_coords in
-    the exact shape a real scan does via the shared _build_coord_list, so
-    the existing _render_scan_results pipeline (filters, map/grid/table
-    views, best-deal banner, real property cards) renders guest results
-    identically to a real scan instead of a separate simplified view."""
+    no saved-profile row, no credit deduction, no history log - but builds
+    st.session_state.active_scanned_coords in the exact shape a real scan
+    does via the shared _build_coord_list, so the existing
+    _render_scan_results pipeline (filters, map/grid/table views, best-
+    deal banner, real property cards) renders guest results identically
+    to a real scan instead of a separate simplified view. Report text
+    always comes from the offline mock generator, never OpenAI - a guest
+    session shouldn't be able to spend the app's shared OpenAI quota."""
     loading_placeholder = st.empty()
     with loading_placeholder.container():
         render_scan_loading_radar("real_estate")
     try:
-        raw_listings_data = engine.fetch_live_listings(location, property_type, int(max_price), int(min_beds), allow_live=False)
+        raw_listings_data = _fetch_listings_for_criteria(criteria, allow_live=False)
         coord_list = _build_coord_list(raw_listings_data)
         report_result = engine.generate_offline_mock_report(
-            "Guest Preview", location, property_type, max_price, min_beds, raw_listings_data)
+            "Guest Preview", criteria["location"], criteria["property_type"], criteria["max_price"], criteria["min_beds"], raw_listings_data)
 
         st.session_state.active_scanned_report = report_result
         st.session_state.active_scanned_profile = "Guest Preview"
         st.session_state.active_scanned_coords = json.dumps(coord_list)
-        st.session_state.guest_scan_location = location
         st.session_state.focused_card_index = None
         st.session_state.last_scan_was_preview = True
         st.session_state.last_scan_was_test = False
@@ -459,17 +514,24 @@ def _run_guest_demo_scan(location, property_type, max_price, min_beds):
         loading_placeholder.empty()
 
 
-def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
-    """Runs the actual scan (credit deduction, DB lookup, engine calls,
+def _execute_scan(criteria, run_clicked, test_clicked, active_category):
+    """Runs the actual scan (credit deduction, engine calls, auto-save,
     history log, notification emails) and shows the loading radar while
     it does. Deliberately called *after* the hero stat cards render (see
-    the caller), not from inside _render_scan_action alongside the
-    selectbox/buttons - the user wants the loading visual big and on the
-    dark hero background, positioned below the 3 cards, with the search
-    form staying visible the whole time (nothing hidden/replaced while
+    the caller), not from inside the search form alongside its buttons -
+    the user wants the loading visual big and on the dark hero
+    background, positioned below the 3 cards, with the search form
+    staying visible the whole time (nothing hidden/replaced while
     scanning). The 3 cards render from the *previous* scan's still-valid
     session_state before this function ever runs, so they show up
-    immediately without waiting on this one."""
+    immediately without waiting on this one.
+
+    criteria comes directly from the ad-hoc search form (or a Quick
+    Access chip's saved criteria) - no saved profile row has to exist
+    first, unlike the old Manage-Searches-first flow. Every real scan
+    still gets auto-saved under its location's name afterward so it
+    appears as a Quick Access chip next time, but that's just a
+    convenience now, not a precondition for scanning."""
     if not (run_clicked or test_clicked):
         return
     loading_placeholder = st.empty()
@@ -484,6 +546,7 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
         render_scan_loading_radar(active_category)
 
     try:
+        location = criteria["location"]
         # Credits are the real-data currency, independent of plan tier -
         # a scan with credits available spends one and pulls real
         # RentCast listings; a scan with none left still runs (never
@@ -507,53 +570,35 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
         st.session_state.last_scan_was_preview = not allow_live
         st.session_state.last_scan_was_test = test_clicked
 
-        import sqlite3
-        conn = sqlite3.connect(db.DB_NAME)
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT location, property_type, max_price, min_beds, state, cities_json, zip_code "
-            "FROM reports WHERE user_id=? AND profile_name=?",
-            (int(st.session_state.user_id), selected_profile)
+        raw_listings_data = _fetch_listings_for_criteria(criteria, allow_live=allow_live, user_id=st.session_state.user_id)
+
+        # Auto-save the criteria under this location's name so it shows up
+        # as a Quick Access chip next time - re-searching the same
+        # location just updates that same row (INSERT OR REPLACE keyed on
+        # user_id+name) rather than growing without bound. Never blocks
+        # the scan itself if the plan's saved-search cap is hit for a
+        # genuinely new location - it just isn't remembered for next time,
+        # the same "degrade gracefully, never hard-stop" rule credits use.
+        existing_names = db.get_all_reports(st.session_state.user_id, category="real_estate")
+        if location in existing_names or plan_limits.is_within_limit(
+            st.session_state.user_role, st.session_state.user_plan, "saved_searches", len(existing_names)
+        ):
+            db.save_report_config(
+                st.session_state.user_id, location, location, criteria["max_price"], criteria["min_beds"],
+                criteria["property_type"], st.session_state.user_email, "",
+                state=criteria.get("state"),
+                cities_json=json.dumps(criteria["selected_cities"]) if criteria.get("selected_cities") else None,
+                zip_code=criteria.get("zip_code") or None, category="real_estate",
+            )
+
+        report_result = engine.run_agent_workflow_adhoc(
+            location, st.session_state.user_id, location, criteria["property_type"],
+            criteria["max_price"], criteria["min_beds"], raw_listings=raw_listings_data,
         )
-        p_row = cursor.fetchone()
-        conn.close()
-
-        profile_location = str(p_row[0]) if p_row else "Unknown"
-        profile_type = str(p_row[1]) if p_row else "Multi-Family"
-        profile_max_price = int(p_row[2]) if p_row else 750000
-        profile_min_beds = int(p_row[3]) if p_row else 3
-        profile_state = p_row[4] if p_row else None
-        profile_cities_json = p_row[5] if p_row else None
-        profile_zip = p_row[6] if p_row else None
-
-        if profile_state is None:
-            # Legacy search, saved before the state/city picker existed
-            # (or the auto-seeded "My First Search" from registration) -
-            # unchanged behavior, exactly as it worked before this change.
-            raw_listings_data = engine.fetch_live_listings(profile_location, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id)
-        else:
-            selected_cities = json.loads(profile_cities_json) if profile_cities_json else []
-            targets = []
-            if selected_cities:
-                for city in selected_cities:
-                    coords = engine.resolve_city_coords(city, profile_state)
-                    if coords:
-                        targets.append({"lat": coords[0], "lon": coords[1], "label": f"{city}, {profile_state}", "city_name": city})
-            elif profile_zip:
-                geo_result = engine.validate_and_geocode_location(f"{profile_zip}, {profile_state}")
-                if geo_result:
-                    targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"{profile_zip}, {profile_state}", "city_name": None})
-            else:
-                geo_result = engine.validate_and_geocode_location(profile_state)
-                if geo_result:
-                    targets.append({"lat": geo_result["latitude"], "lon": geo_result["longitude"], "label": f"Any city in {profile_state}", "city_name": None})
-            raw_listings_data = engine.fetch_live_listings_for_targets(targets, profile_type, profile_max_price, profile_min_beds, allow_live=allow_live, user_id=st.session_state.user_id) if targets else []
-        report_result = engine.run_agent_workflow(selected_profile, st.session_state.user_id, raw_listings=raw_listings_data)
 
         coord_list = _build_coord_list(raw_listings_data)
-
         coord_string_data = json.dumps(coord_list)
-        db.save_history_log(st.session_state.user_id, selected_profile, profile_location, report_result, coord_string_data, was_live=allow_live)
+        db.save_history_log(st.session_state.user_id, location, location, report_result, coord_string_data, was_live=allow_live)
 
         # Deal-found email - only for a real live scan (never a mock/
         # preview scan, since alerting someone about a fake randomly-
@@ -578,12 +623,12 @@ def _execute_scan(selected_profile, run_clicked, test_clicked, active_category):
             _excellent = [m for m in _excellent if m["grade"] == "excellent"]
             if _excellent:
                 email_utils.send_deal_found_email(
-                    st.session_state.user_email, selected_profile, len(_excellent),
+                    st.session_state.user_email, location, len(_excellent),
                     max(m["coc"] for m in _excellent),
                 )
 
         st.session_state.active_scanned_report = report_result
-        st.session_state.active_scanned_profile = selected_profile
+        st.session_state.active_scanned_profile = location
         st.session_state.active_scanned_coords = coord_string_data
         st.session_state.focused_card_index = None
 
@@ -1275,22 +1320,21 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
-def _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
+def _render_execute_scan_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
     if is_guest:
         render_guest_banner("this is a live preview scan, not your own saved search")
-    if raw_profiles or is_guest:
-        if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
-            _render_scan_results(
-                st.session_state.active_scanned_report,
-                st.session_state.get("active_scanned_profile", "Your Search"),
-                st.session_state.active_scanned_coords,
-                "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                calc_down_pct, calc_interest, calc_target_yield,
-                show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
-                pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
-            )
+    if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
+        _render_scan_results(
+            st.session_state.active_scanned_report,
+            st.session_state.get("active_scanned_profile", "Your Search"),
+            st.session_state.active_scanned_coords,
+            "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+            calc_down_pct, calc_interest, calc_target_yield,
+            show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
+            pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
+        )
     else:
-        st.info("No searches set up yet. Head to 'Manage Searches' to create one.")
+        st.info("Search above to run your first scan.")
 
 
 def _clear_hist_delete_target():
@@ -1480,6 +1524,58 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
         )
 
 
+def render_history_page(is_guest=False):
+    """Top-level History page - promoted out of a nested tab on Run
+    Property Scans into its own navbar item, per real feedback that the
+    main navbar was the clearer place to find it than a sub-tab someone
+    has to already be on the scan page to notice (see
+    [[nav_simplification_ad_hoc_search]]). Content itself (_render_history_tab)
+    is unchanged - just given a real page shell and, since there's no
+    longer an interactive Pro sidebar to source calc_* from up here, the
+    user's saved default assumptions instead (still fully adjustable per
+    property from within the results themselves)."""
+    st.markdown("""
+        <style>
+        div.st-key-history_hero {
+            background: var(--radar-gradient-hero);
+            padding: var(--radar-space-6) var(--radar-space-7);
+            margin-bottom: var(--radar-space-5);
+            border-radius: 0 0 var(--radar-radius-xl) var(--radar-radius-xl);
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key="history_hero"):
+        st.markdown(f"""
+            <div style='text-align:center; max-width:760px; margin:0 auto;'>
+                <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
+                    <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
+                                border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
+                        {svg_icon("clock", size=24, color="white")}
+                    </div>
+                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>History</div>
+                </div>
+                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Every past scan, free to browse back through anytime</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    if is_guest:
+        render_guest_banner("your scan history isn't tracked in a demo session")
+        render_empty_state(
+            "clock", "Sign in to keep a history",
+            "Every real scan you run gets saved here automatically once you have an account.",
+        )
+        return
+
+    _defaults = st.session_state.user_settings
+    view_mode = _defaults.get("default_underwriter_mode", "Simple")
+    _render_history_tab(
+        view_mode, 3500, _defaults["default_vacancy_pct"], _defaults["default_tax_rate"],
+        _defaults["default_insurance_rate"], _defaults["default_down_pct"], _defaults["default_interest_rate"],
+        _defaults["default_target_yield"],
+    )
+
+
 def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
     st.markdown(f"""
         <div style='display:flex; align-items:center; gap:10px; margin-bottom:2px;'>
@@ -1551,22 +1647,11 @@ def render_analytics_dashboard(is_guest=False):
                 }
 
     active_category = st.session_state.get("active_category", "real_estate")
-    # A guest has no saved Hunt Profiles (and no user_id to look any up
-    # under) - skip the DB read entirely rather than pass a fake id.
+    # A guest has no saved searches (and no user_id to look any up under) -
+    # skip the DB read entirely rather than pass a fake id. Used only for
+    # the Quick Access chips now - scanning itself is ad-hoc and never
+    # requires one of these to exist first (see [[nav_simplification_ad_hoc_search]]).
     raw_profiles = [] if is_guest else db.get_all_reports(st.session_state.user_id, category=active_category)
-
-    # Apply a pending quick-access chip click to the selectbox's own widget
-    # state before that widget is instantiated below. Setting the widget's
-    # session_state key from inside the chip button's own handler doesn't
-    # work - by the time that handler runs, the selectbox has already been
-    # instantiated earlier in that same script run, and Streamlit raises
-    # "cannot be modified after the widget ... is instantiated" for that.
-    # Doing it here, before _render_scan_action() creates the selectbox,
-    # avoids that restriction entirely.
-    profile_key = f"scan_profile_selectbox_{active_category}"
-    pending_profile = st.session_state.get("dashboard_quick_selected_profile")
-    if pending_profile in raw_profiles and st.session_state.get(profile_key) != pending_profile:
-        st.session_state[profile_key] = pending_profile
 
     # ---- SIDEBAR: DISPLAY MODE + UNDERWRITER CONSOLE ----
     # Rendered here (before the hero) rather than after it, purely so its
@@ -1807,31 +1892,28 @@ def render_analytics_dashboard(is_guest=False):
             </div>
         """, unsafe_allow_html=True)
 
-        selected_profile, run_clicked, test_clicked = None, False, False
-        guest_location, guest_max_price, guest_min_beds, guest_search_clicked = None, None, None, False
         with st.container(key="dashboard_action_card"):
-            if is_guest:
-                guest_location, guest_max_price, guest_min_beds, guest_search_clicked = _render_guest_scan_action()
-            elif raw_profiles:
-                selected_profile, run_clicked, test_clicked = _render_scan_action(raw_profiles, active_category)
-            else:
-                render_empty_state(
-                    "crosshair", "Set up your first search",
-                    "Tell us what you're looking for - target city, budget, and property type - and we'll scan for matching deals whenever you like.",
-                    cta_label="Create Your First Search",
-                    cta_page="Manage Searches",
-                )
+            criteria, run_clicked, test_clicked = _render_scan_search_form(is_guest=is_guest)
 
-        if len(raw_profiles) > 1:
+        # Quick Access: click a chip to re-run that exact search immediately
+        # (load its saved criteria, then run) - one click, not "select it,
+        # then also click Run" the way the old profile dropdown needed.
+        # Guests get a fixed, curated set of cities to explore instead of
+        # their own saved searches (they have none) - same idea, same UI.
+        quick_click = None
+        if is_guest:
+            quick_items = [city for _, city in GUEST_QUICK_SEARCH_CITIES]
+        else:
+            quick_items = raw_profiles[:5]
+        if quick_items:
             st.markdown("<div style='text-align:center; margin-top:14px;'>", unsafe_allow_html=True)
             st.markdown("<span style='color:var(--radar-text-on-dark-muted); font-size:14px; font-weight:600; margin-right:8px;'>Quick access:</span>", unsafe_allow_html=True)
-            quick_cols = st.columns([1] * min(len(raw_profiles), 5) + [3])
-            for i, profile_name in enumerate(raw_profiles[:5]):
+            quick_cols = st.columns([1] * len(quick_items) + [3])
+            for i, item_label in enumerate(quick_items):
                 with quick_cols[i]:
                     with st.container(key=f"dashboard_quick_chip_{i}"):
-                        if st.button(profile_name, key=f"dashboard_quick_btn_{i}", use_container_width=True):
-                            st.session_state.dashboard_quick_selected_profile = profile_name
-                            st.rerun()
+                        if st.button(item_label, key=f"dashboard_quick_btn_{i}", use_container_width=True):
+                            quick_click = i
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
@@ -1859,55 +1941,65 @@ def render_analytics_dashboard(is_guest=False):
         render_dashboard_grid("customer", hero_cards, default_grid_columns=3)
 
         # Runs (and shows the loading radar) here, after the 3 stat cards
-        # above - not from inside _render_scan_action alongside the
-        # selectbox/buttons. Those cards render from the *previous*
-        # scan's session_state, unaffected by whether a new one is about
-        # to start, so they're already on screen by the time this either
-        # no-ops (run_clicked/test_clicked both False) or kicks off a scan.
+        # above - not from inside the search form alongside its buttons.
+        # Those cards render from the *previous* scan's still-valid
+        # session_state, unaffected by whether a new one is about to
+        # start, so they're already on screen by the time this either
+        # no-ops (nothing clicked) or kicks off a scan.
+        if quick_click is not None:
+            if is_guest:
+                q_state, q_city = GUEST_QUICK_SEARCH_CITIES[quick_click]
+                run_clicked = True
+                criteria = {
+                    "location": location_display_label(q_state, [q_city], ""),
+                    "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
+                    "state": q_state, "selected_cities": [q_city], "zip_code": "",
+                }
+            else:
+                loaded = _load_saved_criteria(quick_items[quick_click], st.session_state.user_id)
+                if loaded:
+                    criteria, run_clicked = loaded, True
+
         if is_guest:
-            if guest_search_clicked:
-                _run_guest_demo_scan(guest_location, "Multi-Family", guest_max_price, guest_min_beds)
+            if run_clicked:
+                _run_guest_demo_scan(criteria)
             elif "active_scanned_report" not in st.session_state:
                 # First-load default so the page never looks empty for a
                 # brand-new guest, matching the old guest_landing.py's own
                 # "auto-run a sample search" behavior.
-                _run_guest_demo_scan(GUEST_QUICK_SEARCH_CITIES[0], "Multi-Family", 750000, 3)
+                default_state, default_city = GUEST_QUICK_SEARCH_CITIES[0]
+                _run_guest_demo_scan({
+                    "location": location_display_label(default_state, [default_city], ""),
+                    "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
+                    "state": default_state, "selected_cities": [default_city], "zip_code": "",
+                })
         else:
-            _execute_scan(selected_profile, run_clicked, test_clicked, active_category)
+            _execute_scan(criteria, run_clicked, test_clicked, active_category)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    nav_col, content_col = st.columns([1, 4])
-    with nav_col:
-        active_section = render_side_nav(
-            [
-                {"label": "Execute Live Scan", "icon": ":material/rocket_launch:"},
-                {"label": "Scanned Reports History Log", "icon": ":material/history:"},
-                {"label": "Saved Properties", "icon": ":material/star:"},
-            ],
-            key_prefix="scan_results_nav",
-        )
+    # History is its own top-level nav item now (render_history_page,
+    # reachable from the topbar) rather than a third tab nested in here -
+    # real feedback was that the main navbar is the clearer place to find
+    # it, not a sub-tab someone has to already be on this page to notice.
+    active_section = render_top_style_subnav(
+        [
+            {"label": "Execute Live Scan", "icon": ":material/rocket_launch:"},
+            {"label": "Saved Properties", "icon": ":material/star:"},
+        ],
+        key_prefix="scan_results_nav",
+    )
 
-    with content_col:
-        if active_section == "Execute Live Scan":
-            _render_execute_scan_tab(raw_profiles, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
-        elif active_section == "Scanned Reports History Log":
-            if is_guest:
-                render_guest_banner("your scan history isn't tracked in a demo session")
-                render_empty_state(
-                    "clock", "Sign in to keep a history",
-                    "Every real scan you run gets saved here automatically once you have an account.",
-                )
-            else:
-                _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+    if active_section == "Execute Live Scan":
+        _render_execute_scan_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
+    else:
+        if is_guest:
+            render_guest_banner("saved properties aren't kept in a demo session")
+            render_empty_state(
+                "star-outline", "Sign in to save properties",
+                "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
+                accent="var(--radar-warning)",
+            )
         else:
-            if is_guest:
-                render_guest_banner("saved properties aren't kept in a demo session")
-                render_empty_state(
-                    "star-outline", "Sign in to save properties",
-                    "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
-                    accent="var(--radar-warning)",
-                )
-            else:
-                _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+            _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)

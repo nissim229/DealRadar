@@ -26,7 +26,7 @@ CATEGORIES = [
     {"value": "cars", "label": "Cars", "icon": ":material/directions_car:"},
 ]
 CATEGORY_MENUS = {
-    "real_estate": ["Run Property Scans", "Manage Searches", "My Portfolio"],
+    "real_estate": ["Run Property Scans", "History", "My Portfolio"],
     "cars": ["Find a Car", "Saved Searches"],
 }
 
@@ -505,8 +505,8 @@ def render_main_topbar(is_guest=False):
                                      key=f"topbar_help_popover_{st.session_state.active_category}"):
                         st.markdown(f"**How {active_category['label']} scanning works**")
                         if st.session_state.active_category == "real_estate":
-                            st.caption("1. **Run Property Scans** - set your criteria and scan for deals.")
-                            st.caption("2. **Manage Searches** - save criteria to re-run or edit later.")
+                            st.caption("1. **Run Property Scans** - set your criteria and scan for deals, no setup needed.")
+                            st.caption("2. **History** - every past scan, free to revisit anytime.")
                             st.caption("3. **My Portfolio** - track properties you already own.")
                         else:
                             st.caption("1. **Find a Car** - set your criteria and scan live listings.")

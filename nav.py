@@ -1,14 +1,23 @@
 """
 nav.py
-The one shared implementation behind every left-side navigation list in
-the app (Settings, Portfolio's property picker and property-section list,
-Manage Searches, Run Property Scans' result views, Admin Controls) -
-flat rows, left-aligned icon+label, a light accent-tinted background (not
-a solid block) for the active item. Before this existed, each page had
-its own copy of the same CSS with small drifts (different padding, some
-still centered instead of left-aligned) - restyling one restyled only
-that one page. Every left-nav in the app should call render_side_nav()
-rather than re-implementing the button loop + CSS locally.
+The shared navigation components used below the top navbar.
+
+render_side_nav() is the one implementation behind every left-side
+navigation *list* in the app (Portfolio's property picker and
+property-section list, the location picker's Any-city/Choose-cities
+toggle, Admin Controls) - flat rows, left-aligned icon+label, a light
+accent-tinted background (not a solid block) for the active item. Right
+for picking one item out of a list that can grow (e.g. one more property
+added), where a horizontal row would eventually wrap or need scrolling.
+
+render_top_style_subnav() is for the opposite case: a small, fixed set of
+section tabs (Settings' sections, a scan page's Execute/Saved tabs) -
+matches the top navbar's own horizontal, underline-on-active language
+instead of a second, differently-shaped nav competing for attention right
+below it. See [[nav_simplification_ad_hoc_search]] for why both exist
+rather than just one - "too many navbars" was real feedback, and the fix
+was consistent *treatment per navigation kind*, not one style forced onto
+every case regardless of fit.
 """
 
 import streamlit as st
@@ -121,5 +130,74 @@ def render_side_nav(items, key_prefix, default=None, state_key=None):
                 st.rerun()
             if caption:
                 st.caption(caption)
+
+    return st.session_state[state_key]
+
+
+def render_top_style_subnav(items, key_prefix, default=None, state_key=None):
+    """A horizontal row of section tabs directly below the top navbar's own
+    style - shrink-to-fit buttons, muted at rest, bold + accent-colored
+    with a bottom border on the active one. For a small, FIXED set of
+    destinations (a handful of tabs); use render_side_nav instead for
+    picking one item out of an open-ended, growable list.
+
+    items: list of dicts, each with "label" (required), "value" (optional,
+    defaults to label), "icon" (optional ":material/x:" shortcode).
+    key_prefix/default/state_key: same meaning as render_side_nav."""
+    state_key = state_key or f"{key_prefix}_active"
+    values = [item.get("value", item["label"]) for item in items]
+    if state_key not in st.session_state or st.session_state[state_key] not in values:
+        st.session_state[state_key] = default if default in values else values[0]
+
+    st.markdown(f"""
+        <style>
+        div.st-key-{key_prefix}_row {{
+            display: flex; gap: 4px; border-bottom: 1px solid var(--radar-border);
+            margin-bottom: var(--radar-space-4);
+        }}
+        div.st-key-{key_prefix}_row div[data-testid="stHorizontalBlock"] {{
+            flex-wrap: nowrap !important; width: auto !important; gap: 4px;
+        }}
+        div.st-key-{key_prefix}_row div[data-testid="stColumn"] {{
+            width: auto !important; flex: 0 0 auto !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button {{
+            background: transparent !important; border: none !important; box-shadow: none !important;
+            border-radius: 0 !important; border-bottom: 2px solid transparent !important;
+            padding: 8px 4px !important; min-height: 0 !important; height: auto !important;
+            margin-bottom: -1px !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button p {{
+            font-size: 13.5px !important; font-weight: 500 !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button[kind="secondary"] p {{
+            color: var(--radar-text-muted) !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button[kind="secondary"]:hover p {{
+            color: var(--radar-text) !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button[kind="primary"] {{
+            border-bottom: 2px solid var(--radar-primary) !important;
+        }}
+        div[class*="st-key-{key_prefix}_tab_"] button[kind="primary"] p {{
+            color: var(--radar-primary) !important; font-weight: 700 !important;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key=f"{key_prefix}_row"):
+        cols = st.columns(len(items))
+        for i, item in enumerate(items):
+            label = item["label"]
+            value = item.get("value", label)
+            icon = item.get("icon", "")
+            is_active = st.session_state[state_key] == value
+            with cols[i]:
+                with st.container(key=f"{key_prefix}_tab_{i}"):
+                    button_label = f"{icon} {label}".strip() if icon else label
+                    if st.button(button_label, key=f"{key_prefix}_tab_btn_{i}",
+                                 type="primary" if is_active else "secondary"):
+                        st.session_state[state_key] = value
+                        st.rerun()
 
     return st.session_state[state_key]
