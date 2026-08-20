@@ -347,22 +347,33 @@ def _render_scan_action(raw_profiles, active_category):
     if run_clicked or test_clicked:
         loading_placeholder = st.empty()
         with loading_placeholder.container():
-            # "Cyber Radar House" loading state - same visual language as
-            # the Run Live Scan button (dark slate panel, cyan grid
-            # overlay, conic-gradient radar sweep, house icon with an
-            # intercept ring), replacing the old pulsing-ring+satellite-
-            # emoji design. The button's version only shows these layers
-            # on :hover (a group-hover trigger); there's no hover state
-            # for a loading screen, so grid/sweep/ring are baked in as
-            # always-on here instead of hover-gated.
+            # "Cyber Radar House" loading state, round 2 - rebuilt from the
+            # user's exact updated button code (transparent background,
+            # not a solid dark panel, plus 3 sweep-synced "target blips"
+            # pinging at fixed points as the radar line passes them).
+            # Still translating :hover/group-hover triggers to always-on
+            # (there's no hover state for a passive loading screen) and
+            # the button's own "Secure Sector" label to real loading copy
+            # - those are the same two necessary changes as round 1, nothing
+            # else reinterpreted this time. radarBlip/radarPing aren't
+            # standard keyframes (the snippet references them without
+            # defining them, presumably from the user's own tool's
+            # built-in library) - authored here as a brief flash + an
+            # expanding ping ring, each timed to its blip's delay so it
+            # reads as "lighting up when the sweep passes."
             st.markdown("""
             <style>
             @keyframes dealradar-scan-sweep {
                 to { transform: translate(-50%, -50%) rotate(360deg); }
             }
-            @keyframes dealradar-scan-ring {
-                0% { transform: scale(0.6); opacity: 0.8; }
-                100% { transform: scale(1.15); opacity: 0; }
+            @keyframes dealradar-blip {
+                0%, 88%, 100% { opacity: 0; }
+                92%, 96% { opacity: 1; }
+            }
+            @keyframes dealradar-ping {
+                0%, 88%, 100% { opacity: 0; transform: scale(1); }
+                92% { opacity: 0.6; transform: scale(1); }
+                98% { opacity: 0; transform: scale(2.2); }
             }
             .dealradar-scan-panel {
                 position: relative;
@@ -370,7 +381,7 @@ def _render_scan_action(raw_profiles, active_category):
                 gap: 18px;
                 padding: 48px 24px;
                 margin: 12px 0;
-                background: #0f172a;
+                background: transparent;
                 border: 1px solid rgba(6, 182, 212, 0.2);
                 border-radius: 12px;
                 overflow: hidden;
@@ -390,6 +401,21 @@ def _render_scan_action(raw_profiles, active_category):
                 background: conic-gradient(from 0deg, transparent 50%, rgba(34, 211, 238, 0.3) 100%);
                 animation: dealradar-scan-sweep 2.5s linear infinite;
             }
+            /* Sweep-synced target blips - each pair (dot + ping ring)
+            flashes once per 2.5s loop, delayed to roughly match when the
+            sweep line passes that position (12% / 36% / 72% of the loop). */
+            .dealradar-scan-panel .blip {
+                position: absolute; z-index: 20;
+                width: 6px; height: 6px; border-radius: 50%; background: #22d3ee;
+            }
+            .dealradar-scan-panel .blip .dot { position: absolute; inset: 0; border-radius: 50%; background: #22d3ee; animation: dealradar-blip 2.5s linear infinite; }
+            .dealradar-scan-panel .blip .ping { position: absolute; inset: -4px; border-radius: 50%; background: #22d3ee; animation: dealradar-ping 2.5s linear infinite; }
+            .dealradar-scan-panel .blip-1 { top: 22%; left: 30%; }
+            .dealradar-scan-panel .blip-1 .dot, .dealradar-scan-panel .blip-1 .ping { animation-delay: 0.3s; }
+            .dealradar-scan-panel .blip-2 { top: 18%; right: 28%; }
+            .dealradar-scan-panel .blip-2 .dot, .dealradar-scan-panel .blip-2 .ping { animation-delay: 0.9s; }
+            .dealradar-scan-panel .blip-3 { bottom: 24%; right: 34%; }
+            .dealradar-scan-panel .blip-3 .dot, .dealradar-scan-panel .blip-3 .ping { animation-delay: 1.8s; }
             .dealradar-scan-panel .house-icon-wrap {
                 position: relative; z-index: 10;
                 display: flex; align-items: center; justify-content: center;
@@ -399,7 +425,6 @@ def _render_scan_action(raw_profiles, active_category):
             .dealradar-scan-panel .intercept-ring {
                 position: absolute; width: 52px; height: 52px; border-radius: 50%;
                 border: 1px solid rgba(34, 211, 238, 0.5);
-                animation: dealradar-scan-ring 1.8s ease-out infinite;
             }
             .dealradar-scan-panel .scan-text {
                 position: relative; z-index: 10;
@@ -416,6 +441,9 @@ def _render_scan_action(raw_profiles, active_category):
             <div class="dealradar-scan-panel">
                 <span class="grid-overlay"></span>
                 <span class="radar-sweep"></span>
+                <span class="blip blip-1"><span class="ping"></span><span class="dot"></span></span>
+                <span class="blip blip-2"><span class="ping"></span><span class="dot"></span></span>
+                <span class="blip blip-3"><span class="ping"></span><span class="dot"></span></span>
                 <div class="house-icon-wrap">
                     <span class="intercept-ring"></span>
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
