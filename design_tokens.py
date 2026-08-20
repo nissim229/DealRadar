@@ -263,7 +263,29 @@ FONT_CSS = """
     }
 """
 
+# A hard-coded st.columns(N) stat-card/metric row (3, 4, or 5 columns,
+# depending on the page) has no minimum width per column by default, so
+# at in-between browser widths each column gets squeezed well past its
+# content's natural size and the value/label text clips instead of the
+# row wrapping onto a second line - confirmed live on Portfolio's summary
+# cards and its per-property Purchase Price/Current Value/Equity/Monthly
+# grid. Rather than hand-fixing each page's card row, this targets the
+# two shapes those cards actually come in app-wide - our own
+# render_stat_card (analytics.py, tagged with this class specifically so
+# it can be targeted) and Streamlit's native st.metric widget - and gives
+# each a sensible min-width, letting the browser's own default flex-wrap
+# reflow a too-narrow row onto multiple lines instead of crushing text.
+# Deliberately NOT a blanket rule on every st.columns() row app-wide -
+# plenty of other column layouts (icon-button rows, form fields) are
+# intentionally narrow and would look wrong forced to this width.
+RESPONSIVE_CSS = """
+    div[data-testid="stColumn"]:has(.dealradar-stat-card),
+    div[data-testid="stColumn"]:has([data-testid="stMetric"]) {
+        min-width: 150px !important;
+    }
+"""
+
 
 def inject_design_tokens():
     st.markdown(_build_font_import_html(), unsafe_allow_html=True)
-    st.markdown(f"<style>{_build_tokens_css()}{FONT_CSS}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{_build_tokens_css()}{FONT_CSS}{RESPONSIVE_CSS}</style>", unsafe_allow_html=True)

@@ -90,7 +90,7 @@ def render_empty_state(icon_name, title, description, cta_label=None, cta_page=N
 
 def render_stat_card(icon_name, label, value, accent="var(--radar-primary)"):
     st.markdown(f"""
-        <div style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:10px 14px;
+        <div class='dealradar-stat-card' style='background:var(--radar-surface); border:1px solid var(--radar-border); border-radius:var(--radar-radius-md); padding:10px 14px;
                     border-left: 3px solid {accent}; display:flex; align-items:center; gap:10px;'>
             <div style='flex-shrink:0; color:{accent};'>{svg_icon(icon_name, size=19)}</div>
             <div style='line-height:1.15;'>

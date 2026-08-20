@@ -72,6 +72,26 @@ def render_main_topbar(is_guest=False):
                 }
             }
 
+            /* Below ~900px, hiding the caption alone (above) isn't enough -
+            the logo/category/nav/icon columns' own min-width floors
+            (365px + 126px, see further down) no longer all fit on one row,
+            and since Streamlit's own default columns don't shrink content
+            to fit, they were overlapping each other instead of wrapping -
+            confirmed live at 650-900px widths (the logo wordmark visibly
+            overlapped the category pill). Streamlit already has a clean
+            stacked layout for this - it's what naturally happens below its
+            own ~640px column-stacking breakpoint (each column's min-width
+            becomes 100%) - so rather than inventing a separate narrow
+            treatment, this just pulls that same stacking rule earlier,
+            before the overlap zone is ever reached, instead of after it.
+            Confirmed at 375px the natural stacked result already reads
+            fine without further adjustment. */
+            @media (max-width: 900px) {
+                div.st-key-scoutai_topbar > div > div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                    min-width: 100% !important;
+                }
+            }
+
             /* Premium logo lockup, round 2 - user supplied a reference
             screenshot of a circular-ring icon badge + "DEAL"/"RADAR"
             wordmark + a small descriptive caption line, replacing round
