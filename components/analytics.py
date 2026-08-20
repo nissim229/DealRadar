@@ -17,9 +17,8 @@ from data_utils import clean_value, relative_time
 from dashboard_grid import render_dashboard_grid
 from guest_mode import guest_action_button, render_guest_banner
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
-from nav import render_top_style_subnav
 from scan_loading import render_scan_loading_radar
-from location_picker import render_location_picker, location_display_label
+from location_picker import render_compact_location_fields, render_city_picker_map, location_display_label
 
 
 def _format_price_short(price):
@@ -136,7 +135,7 @@ def _show_best_deal_dialog(pts, metrics, best_idx):
     with col2:
         st.metric("Cap Rate", f"{m['cap_rate']:.2f}%")
         st.metric("Annual Cash Flow", f"${m['cashflow']:,.2f}")
-    st.caption("Full results with every match are in the 'Execute Live Scan' tab below.")
+    st.caption("Full results with every match are below the search form.")
 
 
 @st.dialog("Deals Meeting Your Target")
@@ -156,7 +155,7 @@ def _show_deals_meeting_target_dialog(pts, metrics):
         ]),
         use_container_width=True, hide_index=True, height=min(len(matches), 10) * 35 + 38,
     )
-    st.caption("Full results with map and filters are in the 'Execute Live Scan' tab below.")
+    st.caption("Full results with map and filters are below the search form.")
 
 
 @st.dialog("Portfolio Value Breakdown")
@@ -240,7 +239,7 @@ def _render_scan_search_form(is_guest=False):
     after Run Live Scan differs (see the caller). Returns
     (criteria, run_clicked, test_clicked) - criteria always has usable
     defaults even before a scan runs."""
-    selected_state, selected_cities, zip_code = render_location_picker("scan_form")
+    selected_state, selected_cities, zip_code = render_compact_location_fields("scan_form")
 
     prop_col, price_col, beds_col = st.columns(3)
     with prop_col:
@@ -1320,7 +1319,13 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
-def _render_execute_scan_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
+def _render_execute_scan_tab(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
+    """Renders directly under the search form in the hero (not behind a
+    separate tab click) so results are visible without extra navigation -
+    see [[hero_redesign_unified_map]]. Before a scan has run, shows the
+    same map slot the results will use, but in city-picker mode (pick a
+    search area) instead of duplicating a second map inside the search
+    form itself - "we only need one map"."""
     if is_guest:
         render_guest_banner("this is a live preview scan, not your own saved search")
     if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
@@ -1334,7 +1339,17 @@ def _render_execute_scan_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_ra
             pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
         )
     else:
-        st.info("Search above to run your first scan.")
+        prompt_col, map_col = st.columns([0.85, 1.3])
+        with prompt_col:
+            st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
+            st.markdown("""
+                <div style='text-align:center; padding:0 var(--radar-space-5);'>
+                    <div style='font-weight:700; color:var(--radar-navy); font-size:15px; margin-bottom:6px;'>No scan yet</div>
+                    <div style='color:var(--radar-text-muted); font-size:13.5px;'>Set your search above and click <b>Run Live Scan</b> - matching properties will appear here, next to the map.</div>
+                </div>
+            """, unsafe_allow_html=True)
+        with map_col:
+            render_city_picker_map(criteria.get("state") or "Colorado", criteria.get("selected_cities") or [], "scan_form")
 
 
 def _clear_hist_delete_target():
@@ -1839,15 +1854,39 @@ def render_analytics_dashboard(is_guest=False):
             padding-top: 10px !important;
             padding-bottom: 10px !important;
         }
-        div.st-key-dashboard_action_card [data-testid="stWidgetLabel"] p {
-            font-size: 15px !important;
-            font-weight: 600 !important;
+        /* Field labels match the top navbar's own typography (JetBrains
+        Mono, uppercase, tracked) instead of Streamlit's default label
+        style, so the search form reads as part of the same navbar
+        design language rather than a generic form dropped below it. */
+        div.st-key-dashboard_action_card [data-testid="stWidgetLabel"] p,
+        div.st-key-dashboard_action_card .dealradar-navstyle-label {
+            font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.06em !important;
+            font-size: 11.5px !important;
+            font-weight: 700 !important;
+            color: var(--radar-text-muted) !important;
+            margin-bottom: 2px !important;
+        }
+        /* .dealradar-navstyle-label (the popover's own "label", since a
+        popover trigger has no real st.widget label of its own) needs its
+        own block-level spacing - stWidgetLabel already has it natively. */
+        div.st-key-dashboard_action_card .dealradar-navstyle-label {
+            display: block;
         }
         div.st-key-dashboard_action_card [data-baseweb="select"] * {
             font-size: 15px !important;
         }
         div.st-key-dashboard_action_card [data-baseweb="select"] > div {
             min-height: 44px !important;
+        }
+        /* City popover trigger - same accent language as the nav row's
+        active-item color, so it reads as "belongs to this navbar family"
+        rather than a plain Streamlit button. */
+        div.st-key-dashboard_action_card [data-testid="stPopoverButton"] {
+            min-height: 44px !important;
+            font-weight: 600 !important;
+            border-color: var(--radar-border) !important;
         }
         /* Dashboard-grid "Customize Layout" controls (dashboard_grid.py)
         render directly on the dark hero background here - the default
@@ -1976,30 +2015,22 @@ def render_analytics_dashboard(is_guest=False):
         else:
             _execute_scan(criteria, run_clicked, test_clicked, active_category)
 
+        # Results render right here, directly under the search form and
+        # stat cards - not behind a separate tab click - so a match is
+        # visible without extra navigation or scrolling past a second
+        # nav row first. See [[hero_redesign_unified_map]].
+        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+        _render_execute_scan_tab(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
+
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    # History is its own top-level nav item now (render_history_page,
-    # reachable from the topbar) rather than a third tab nested in here -
-    # real feedback was that the main navbar is the clearer place to find
-    # it, not a sub-tab someone has to already be on this page to notice.
-    active_section = render_top_style_subnav(
-        [
-            {"label": "Execute Live Scan", "icon": ":material/rocket_launch:"},
-            {"label": "Saved Properties", "icon": ":material/star:"},
-        ],
-        key_prefix="scan_results_nav",
-    )
-
-    if active_section == "Execute Live Scan":
-        _render_execute_scan_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
+    st.markdown("##### :material/star: Saved Properties")
+    if is_guest:
+        render_guest_banner("saved properties aren't kept in a demo session")
+        render_empty_state(
+            "star-outline", "Sign in to save properties",
+            "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
+            accent="var(--radar-warning)",
+        )
     else:
-        if is_guest:
-            render_guest_banner("saved properties aren't kept in a demo session")
-            render_empty_state(
-                "star-outline", "Sign in to save properties",
-                "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
-                accent="var(--radar-warning)",
-            )
-        else:
-            _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
+        _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
