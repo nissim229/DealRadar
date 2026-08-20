@@ -172,6 +172,16 @@ else:
                 font-size: 12.5px !important;
                 white-space: nowrap;
             }
+            /* Nav row labels only (not the category pill, help/alerts/
+            avatar circles, or account popover - those keep their own
+            fonts) - matches the monospace/uppercase/tracked caption
+            style from the "Secure Sector" button test the user approved
+            separately, applied here per their explicit follow-up ask. */
+            div.st-key-scoutai_nav_row button p {
+                font-family: 'JetBrains Mono', ui-monospace, monospace !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.08em !important;
+            }
             /* Nav button row - each button sized to fit its own text
             (shrink-to-fit) rather than forced into an equal 1/3 share of
             col_nav's width, which was clipping "Manage Searches" at
