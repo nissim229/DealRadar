@@ -347,46 +347,85 @@ def _render_scan_action(raw_profiles, active_category):
     if run_clicked or test_clicked:
         loading_placeholder = st.empty()
         with loading_placeholder.container():
+            # "Cyber Radar House" loading state - same visual language as
+            # the Run Live Scan button (dark slate panel, cyan grid
+            # overlay, conic-gradient radar sweep, house icon with an
+            # intercept ring), replacing the old pulsing-ring+satellite-
+            # emoji design. The button's version only shows these layers
+            # on :hover (a group-hover trigger); there's no hover state
+            # for a loading screen, so grid/sweep/ring are baked in as
+            # always-on here instead of hover-gated.
             st.markdown("""
             <style>
-            @keyframes radarPulse {
-                0% { transform: scale(0.3); opacity: 0.9; }
-                100% { transform: scale(1.9); opacity: 0; }
+            @keyframes dealradar-scan-sweep {
+                to { transform: translate(-50%, -50%) rotate(360deg); }
             }
-            @keyframes radarSpin {
-                from { transform: rotate(0deg); }
-                to { transform: rotate(360deg); }
+            @keyframes dealradar-scan-ring {
+                0% { transform: scale(0.6); opacity: 0.8; }
+                100% { transform: scale(1.15); opacity: 0; }
             }
-            .scout-loading-wrap {
-                display:flex; flex-direction:column; align-items:center; justify-content:center;
-                padding: 36px 0;
+            .dealradar-scan-panel {
+                position: relative;
+                display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 18px;
+                padding: 48px 24px;
+                margin: 12px 0;
+                background: #0f172a;
+                border: 1px solid rgba(6, 182, 212, 0.2);
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 0 30px rgba(34, 211, 238, 0.12);
             }
-            .scout-radar { position: relative; width: 90px; height: 90px; margin-bottom: 18px; }
-            .scout-radar-ring {
-                position: absolute; inset:0; border-radius:50%;
-                border: 3px solid var(--radar-primary);
-                animation: radarPulse 1.6s ease-out infinite;
+            .dealradar-scan-panel .grid-overlay {
+                position: absolute; inset: 0; z-index: 0;
+                background-image:
+                    repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.12) 0 1px, transparent 1px 8px),
+                    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.12) 0 1px, transparent 1px 8px);
             }
-            .scout-radar-ring:nth-child(2) { animation-delay: 0.5s; }
-            .scout-radar-ring:nth-child(3) { animation-delay: 1.0s; }
-            .scout-radar-core {
-                position:absolute; inset:30px; border-radius:50%;
-                background: var(--radar-gradient-brand);
-                display:flex; align-items:center; justify-content:center; font-size:22px;
-                animation: radarSpin 2s linear infinite;
+            .dealradar-scan-panel .radar-sweep {
+                position: absolute; top: 50%; left: 50%;
+                width: 160px; height: 160px; border-radius: 50%;
+                transform: translate(-50%, -50%);
+                z-index: 1;
+                background: conic-gradient(from 0deg, transparent 50%, rgba(34, 211, 238, 0.3) 100%);
+                animation: dealradar-scan-sweep 2.5s linear infinite;
             }
-            .scout-loading-text { font-weight:600; color:var(--radar-navy); font-size:15px; }
-            .scout-loading-sub { color:var(--radar-text-muted); font-size:13px; margin-top:4px; }
+            .dealradar-scan-panel .house-icon-wrap {
+                position: relative; z-index: 10;
+                display: flex; align-items: center; justify-content: center;
+                width: 34px; height: 34px;
+            }
+            .dealradar-scan-panel .house-icon-wrap svg { width: 30px; height: 30px; color: #22d3ee; position: relative; z-index: 10; }
+            .dealradar-scan-panel .intercept-ring {
+                position: absolute; width: 52px; height: 52px; border-radius: 50%;
+                border: 1px solid rgba(34, 211, 238, 0.5);
+                animation: dealradar-scan-ring 1.8s ease-out infinite;
+            }
+            .dealradar-scan-panel .scan-text {
+                position: relative; z-index: 10;
+                text-align: center;
+            }
+            .dealradar-scan-panel .scan-title {
+                color: #22d3ee; font-family: 'Work Sans', sans-serif; font-weight: 900;
+                font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em;
+            }
+            .dealradar-scan-panel .scan-sub {
+                color: rgba(148, 163, 184, 0.8); font-size: 13px; margin-top: 6px;
+            }
             </style>
-            <div class="scout-loading-wrap">
-                <div class="scout-radar">
-                    <div class="scout-radar-ring"></div>
-                    <div class="scout-radar-ring"></div>
-                    <div class="scout-radar-ring"></div>
-                    <div class="scout-radar-core">🛰️</div>
+            <div class="dealradar-scan-panel">
+                <span class="grid-overlay"></span>
+                <span class="radar-sweep"></span>
+                <div class="house-icon-wrap">
+                    <span class="intercept-ring"></span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                    </svg>
                 </div>
-                <div class="scout-loading-text">Scanning the market...</div>
-                <div class="scout-loading-sub">Matching properties against your criteria</div>
+                <div class="scan-text">
+                    <div class="scan-title">Scanning the Market</div>
+                    <div class="scan-sub">Matching properties against your criteria</div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
 
