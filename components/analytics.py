@@ -260,24 +260,31 @@ def _render_scan_action(raw_profiles, active_category):
         # so both are built as ::before (grid) / ::after (sweep)
         # pseudo-elements instead - only 2 available, so this button
         # can't also carry the earlier prototype's corner-accent/scanline
-        # (dropped in favor of the approved design).
+        # (dropped in favor of the approved design). Colors are the
+        # artifact's own cyan (#22d3ee), not DealRadar's usual blue - a
+        # first pass here quietly swapped to the app's blue and missed
+        # that the approved version was cyan. font-weight:900 also needs
+        # Work Sans' 900 file actually loaded (design_tokens.py's Google
+        # Fonts link only pulled 400/500/600 before) or the browser just
+        # fake-bolds a lighter weight instead of true black.
         st.markdown("""
             <style>
             div.st-key-run_scan_btn_glow button[kind="primary"] {
                 position: relative !important;
                 background: #0f172a !important;
-                border: 1px solid rgba(59, 130, 246, 0.3) !important;
+                border: 1px solid rgba(6, 182, 212, 0.2) !important;
                 border-radius: 8px !important;
-                color: #60a5fa !important;
+                color: #22d3ee !important;
                 overflow: hidden !important;
                 text-transform: uppercase !important;
                 letter-spacing: 0.05em !important;
-                font-weight: 800 !important;
+                font-weight: 900 !important;
                 transition: border-color 0.3s ease, box-shadow 0.3s ease !important;
             }
             div.st-key-run_scan_btn_glow button[kind="primary"] p,
             div.st-key-run_scan_btn_glow button[kind="primary"] span {
-                color: #60a5fa !important;
+                color: #22d3ee !important;
+                font-weight: 900 !important;
                 position: relative !important;
                 z-index: 10 !important;
             }
@@ -287,8 +294,8 @@ def _render_scan_action(raw_profiles, active_category):
                 z-index: 1 !important; opacity: 0 !important;
                 transition: opacity 0.3s ease !important;
                 background-image:
-                    repeating-linear-gradient(0deg, rgba(59, 130, 246, 0.18) 0 1px, transparent 1px 8px),
-                    repeating-linear-gradient(90deg, rgba(59, 130, 246, 0.18) 0 1px, transparent 1px 8px) !important;
+                    repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.18) 0 1px, transparent 1px 8px),
+                    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.18) 0 1px, transparent 1px 8px) !important;
             }
             /* Radar sweep - centered circle behind the icon/label, spins on hover */
             div.st-key-run_scan_btn_glow button[kind="primary"]::after {
@@ -298,12 +305,12 @@ def _render_scan_action(raw_profiles, active_category):
                 border-radius: 50% !important;
                 transform: translate(-50%, -50%) !important;
                 z-index: 1 !important; opacity: 0 !important;
-                background: conic-gradient(from 0deg, transparent 50%, rgba(59, 130, 246, 0.25) 100%) !important;
+                background: conic-gradient(from 0deg, transparent 50%, rgba(34, 211, 238, 0.25) 100%) !important;
                 transition: opacity 0.3s ease !important;
             }
             div.st-key-run_scan_btn_glow button[kind="primary"]:hover {
-                border-color: #60a5fa !important;
-                box-shadow: 0 0 25px rgba(59, 130, 246, 0.4) !important;
+                border-color: #22d3ee !important;
+                box-shadow: 0 0 30px rgba(34, 211, 238, 0.3) !important;
             }
             div.st-key-run_scan_btn_glow button[kind="primary"]:hover::before {
                 opacity: 1 !important;
