@@ -347,113 +347,80 @@ def _render_scan_action(raw_profiles, active_category):
     if run_clicked or test_clicked:
         loading_placeholder = st.empty()
         with loading_placeholder.container():
-            # "Cyber Radar House" loading state, round 2 - rebuilt from the
-            # user's exact updated button code (transparent background,
-            # not a solid dark panel, plus 3 sweep-synced "target blips"
-            # pinging at fixed points as the radar line passes them).
-            # Still translating :hover/group-hover triggers to always-on
-            # (there's no hover state for a passive loading screen) and
-            # the button's own "Secure Sector" label to real loading copy
-            # - those are the same two necessary changes as round 1, nothing
-            # else reinterpreted this time. radarBlip/radarPing aren't
-            # standard keyframes (the snippet references them without
-            # defining them, presumably from the user's own tool's
-            # built-in library) - authored here as a brief flash + an
-            # expanding ping ring, each timed to its blip's delay so it
-            # reads as "lighting up when the sweep passes."
+            # "Cyber Radar House" loading state, round 3 - the first two
+            # rounds ported the *button's* look (a rectangular panel with
+            # a grid overlay + corner blips), but that's the wrong shape
+            # for this: the user's actual reference is a self-contained
+            # circular radar SCOPE (concentric rings, crosshair, a
+            # sweeping wedge, house icon glowing in the center core).
+            # Critically, the scope carries its own near-black fill -
+            # round 2's transparent panel looked "white" because this
+            # renders inside the white "Select Target Profile" card, not
+            # over the dark hero it was tested against. A self-contained
+            # dark circle has no such dependency on whatever it sits on.
+            # Same position/scale as the original pulsing-ring design
+            # (centered, text below in the app's normal on-white
+            # colors/tokens, not the radar's cyan, since that
+            # text sits on the white card, outside the dark scope).
             st.markdown("""
             <style>
-            @keyframes dealradar-scan-sweep {
+            @keyframes dealradar-radar-sweep {
                 to { transform: translate(-50%, -50%) rotate(360deg); }
             }
-            @keyframes dealradar-blip {
-                0%, 88%, 100% { opacity: 0; }
-                92%, 96% { opacity: 1; }
-            }
-            @keyframes dealradar-ping {
-                0%, 88%, 100% { opacity: 0; transform: scale(1); }
-                92% { opacity: 0.6; transform: scale(1); }
-                98% { opacity: 0; transform: scale(2.2); }
-            }
-            .dealradar-scan-panel {
-                position: relative;
+            .dealradar-scan-wrap {
                 display: flex; flex-direction: column; align-items: center; justify-content: center;
-                gap: 18px;
-                padding: 48px 24px;
-                margin: 12px 0;
-                background: transparent;
-                border: 1px solid rgba(6, 182, 212, 0.2);
-                border-radius: 12px;
+                padding: 30px 0;
+            }
+            .dealradar-radar-scope {
+                position: relative;
+                width: 110px; height: 110px;
+                border-radius: 50%;
+                margin-bottom: 16px;
                 overflow: hidden;
-                box-shadow: 0 0 30px rgba(34, 211, 238, 0.12);
+                background:
+                    repeating-radial-gradient(circle at center, transparent 0, transparent 17px, rgba(34, 211, 238, 0.22) 18px, transparent 19px),
+                    radial-gradient(circle at center, #111c2e 0%, #0a0f1a 100%);
+                box-shadow: 0 0 20px rgba(34, 211, 238, 0.25), inset 0 0 20px rgba(0, 0, 0, 0.5);
             }
-            .dealradar-scan-panel .grid-overlay {
-                position: absolute; inset: 0; z-index: 0;
-                background-image:
-                    repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.12) 0 1px, transparent 1px 8px),
-                    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.12) 0 1px, transparent 1px 8px);
+            .dealradar-radar-scope::before, .dealradar-radar-scope::after {
+                content: ""; position: absolute; background: rgba(34, 211, 238, 0.15);
             }
-            .dealradar-scan-panel .radar-sweep {
+            .dealradar-radar-scope::before { top: 0; bottom: 0; left: 50%; width: 1px; }
+            .dealradar-radar-scope::after { left: 0; right: 0; top: 50%; height: 1px; }
+            .dealradar-radar-scope .sweep {
                 position: absolute; top: 50%; left: 50%;
-                width: 160px; height: 160px; border-radius: 50%;
+                width: 160px; height: 160px;
                 transform: translate(-50%, -50%);
-                z-index: 1;
-                background: conic-gradient(from 0deg, transparent 50%, rgba(34, 211, 238, 0.3) 100%);
-                animation: dealradar-scan-sweep 2.5s linear infinite;
+                background: conic-gradient(from 0deg, transparent 60%, rgba(34, 211, 238, 0.55) 100%);
+                animation: dealradar-radar-sweep 2.5s linear infinite;
             }
-            /* Sweep-synced target blips - each pair (dot + ping ring)
-            flashes once per 2.5s loop, delayed to roughly match when the
-            sweep line passes that position (12% / 36% / 72% of the loop). */
-            .dealradar-scan-panel .blip {
-                position: absolute; z-index: 20;
-                width: 6px; height: 6px; border-radius: 50%; background: #22d3ee;
-            }
-            .dealradar-scan-panel .blip .dot { position: absolute; inset: 0; border-radius: 50%; background: #22d3ee; animation: dealradar-blip 2.5s linear infinite; }
-            .dealradar-scan-panel .blip .ping { position: absolute; inset: -4px; border-radius: 50%; background: #22d3ee; animation: dealradar-ping 2.5s linear infinite; }
-            .dealradar-scan-panel .blip-1 { top: 22%; left: 30%; }
-            .dealradar-scan-panel .blip-1 .dot, .dealradar-scan-panel .blip-1 .ping { animation-delay: 0.3s; }
-            .dealradar-scan-panel .blip-2 { top: 18%; right: 28%; }
-            .dealradar-scan-panel .blip-2 .dot, .dealradar-scan-panel .blip-2 .ping { animation-delay: 0.9s; }
-            .dealradar-scan-panel .blip-3 { bottom: 24%; right: 34%; }
-            .dealradar-scan-panel .blip-3 .dot, .dealradar-scan-panel .blip-3 .ping { animation-delay: 1.8s; }
-            .dealradar-scan-panel .house-icon-wrap {
-                position: relative; z-index: 10;
+            .dealradar-radar-scope .core {
+                position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                z-index: 10;
+                width: 46px; height: 46px; border-radius: 50%;
+                background: radial-gradient(circle at 35% 30%, #22d3ee, #0e7490);
+                box-shadow: 0 0 14px rgba(34, 211, 238, 0.8);
                 display: flex; align-items: center; justify-content: center;
-                width: 34px; height: 34px;
             }
-            .dealradar-scan-panel .house-icon-wrap svg { width: 30px; height: 30px; color: #22d3ee; position: relative; z-index: 10; }
-            .dealradar-scan-panel .intercept-ring {
-                position: absolute; width: 52px; height: 52px; border-radius: 50%;
-                border: 1px solid rgba(34, 211, 238, 0.5);
+            .dealradar-radar-scope .core svg { width: 22px; height: 22px; color: #f0fdff; }
+            .dealradar-scan-title {
+                font-weight: 600; color: var(--radar-navy); font-size: 15px;
             }
-            .dealradar-scan-panel .scan-text {
-                position: relative; z-index: 10;
-                text-align: center;
-            }
-            .dealradar-scan-panel .scan-title {
-                color: #22d3ee; font-family: 'Work Sans', sans-serif; font-weight: 900;
-                font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em;
-            }
-            .dealradar-scan-panel .scan-sub {
-                color: rgba(148, 163, 184, 0.8); font-size: 13px; margin-top: 6px;
+            .dealradar-scan-sub {
+                color: var(--radar-text-muted); font-size: 13px; margin-top: 4px;
             }
             </style>
-            <div class="dealradar-scan-panel">
-                <span class="grid-overlay"></span>
-                <span class="radar-sweep"></span>
-                <span class="blip blip-1"><span class="ping"></span><span class="dot"></span></span>
-                <span class="blip blip-2"><span class="ping"></span><span class="dot"></span></span>
-                <span class="blip blip-3"><span class="ping"></span><span class="dot"></span></span>
-                <div class="house-icon-wrap">
-                    <span class="intercept-ring"></span>
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
-                    </svg>
+            <div class="dealradar-scan-wrap">
+                <div class="dealradar-radar-scope">
+                    <span class="sweep"></span>
+                    <div class="core">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+                        </svg>
+                    </div>
                 </div>
-                <div class="scan-text">
-                    <div class="scan-title">Scanning the Market</div>
-                    <div class="scan-sub">Matching properties against your criteria</div>
-                </div>
+                <div class="dealradar-scan-title">Scanning the market...</div>
+                <div class="dealradar-scan-sub">Matching properties against your criteria</div>
             </div>
             """, unsafe_allow_html=True)
 
