@@ -256,8 +256,36 @@ else:
                 display: flex !important; flex-direction: row !important;
                 align-items: center !important; justify-content: flex-end !important;
                 gap: 10px !important;
+                /* topbar_icons_row itself still stretches to fill
+                col_icons's full column width by Streamlit's own default
+                (same flex:1 1 0% pattern as everywhere else in this
+                file) - width:fit-content stops it from having any
+                surplus space in the first place, which is what its
+                children were expanding to fill despite their own
+                flex:none (confirmed live: each circle's wrapper measured
+                65px, not 34px, even with grow=0 set - the surplus was
+                coming from one level up, not from the children resisting
+                the override). margin-left:auto keeps it flush at the
+                column's right edge once it's no longer forced to stretch. */
+                width: fit-content !important; flex: none !important; margin-left: auto !important;
             }
-            div.st-key-topbar_icons_row > div { flex: none !important; }
+            /* The 3 popover wraps are GRANDCHILDREN of topbar_icons_row
+            (an intermediate Streamlit wrapper div sits between), and each
+            wrap's own stVerticalBlock div carries Streamlit's default
+            flex:1 1 0% - confirmed live by walking the full parent chain,
+            since an earlier `> div` (direct-child) rule was silently
+            hitting the intermediate wrapper instead (already flex:0 0
+            auto by default, so that rule was a no-op) while the real
+            offender one level deeper kept growing each circle's own box
+            to ~216px and spacing them across the whole row instead of
+            clustering tight at the end. Targeting the wraps' own key
+            classes directly, regardless of nesting depth, is what
+            actually reaches the element that needs fixing. */
+            div.st-key-topbar_icons_row .st-key-topbar_help_popover_wrap,
+            div.st-key-topbar_icons_row .st-key-topbar_alerts_popover_wrap,
+            div.st-key-topbar_icons_row .st-key-topbar_account_popover_wrap {
+                flex: none !important; width: fit-content !important;
+            }
 
             /* All three circles share one size/centering fix. Streamlit
             puts a -5px right margin on a popover trigger's label wrapper
