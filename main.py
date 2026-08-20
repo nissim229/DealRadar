@@ -116,7 +116,7 @@ else:
 
             /* Style everything inside the top navbar container */
             div.st-key-scoutai_topbar {
-                background-color: #0f172a !important;
+                background-color: var(--radar-navy) !important;
                 padding: 10px 28px;
                 border-bottom: 1px solid #1e293b;
                 margin-bottom: 20px;
@@ -230,12 +230,12 @@ else:
             }
             div.st-key-scoutai_topbar_active button {
                 background-color: transparent !important;
-                color: #22d3ee !important;
+                color: var(--radar-accent) !important;
                 font-weight: 700;
             }
             div.st-key-scoutai_topbar_active button p,
             div.st-key-scoutai_topbar_active button span {
-                color: #22d3ee !important;
+                color: var(--radar-accent) !important;
                 font-weight: 700 !important;
             }
 
@@ -418,7 +418,7 @@ else:
                 min-width: 15px; height: 15px; border-radius: 999px;
                 display: flex; align-items: center; justify-content: center;
                 padding: 0 3px; line-height: 1; pointer-events: none;
-                border: 1.5px solid #0f172a;
+                border: 1.5px solid var(--radar-navy);
             }
 
             /* Category dropdown - deliberately NOT styled like the nav
@@ -488,23 +488,31 @@ else:
         col_logo, col_category, col_nav, col_icons = st.columns([0.9, 1.0, 3.3, 0.9])
 
         with col_logo:
-            st.markdown("""
-                <div style='display: flex; align-items: center; gap: 10px; width: 100%;'>
-                    <div style='background: linear-gradient(135deg, #2563eb, #1d4ed8); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex: none;'>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="9" />
-                            <circle cx="12" cy="12" r="5" />
-                            <path d="M12 12 L18 6" />
-                            <circle cx="17" cy="7" r="1.4" fill="white" stroke="none" />
-                        </svg>
-                    </div>
-                    <div style='line-height: 1.1; flex: none;'>
-                        <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
-                        <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
-                    </div>
-                    <div class='dealradar-logo-divider' style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none; margin-left: 4px;'></div>
-                </div>
-            """, unsafe_allow_html=True)
+            # A custom logo uploaded via Admin Controls > Brand & Design
+            # replaces the built-in radar mark entirely (not layered next
+            # to it) - an admin who uploads their own logo wants their
+            # logo, not their logo plus DealRadar's.
+            custom_logo = db.get_brand_settings()["logo_data_uri"]
+            if custom_logo:
+                mark_html = f"<img src='{custom_logo}' style='width: 34px; height: 34px; border-radius: 8px; object-fit: contain; flex: none;' />"
+            else:
+                mark_html = (
+                    "<div style='background: linear-gradient(135deg, #2563eb, #1d4ed8); width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex: none;'>"
+                    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
+                    '<circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 12 L18 6" />'
+                    '<circle cx="17" cy="7" r="1.4" fill="white" stroke="none" /></svg></div>'
+                )
+            st.markdown(
+                "<div style='display: flex; align-items: center; gap: 10px; width: 100%;'>"
+                f"{mark_html}"
+                "<div style='line-height: 1.1; flex: none;'>"
+                "<span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>"
+                "<span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>"
+                "</div>"
+                "<div class='dealradar-logo-divider' style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none; margin-left: 4px;'></div>"
+                "</div>",
+                unsafe_allow_html=True,
+            )
 
         with col_category:
             with st.container(key="topbar_category_popover"):

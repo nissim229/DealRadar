@@ -21,22 +21,107 @@ pages that render before login) can use these variables.
 """
 
 import streamlit as st
+import database as db
 
-TOKENS_CSS = """
-:root {
-    /* Typography - Sora for headings/hero titles (geometric, a little more
-    character than the body face, used sparingly so it stays a display
-    face rather than blending into body copy), Work Sans for everything
-    else (labels, buttons, tables, captions - built for long runs of UI
-    text at small sizes), JetBrains Mono wherever digits/identifiers need
-    to line up (table cell alignment, file paths, addresses). Previously
-    unset - every page rendered on the browser's bare default font, which
-    is why DealRadar never actually had a typographic identity until now. */
-    --radar-font-display: 'Sora', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --radar-font-body: 'Work Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --radar-font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+# Curated Google Fonts options for Admin Controls > Brand & Design's 3
+# typeface pickers - a fixed list (not free text) so a saved choice can
+# never reference a family that isn't actually loaded or typo into
+# nothing rendering. Each entry maps the friendly dropdown label to
+# (Google Fonts family name, weight string for the CSS2 API, CSS
+# fallback stack) - the weight string controls exactly which cuts get
+# downloaded, same reasoning as the original hardcoded
+# "Work+Sans:wght@400;500;600;900" import this replaces.
+DISPLAY_FONT_OPTIONS = {
+    "Sora": ("Sora", "600;700;800", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Space Grotesk": ("Space Grotesk", "600;700", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Orbitron": ("Orbitron", "600;700;800", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Rajdhani": ("Rajdhani", "600;700", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Poppins": ("Poppins", "600;700;800", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+}
+BODY_FONT_OPTIONS = {
+    "Work Sans": ("Work Sans", "400;500;600;900", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Inter": ("Inter", "400;500;600;900", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Rajdhani": ("Rajdhani", "400;500;600;700", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+    "Roboto": ("Roboto", "400;500;700;900", "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"),
+}
+MONO_FONT_OPTIONS = {
+    "JetBrains Mono": ("JetBrains Mono", "400;500;700", "ui-monospace, 'SF Mono', Consolas, monospace"),
+    "Roboto Mono": ("Roboto Mono", "400;500;700", "ui-monospace, 'SF Mono', Consolas, monospace"),
+    "Space Mono": ("Space Mono", "400;700", "ui-monospace, 'SF Mono', Consolas, monospace"),
+    "IBM Plex Mono": ("IBM Plex Mono", "400;500;600", "ui-monospace, 'SF Mono', Consolas, monospace"),
+}
 
-    /* Brand */
+
+def _shade_hex(hex_color, factor):
+    """Scales a #rrggbb color toward black (factor<1) or white (factor>1)
+    - used to derive a "-dark" hover/gradient variant from the admin's
+    one chosen accent color instead of asking them to pick two colors
+    that have to stay visually related."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return "#0f172a"
+    try:
+        r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return "#0f172a"
+    if factor <= 1:
+        r, g, b = (int(c * factor) for c in (r, g, b))
+    else:
+        r, g, b = (int(c + (255 - c) * (factor - 1)) for c in (r, g, b))
+    r, g, b = (max(0, min(255, c)) for c in (r, g, b))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _hex_to_rgb_str(hex_color):
+    """'#22d3ee' -> '34, 211, 238' - the comma-separated component form
+    needed to drive rgba(var(--radar-accent-rgb), 0.3)-style translucent
+    fills from the admin's single hex picker, since CSS can't extract
+    components out of a var() holding a full #rrggbb string."""
+    hex_color = hex_color.lstrip("#")
+    if len(hex_color) != 6:
+        return "34, 211, 238"
+    try:
+        r, g, b = (int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return "34, 211, 238"
+    return f"{r}, {g}, {b}"
+
+
+def _build_tokens_css():
+    """Builds :root's CSS custom properties from the admin's saved brand
+    settings (falling back to the original defaults if nothing's been
+    saved) - called fresh on every render, same "read the live DB state,
+    not a cached value" approach as get_design_standards(), so a save in
+    Admin Controls shows up on the very next rerun with no restart."""
+    brand = db.get_brand_settings()
+    display_family, _, display_fallback = DISPLAY_FONT_OPTIONS.get(brand["font_display"], DISPLAY_FONT_OPTIONS["Sora"])
+    body_family, _, body_fallback = BODY_FONT_OPTIONS.get(brand["font_body"], BODY_FONT_OPTIONS["Work Sans"])
+    mono_family, _, mono_fallback = MONO_FONT_OPTIONS.get(brand["font_mono"], MONO_FONT_OPTIONS["JetBrains Mono"])
+    accent = brand["accent_color"]
+    accent_dark = _shade_hex(accent, 0.75)
+    accent_rgb = _hex_to_rgb_str(accent)
+
+    return f"""
+:root {{
+    /* Typography - the 3 roles (display/body/mono) are all admin-
+    controlled from Admin Controls > Brand & Design; these are just
+    today's saved choice (or the original Sora/Work Sans/JetBrains Mono
+    defaults if nothing's been saved yet). */
+    --radar-font-display: '{display_family}', {display_fallback};
+    --radar-font-body: '{body_family}', {body_fallback};
+    --radar-font-mono: '{mono_family}', {mono_fallback};
+
+    /* Brand - --radar-accent is the one color Admin Controls exposes
+    (the cyan cyberpunk topbar/button/loading-radar work all reference
+    this, not a hardcoded hex, specifically so this control actually
+    re-skins them); --radar-primary is the original standing blue used
+    everywhere else in the app (ordinary buttons, links, badges) and is
+    deliberately NOT tied to the accent picker - the two are allowed to
+    diverge (e.g. a cyan accent standing out against the app's normal
+    blue chrome) rather than forcing one global recolor. */
+    --radar-accent: {accent};
+    --radar-accent-dark: {accent_dark};
+    --radar-accent-rgb: {accent_rgb};
     --radar-primary: #2563eb;
     --radar-primary-dark: #1d4ed8;
     --radar-navy: #0f172a;
@@ -110,19 +195,32 @@ TOKENS_CSS = """
     /* Gradients (used by every dark hero banner) */
     --radar-gradient-hero: linear-gradient(135deg, var(--radar-navy) 0%, var(--radar-navy-light) 100%);
     --radar-gradient-brand: linear-gradient(135deg, var(--radar-primary), var(--radar-primary-dark));
-}
+    --radar-gradient-accent: linear-gradient(135deg, var(--radar-accent), var(--radar-accent-dark));
+}}
 """
 
 
-# Google Fonts is the one external font host Streamlit's own CSP-free
-# markdown rendering can reach reliably (no build step to bundle a local
-# @font-face file into) - loaded once, here, so every page (including the
-# pre-login guest/auth screens, which render before theme.py ever runs)
-# gets the real typeface instead of falling back to it only after login.
-FONT_IMPORT_HTML = """
+def _build_font_import_html():
+    """Google Fonts is the one external font host Streamlit's own CSP-
+    free markdown rendering can reach reliably (no build step to bundle
+    a local @font-face file into) - loaded once, here, so every page
+    (including the pre-login guest/auth screens, which render before
+    theme.py ever runs) gets the real typeface instead of falling back
+    to it only after login. Built from the admin's saved font choices
+    (or the original defaults) - three separate &family= params in one
+    request, same as the original hardcoded URL this replaces."""
+    brand = db.get_brand_settings()
+    _, display_weights, _ = DISPLAY_FONT_OPTIONS.get(brand["font_display"], DISPLAY_FONT_OPTIONS["Sora"])
+    _, body_weights, _ = BODY_FONT_OPTIONS.get(brand["font_body"], BODY_FONT_OPTIONS["Work Sans"])
+    _, mono_weights, _ = MONO_FONT_OPTIONS.get(brand["font_mono"], MONO_FONT_OPTIONS["JetBrains Mono"])
+    display_family = DISPLAY_FONT_OPTIONS.get(brand["font_display"], DISPLAY_FONT_OPTIONS["Sora"])[0].replace(" ", "+")
+    body_family = BODY_FONT_OPTIONS.get(brand["font_body"], BODY_FONT_OPTIONS["Work Sans"])[0].replace(" ", "+")
+    mono_family = MONO_FONT_OPTIONS.get(brand["font_mono"], MONO_FONT_OPTIONS["JetBrains Mono"])[0].replace(" ", "+")
+
+    return f"""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Work+Sans:wght@400;500;600;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family={display_family}:wght@{display_weights}&family={body_family}:wght@{body_weights}&family={mono_family}:wght@{mono_weights}&display=swap" rel="stylesheet">
 """
 
 # Applied broadly via data-testid/class selectors (same technique theme.py
@@ -160,5 +258,5 @@ FONT_CSS = """
 
 
 def inject_design_tokens():
-    st.markdown(FONT_IMPORT_HTML, unsafe_allow_html=True)
-    st.markdown(f"<style>{TOKENS_CSS}{FONT_CSS}</style>", unsafe_allow_html=True)
+    st.markdown(_build_font_import_html(), unsafe_allow_html=True)
+    st.markdown(f"<style>{_build_tokens_css()}{FONT_CSS}</style>", unsafe_allow_html=True)

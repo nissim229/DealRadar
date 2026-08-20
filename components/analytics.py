@@ -271,10 +271,10 @@ def _render_scan_action(raw_profiles, active_category):
             <style>
             div.st-key-run_scan_btn_glow button[kind="primary"] {
                 position: relative !important;
-                background: #0f172a !important;
-                border: 1px solid rgba(6, 182, 212, 0.2) !important;
+                background: var(--radar-navy) !important;
+                border: 1px solid rgba(var(--radar-accent-rgb), 0.2) !important;
                 border-radius: 8px !important;
-                color: #22d3ee !important;
+                color: var(--radar-accent) !important;
                 overflow: hidden !important;
                 text-transform: uppercase !important;
                 letter-spacing: 0.05em !important;
@@ -283,7 +283,7 @@ def _render_scan_action(raw_profiles, active_category):
             }
             div.st-key-run_scan_btn_glow button[kind="primary"] p,
             div.st-key-run_scan_btn_glow button[kind="primary"] span {
-                color: #22d3ee !important;
+                color: var(--radar-accent) !important;
                 font-weight: 900 !important;
                 position: relative !important;
                 z-index: 10 !important;
@@ -294,8 +294,8 @@ def _render_scan_action(raw_profiles, active_category):
                 z-index: 1 !important; opacity: 0 !important;
                 transition: opacity 0.3s ease !important;
                 background-image:
-                    repeating-linear-gradient(0deg, rgba(34, 211, 238, 0.18) 0 1px, transparent 1px 8px),
-                    repeating-linear-gradient(90deg, rgba(34, 211, 238, 0.18) 0 1px, transparent 1px 8px) !important;
+                    repeating-linear-gradient(0deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px),
+                    repeating-linear-gradient(90deg, rgba(var(--radar-accent-rgb), 0.18) 0 1px, transparent 1px 8px) !important;
             }
             /* Radar sweep - centered circle behind the icon/label, spins on hover */
             div.st-key-run_scan_btn_glow button[kind="primary"]::after {
@@ -305,12 +305,12 @@ def _render_scan_action(raw_profiles, active_category):
                 border-radius: 50% !important;
                 transform: translate(-50%, -50%) !important;
                 z-index: 1 !important; opacity: 0 !important;
-                background: conic-gradient(from 0deg, transparent 50%, rgba(34, 211, 238, 0.25) 100%) !important;
+                background: conic-gradient(from 0deg, transparent 50%, rgba(var(--radar-accent-rgb), 0.25) 100%) !important;
                 transition: opacity 0.3s ease !important;
             }
             div.st-key-run_scan_btn_glow button[kind="primary"]:hover {
-                border-color: #22d3ee !important;
-                box-shadow: 0 0 30px rgba(34, 211, 238, 0.3) !important;
+                border-color: var(--radar-accent) !important;
+                box-shadow: 0 0 30px rgba(var(--radar-accent-rgb), 0.3) !important;
             }
             div.st-key-run_scan_btn_glow button[kind="primary"]:hover::before {
                 opacity: 1 !important;
@@ -385,12 +385,12 @@ def _execute_scan(selected_profile, run_clicked, test_clicked):
             margin-bottom: 22px;
             overflow: hidden;
             background:
-                repeating-radial-gradient(circle at center, transparent 0, transparent 39px, rgba(34, 211, 238, 0.22) 40px, transparent 41px),
+                repeating-radial-gradient(circle at center, transparent 0, transparent 39px, rgba(var(--radar-accent-rgb), 0.22) 40px, transparent 41px),
                 radial-gradient(circle at center, #111c2e 0%, #0a0f1a 100%);
-            box-shadow: 0 0 45px rgba(34, 211, 238, 0.3), inset 0 0 40px rgba(0, 0, 0, 0.5);
+            box-shadow: 0 0 45px rgba(var(--radar-accent-rgb), 0.3), inset 0 0 40px rgba(0, 0, 0, 0.5);
         }
         .dealradar-radar-scope::before, .dealradar-radar-scope::after {
-            content: ""; position: absolute; background: rgba(34, 211, 238, 0.18);
+            content: ""; position: absolute; background: rgba(var(--radar-accent-rgb), 0.18);
         }
         .dealradar-radar-scope::before { top: 0; bottom: 0; left: 50%; width: 1px; }
         .dealradar-radar-scope::after { left: 0; right: 0; top: 50%; height: 1px; }
@@ -398,15 +398,15 @@ def _execute_scan(selected_profile, run_clicked, test_clicked):
             position: absolute; top: 50%; left: 50%;
             width: 380px; height: 380px;
             transform: translate(-50%, -50%);
-            background: conic-gradient(from 0deg, transparent 60%, rgba(34, 211, 238, 0.55) 100%);
+            background: conic-gradient(from 0deg, transparent 60%, rgba(var(--radar-accent-rgb), 0.55) 100%);
             animation: dealradar-radar-sweep 2.5s linear infinite;
         }
         .dealradar-radar-scope .core {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
             z-index: 10;
             width: 92px; height: 92px; border-radius: 50%;
-            background: radial-gradient(circle at 35% 30%, #22d3ee, #0e7490);
-            box-shadow: 0 0 26px rgba(34, 211, 238, 0.85);
+            background: radial-gradient(circle at 35% 30%, var(--radar-accent), var(--radar-accent-dark));
+            box-shadow: 0 0 26px rgba(var(--radar-accent-rgb), 0.85);
             display: flex; align-items: center; justify-content: center;
         }
         .dealradar-radar-scope .core svg { width: 42px; height: 42px; color: #f0fdff; }

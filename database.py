@@ -1041,6 +1041,55 @@ def has_design_standards_override():
     finally:
         conn.close()
 
+# Sitewide brand controls (Admin Controls > Brand & Design, super_admin-
+# only) - accent color, the 3 typeface roles, and an optional custom
+# logo, all read by design_tokens.py's inject_design_tokens() so a save
+# here actually re-skins the live app (CSS custom properties + the
+# Google Fonts import), not just a settings record nobody reads. One
+# JSON blob under app_settings, same missing-key-tolerant backfill
+# pattern as DEFAULT_USER_SETTINGS, since this is sitewide (not
+# per-user) state - a dedicated table would be one row forever.
+DEFAULT_BRAND_SETTINGS = {
+    "accent_color": "#22d3ee",
+    "font_display": "Sora",
+    "font_body": "Work Sans",
+    "font_mono": "JetBrains Mono",
+    "logo_data_uri": "",  # empty = use the built-in radar SVG mark
+}
+
+def get_brand_settings():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='brand_settings_json'")
+        row = cursor.fetchone()
+        saved = json.loads(row[0]) if row and row[0] else {}
+        return {**DEFAULT_BRAND_SETTINGS, **saved}
+    finally:
+        conn.close()
+
+def save_brand_settings(settings):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('brand_settings_json', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (json.dumps(settings),)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+def clear_brand_settings():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM app_settings WHERE key='brand_settings_json'")
+        conn.commit()
+    finally:
+        conn.close()
+
 def log_rentcast_call(success, user_id=None):
     conn = sqlite3.connect(DB_NAME)
     try:

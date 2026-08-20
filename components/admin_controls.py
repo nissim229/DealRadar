@@ -1,3 +1,4 @@
+import base64
 import streamlit as st
 import pandas as pd
 import database as db
@@ -6,9 +7,17 @@ import car_engine
 import email_utils
 import plan_limits
 import roles
+import design_tokens
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
 from nav import render_side_nav
+
+# Uploaded logos are stored inline as base64 data URIs in app_settings
+# (same generic key/value table as everything else here) rather than as
+# files on disk - this app has no existing static-asset upload pipeline,
+# and a data URI needs no separate serving route. Capped well under
+# SQLite/Streamlit's practical limits for a single small logo image.
+_MAX_LOGO_BYTES = 900_000
 
 
 @st.dialog("Recent Signups")
@@ -693,6 +702,92 @@ def _render_design_standards_tab():
         st.markdown(current_content)
 
 
+def _render_brand_design_tab():
+    st.markdown("### Brand & Design")
+    st.caption(
+        "Live controls for the app's accent color, typefaces, and logo - saved here, they drive "
+        "the design tokens every page's CSS already reads from (design_tokens.py), so a change "
+        "shows up across the whole app on the next rerun, no code edit needed."
+    )
+
+    brand = db.get_brand_settings()
+
+    st.markdown("##### Accent color")
+    st.caption("Drives the cyan cyberpunk accents (nav highlight, Run Live Scan button, scan-loading radar).")
+    accent_color = st.color_picker("Accent color", value=brand["accent_color"], key="brand_accent_picker",
+                                    label_visibility="collapsed")
+
+    st.markdown("##### Typefaces")
+    font_col1, font_col2, font_col3 = st.columns(3)
+    with font_col1:
+        font_display = st.selectbox("Display (headings)", options=list(design_tokens.DISPLAY_FONT_OPTIONS.keys()),
+                                     index=list(design_tokens.DISPLAY_FONT_OPTIONS.keys()).index(brand["font_display"])
+                                     if brand["font_display"] in design_tokens.DISPLAY_FONT_OPTIONS else 0,
+                                     key="brand_font_display")
+    with font_col2:
+        font_body = st.selectbox("Body (default text)", options=list(design_tokens.BODY_FONT_OPTIONS.keys()),
+                                  index=list(design_tokens.BODY_FONT_OPTIONS.keys()).index(brand["font_body"])
+                                  if brand["font_body"] in design_tokens.BODY_FONT_OPTIONS else 0,
+                                  key="brand_font_body")
+    with font_col3:
+        font_mono = st.selectbox("Mono (data, code)", options=list(design_tokens.MONO_FONT_OPTIONS.keys()),
+                                  index=list(design_tokens.MONO_FONT_OPTIONS.keys()).index(brand["font_mono"])
+                                  if brand["font_mono"] in design_tokens.MONO_FONT_OPTIONS else 0,
+                                  key="brand_font_mono")
+
+    st.markdown("##### Logo")
+    if brand["logo_data_uri"]:
+        st.markdown(
+            f"<img src='{brand['logo_data_uri']}' style='width: 48px; height: 48px; border-radius: 8px; "
+            f"object-fit: contain; border: 1px solid var(--radar-border);' />",
+            unsafe_allow_html=True,
+        )
+        st.caption("Current custom logo (replaces the built-in radar mark in the topbar).")
+    else:
+        st.caption("No custom logo set - the built-in radar mark is shown.")
+
+    uploaded_logo = st.file_uploader("Upload a new logo (PNG, JPG, or SVG - square works best)",
+                                      type=["png", "jpg", "jpeg", "svg"], key="brand_logo_uploader")
+    remove_logo = False
+    if brand["logo_data_uri"]:
+        remove_logo = st.checkbox("Remove custom logo on save (revert to the built-in mark)", key="brand_logo_remove")
+
+    st.markdown("---")
+    save_col, reset_col = st.columns([1, 1])
+    with save_col:
+        if st.button(":material/save: Save brand settings", type="primary", use_container_width=True):
+            new_settings = dict(brand)
+            new_settings["accent_color"] = accent_color
+            new_settings["font_display"] = font_display
+            new_settings["font_body"] = font_body
+            new_settings["font_mono"] = font_mono
+            if remove_logo:
+                new_settings["logo_data_uri"] = ""
+            elif uploaded_logo is not None:
+                if uploaded_logo.size > _MAX_LOGO_BYTES:
+                    st.error(f"Logo file is too large ({uploaded_logo.size // 1024} KB) - keep it under "
+                              f"{_MAX_LOGO_BYTES // 1024} KB.")
+                    st.stop()
+                mime = uploaded_logo.type or "image/png"
+                encoded = base64.b64encode(uploaded_logo.getvalue()).decode("ascii")
+                new_settings["logo_data_uri"] = f"data:{mime};base64,{encoded}"
+            db.save_brand_settings(new_settings)
+            st.toast("Brand settings updated.")
+            st.rerun()
+    with reset_col:
+        if st.button(":material/restart_alt: Reset to defaults", use_container_width=True):
+            db.clear_brand_settings()
+            # Widgets keep their session_state value across reruns once
+            # touched, ignoring a changed `value=`/`index=` default - so
+            # without this, the picker/dropdowns would keep showing the
+            # just-cleared color/fonts even though the DB (and every other
+            # page's CSS) already reverted.
+            for widget_key in ("brand_accent_picker", "brand_font_display", "brand_font_body", "brand_font_mono"):
+                st.session_state.pop(widget_key, None)
+            st.toast("Brand settings reset to defaults.")
+            st.rerun()
+
+
 def render_admin_control_panel():
     st.markdown("""
         <style>
@@ -906,6 +1001,7 @@ def render_admin_control_panel():
     if roles.is_super_admin(current_role):
         nav_items.append({"label": "Add Admins", "icon": ":material/admin_panel_settings:"})
         nav_items.append({"label": "Design Standards", "icon": ":material/design_services:"})
+        nav_items.append({"label": "Brand & Design", "icon": ":material/palette:"})
 
     nav_col, content_col = st.columns([1, 4])
     with nav_col:
@@ -929,3 +1025,5 @@ def render_admin_control_panel():
             _render_add_admins_tab(current_role)
         elif active_section == "Design Standards" and roles.is_super_admin(current_role):
             _render_design_standards_tab()
+        elif active_section == "Brand & Design" and roles.is_super_admin(current_role):
+            _render_brand_design_tab()
