@@ -294,32 +294,48 @@ else:
                 display: none !important;
             }
 
-            /* Help icon and alerts bell - same-size circle as the avatar
-            (was smaller/dimmer before; brightened to solid white to
-            actually read at a glance against the dark navbar, matching
-            the reference navbar's icon weight) with a visible outline so
-            they still look like secondary actions next to the filled
-            avatar, not a 4th nav destination. */
+            /* Help icon and alerts bell - same-size filled circle as the
+            avatar (not a ghost/outline style anymore), each its own solid
+            color so the three read as distinct actions at a glance:
+            avatar blue (identity), help green (informational/safe), bell
+            red (attention/alerts) - matching the user's own mockup. */
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"],
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] {
-                background: rgba(255, 255, 255, 0.06) !important;
-                border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
                 color: white !important;
                 width: 34px !important; height: 34px !important; min-height: 0 !important;
+                border: none !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
+            }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+            }
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
             }
             div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"],
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
                 display: none !important;
             }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
-            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+            /* The visible glyph for an inline :material/x: shortcode in a
+            popover's label renders as <span role="img">, NOT
+            [data-testid="stIconMaterial"] (that testid only exists on
+            the hidden decorative chevron, coincidentally sharing the
+            "material icon" naming) - confirmed by dumping the button's
+            real outerHTML, since this silently meant font-size here was
+            never touching the icon anyone actually sees, stuck at
+            Streamlit's own small default (~12.5px in a 34px circle,
+            nowhere near the requested 90%+ fill) despite the circle
+            itself rendering at the right size and color. */
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] span[role="img"],
+            div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] span[role="img"] {
                 font-size: 31px !important; color: white !important;
             }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover,
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover {
+                background: linear-gradient(135deg, #16a34a, #15803d) !important;
+            }
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"]:hover {
-                background: rgba(255, 255, 255, 0.16) !important;
+                background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
             }
             /* position:relative on the alerts wrapper is what lets the
             unread-count badge below overlay the button's corner instead
@@ -337,9 +353,11 @@ else:
             div.st-key-topbar_alerts_popover_wrap div[data-testid="stElementContainer"] {
                 position: static !important;
             }
+            /* Amber, not red - the bell itself is solid red now, so a red
+            badge on top of it would disappear. */
             .dealradar-alert-badge {
                 position: absolute; top: -4px; right: -4px;
-                background: #ef4444; color: white; font-size: 10px; font-weight: 700;
+                background: #f59e0b; color: #451a03; font-size: 10px; font-weight: 700;
                 min-width: 15px; height: 15px; border-radius: 999px;
                 display: flex; align-items: center; justify-content: center;
                 padding: 0 3px; line-height: 1; pointer-events: none;
