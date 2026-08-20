@@ -138,7 +138,6 @@ else:
             itself instead of just removing dead space). */
             @media (max-width: 1300px) {
                 div.st-key-scoutai_topbar .dealradar-logo-tag,
-                div.st-key-scoutai_topbar .dealradar-logo-spacer,
                 div.st-key-scoutai_topbar .dealradar-logo-divider {
                     display: none !important;
                 }
@@ -473,8 +472,7 @@ else:
                         <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
                         <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
                     </div>
-                    <div class='dealradar-logo-spacer' style='flex: 1;'></div>
-                    <div class='dealradar-logo-divider' style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none;'></div>
+                    <div class='dealradar-logo-divider' style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none; margin-left: 4px;'></div>
                 </div>
             """, unsafe_allow_html=True)
 
