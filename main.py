@@ -455,7 +455,7 @@ else:
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_category, col_nav, col_icons = st.columns([1.5, 1.0, 2.7, 0.9])
+        col_logo, col_category, col_nav, col_icons = st.columns([0.9, 1.0, 3.3, 0.9])
 
         with col_logo:
             st.markdown("""
