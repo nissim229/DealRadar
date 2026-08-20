@@ -2,32 +2,9 @@
 import database as db
 import theme
 import roles
-from datetime import datetime
 from design_tokens import inject_design_tokens
 from topbar_logo import render_topbar_logo_html
-
-
-def _relative_time(timestamp_str):
-    """'2026-08-19 07:31:28' (a SQLite CURRENT_TIMESTAMP string, UTC) ->
-    '3 hours ago', for the alerts bell's activity feed. Deliberately a
-    separate, prefix-less copy of analytics.py's _format_relative_time
-    (which always prepends "Saved ") rather than importing that private
-    helper across modules for a different label shape."""
-    try:
-        dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-    except (TypeError, ValueError):
-        return timestamp_str or ""
-    seconds = (datetime.utcnow() - dt).total_seconds()
-    if seconds < 60:
-        return "just now"
-    if seconds < 3600:
-        m = int(seconds // 60)
-        return f"{m} minute{'s' if m != 1 else ''} ago"
-    if seconds < 86400:
-        h = int(seconds // 3600)
-        return f"{h} hour{'s' if h != 1 else ''} ago"
-    d = int(seconds // 86400)
-    return f"{d} day{'s' if d != 1 else ''} ago"
+from data_utils import relative_time
 
 # 1. Global Page and Theme Layout Settings
 st.set_page_config(page_title="DealRadar", layout="wide")
@@ -619,7 +596,7 @@ else:
                             st.caption(f"Recent {active_category['label']} activity")
                             for profile_name, location, generated_at in recent_activity:
                                 label = f"**{profile_name}**" + (f" — {location}" if location else "")
-                                st.caption(f"{label}  ·  {_relative_time(generated_at)}")
+                                st.caption(f"{label}  ·  {relative_time(generated_at)}")
                         elif not low_credits and not alerts_broadcast:
                             st.caption("Nothing yet - run a scan to see activity here.")
                         # Marking read happens on every render of an *open*

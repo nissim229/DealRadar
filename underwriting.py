@@ -4,6 +4,20 @@ Pure underwriting math and grade styling - no Streamlit UI calls, so this
 module has zero dependency on the app framework and is easy to unit test.
 """
 
+
+def monthly_payment_factor(annual_rate_pct, n_periods):
+    """Standard fixed-rate loan monthly-payment-per-dollar-of-principal
+    factor - multiply by the loan amount to get the actual payment. This
+    is the one formula every debt-service number in the app (deal grading,
+    the What-If sandbox, and the Portfolio amortization schedule) is
+    ultimately built on; previously it was hand-written independently in
+    5 different places. Callers own their own zero/negative-rate handling
+    since "no rate" means different things in different contexts (a
+    data-completeness guard here vs. genuine 0% financing elsewhere)."""
+    m_rate = (annual_rate_pct / 100) / 12
+    return (m_rate * (1 + m_rate) ** n_periods) / ((1 + m_rate) ** n_periods - 1)
+
+
 def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield, hoa_monthly=0.0):
     """Shared underwriting math - used identically by the summary cards, the property
@@ -30,9 +44,7 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     down_amt = price * (calc_down_pct / 100)
     loan_amt = price - down_amt
     if loan_amt > 0 and calc_interest > 0:
-        m_rate = (calc_interest / 100) / 12
-        p_count = 30 * 12
-        m_debt = loan_amt * (m_rate * (1 + m_rate) ** p_count) / ((1 + m_rate) ** p_count - 1)
+        m_debt = loan_amt * monthly_payment_factor(calc_interest, 30 * 12)
         a_debt = m_debt * 12
     else:
         a_debt = 0.0
@@ -44,9 +56,7 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     down_ratio = calc_down_pct / 100
     tax_ins_ratio = (calc_tax_rate / 100) + (calc_ins_rate / 100)
     if calc_interest > 0:
-        m_rate = (calc_interest / 100) / 12
-        p_count = 30 * 12
-        debt_factor = 12 * (m_rate * (1 + m_rate) ** p_count) / ((1 + m_rate) ** p_count - 1)
+        debt_factor = 12 * monthly_payment_factor(calc_interest, 30 * 12)
     else:
         debt_factor = 0.0
     denom = tax_ins_ratio + (debt_factor * (1 - down_ratio)) + (target_yield * down_ratio)
@@ -95,13 +105,20 @@ GRADE_STYLES = {
 }
 
 
-def render_deal_badge(grade):
-    style = GRADE_STYLES[grade]
+def render_grade_badge(grade, styles_dict):
+    """Shared HTML template behind both render_deal_badge (properties,
+    using GRADE_STYLES below) and render_car_deal_badge (car_engine.py,
+    using its own CAR_GRADE_STYLES) - only the style dict differs."""
+    style = styles_dict[grade]
     return (
         f"<span style='background-color:{style['bg']}; color:{style['fg']}; "
         f"padding:6px 12px; border-radius:6px; font-weight:700; font-size:13px; "
         f"border:1px solid {style['border']}; white-space:nowrap;'>{style['label']}</span>"
     )
+
+
+def render_deal_badge(grade):
+    return render_grade_badge(grade, GRADE_STYLES)
 
 
 
@@ -127,9 +144,8 @@ def compute_whatif_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, ca
     down_amt = price * (calc_down_pct / 100)
     loan_amt = price - down_amt
     if loan_amt > 0 and calc_interest > 0:
-        m_rate = (calc_interest / 100) / 12
         p_count = max(1, int(loan_term_years)) * 12
-        m_debt = loan_amt * (m_rate * (1 + m_rate) ** p_count) / ((1 + m_rate) ** p_count - 1)
+        m_debt = loan_amt * monthly_payment_factor(calc_interest, p_count)
         a_debt = m_debt * 12
     else:
         a_debt = 0.0

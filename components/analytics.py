@@ -13,7 +13,7 @@ from components import pricing
 import plan_limits
 import roles
 from icons import icon as svg_icon
-from data_utils import clean_value
+from data_utils import clean_value, relative_time
 from dashboard_grid import render_dashboard_grid
 from components.settings import RESULTS_VIEW_OPTIONS, format_local_datetime
 from nav import render_side_nav
@@ -47,35 +47,18 @@ def _safe_hoa(source):
 
 
 def _format_relative_time(timestamp_str):
-    """Turns a SQLite CURRENT_TIMESTAMP string ('2026-08-16 07:31:28', UTC)
-    into a relative label like 'Saved 3 hours ago'. This is deliberately a
-    freshness note, not a claim about whether the listing is still active -
-    this app has no live MLS/IDX feed to verify that, so the honest signal
-    to show is how long ago the snapshot was taken, matching how the major
-    listing sites handle results they can't re-verify in real time either."""
+    """'Saved 3 hours ago' - deliberately a freshness note, not a claim
+    about whether the listing is still active - this app has no live
+    MLS/IDX feed to verify that, so the honest signal to show is how long
+    ago the snapshot was taken, matching how the major listing sites
+    handle results they can't re-verify in real time either. Bucketing
+    itself lives in data_utils.relative_time; this just owns the "Saved"
+    framing and the on-parse-failure fallback shape."""
     try:
-        saved_dt = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
     except (TypeError, ValueError):
         return f"Saved {timestamp_str}"
-
-    delta = datetime.utcnow() - saved_dt
-    seconds = delta.total_seconds()
-    if seconds < 60:
-        return "Saved just now"
-    if seconds < 3600:
-        minutes = int(seconds // 60)
-        return f"Saved {minutes} minute{'s' if minutes != 1 else ''} ago"
-    if seconds < 86400:
-        hours = int(seconds // 3600)
-        return f"Saved {hours} hour{'s' if hours != 1 else ''} ago"
-    days = int(seconds // 86400)
-    if days < 30:
-        return f"Saved {days} day{'s' if days != 1 else ''} ago"
-    if days < 365:
-        months = days // 30
-        return f"Saved {months} month{'s' if months != 1 else ''} ago"
-    years = days // 365
-    return f"Saved {years} year{'s' if years != 1 else ''} ago"
+    return f"Saved {relative_time(timestamp_str)}"
 
 
 def render_empty_state(icon_name, title, description, cta_label=None, cta_page=None, accent="var(--radar-primary)"):

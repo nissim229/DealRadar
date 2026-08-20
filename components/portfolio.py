@@ -9,7 +9,7 @@ import plan_limits
 from icons import icon as svg_icon
 from components.analytics import render_empty_state, render_stat_card
 from components import pricing
-from underwriting import GRADE_STYLES
+from underwriting import GRADE_STYLES, monthly_payment_factor
 from nav import render_side_nav
 
 PROPERTY_TYPES = [
@@ -36,8 +36,8 @@ def _months_between(start_date, end_date=None):
 
 
 def _amortize(loan_amount, annual_rate_pct, term_years, months_elapsed):
-    """Standard fixed-rate amortization math (same monthly-payment formula
-    used elsewhere in the app - see underwriting.compute_deal_metrics).
+    """Standard fixed-rate amortization math (shares its monthly-payment
+    formula with underwriting.compute_deal_metrics via monthly_payment_factor).
     Returns None when there isn't enough info to compute a schedule yet."""
     if not loan_amount or not term_years:
         return None
@@ -46,7 +46,7 @@ def _amortize(loan_amount, annual_rate_pct, term_years, months_elapsed):
     months_elapsed = max(0, min(months_elapsed, n))
 
     if r > 0:
-        payment = loan_amount * (r * (1 + r) ** n) / ((1 + r) ** n - 1)
+        payment = loan_amount * monthly_payment_factor(annual_rate_pct, n)
 
         def balance_after(k):
             return loan_amount * ((1 + r) ** n - (1 + r) ** k) / ((1 + r) ** n - 1)
@@ -80,7 +80,7 @@ def _amortization_schedule(loan_amount, annual_rate_pct, term_years):
     n = int(term_years * 12)
     r = (annual_rate_pct / 100) / 12
     if r > 0:
-        payment = loan_amount * (r * (1 + r) ** n) / ((1 + r) ** n - 1)
+        payment = loan_amount * monthly_payment_factor(annual_rate_pct, n)
 
         def balance_after(k):
             return max(0, loan_amount * ((1 + r) ** n - (1 + r) ** k) / ((1 + r) ** n - 1))

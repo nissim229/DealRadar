@@ -15,6 +15,7 @@ import urllib.parse
 
 import database as db
 from dotenv import load_dotenv
+from underwriting import render_grade_badge
 
 load_dotenv()
 
@@ -228,12 +229,7 @@ CAR_GRADE_STYLES = {
 
 
 def render_car_deal_badge(grade):
-    style = CAR_GRADE_STYLES[grade]
-    return (
-        f"<span style='background-color:{style['bg']}; color:{style['fg']}; "
-        f"padding:6px 12px; border-radius:6px; font-weight:700; font-size:13px; "
-        f"border:1px solid {style['border']}; white-space:nowrap;'>{style['label']}</span>"
-    )
+    return render_grade_badge(grade, CAR_GRADE_STYLES)
 
 
 def compute_car_deal_metrics(price, market_value):
