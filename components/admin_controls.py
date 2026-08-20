@@ -734,7 +734,13 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
         st.button(":material/visibility: Preview", key=f"brand_logo_preview_btn_{slot_key}", use_container_width=True)
 
     st.caption("Preview")
-    preview_html = current_html.strip() or default_html_fn()
+    # flatten_html collapses the admin's pasted (naturally multi-line,
+    # indented) HTML onto one line before it hits st.markdown - without
+    # it, Streamlit's markdown parser treats indented lines as a code
+    # block and shows them as literal text instead of rendering them,
+    # exactly what happens on the real topbar too if the raw override
+    # were rendered unflattened. See flatten_html's docstring.
+    preview_html = topbar_logo.flatten_html(current_html.strip()) if current_html.strip() else default_html_fn()
     if inject_css_fn:
         inject_css_fn()
     st.markdown(preview_wrap_fn(preview_html), unsafe_allow_html=True)
@@ -750,7 +756,8 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
                 if inject_css_fn:
                     inject_css_fn()
                 st.markdown(
-                    f"<div style='transform: scale(0.7); transform-origin: left center;'>{preview_wrap_fn(preset['html'])}</div>",
+                    f"<div style='transform: scale(0.7); transform-origin: left center;'>"
+                    f"{preview_wrap_fn(topbar_logo.flatten_html(preset['html']))}</div>",
                     unsafe_allow_html=True,
                 )
             with p_apply_col:

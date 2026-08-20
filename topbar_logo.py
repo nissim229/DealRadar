@@ -15,6 +15,29 @@ need to build the exact same markup.
 import streamlit as st
 import database as db
 
+
+def flatten_html(html):
+    """Collapses admin-pasted HTML (which naturally arrives multi-line and
+    indented, straight off a Tailwind/React snippet) onto a single line
+    before it ever reaches st.markdown. Streamlit's markdown renderer runs
+    CommonMark before HTML sanitization - a line indented 4+ spaces from
+    column 0 that isn't a recognized paragraph continuation is parsed as
+    an INDENTED CODE BLOCK and shown as literal escaped text instead of
+    being rendered as HTML, even with unsafe_allow_html=True. Confirmed
+    live: pasting a real multi-line logo snippet into a Brand & Design
+    override showed its opening comment/svg/path lines as literal text
+    in the preview, with the parser only "recovering" partway through -
+    this would have broken the same way on the real topbar the moment
+    the override was saved, not just in the preview. Collapsing every
+    whitespace run (including newlines) to a single space sidesteps this
+    entirely and is visually a no-op - browsers already collapse runs of
+    HTML whitespace to one space in normal flow layout, so nothing about
+    the rendered result changes."""
+    if not html:
+        return html
+    return " ".join(html.split())
+
+
 _ICON_PATHS = {
     "real_estate": (
         '<path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 '
@@ -79,7 +102,7 @@ def get_logo_html(category_value):
     default above."""
     brand = db.get_brand_settings()
     override = brand.get(f"logo_html_{category_value}", "")
-    return override if override else build_default_logo_html(category_value)
+    return flatten_html(override) if override else build_default_logo_html(category_value)
 
 
 def render_topbar_logo_html(category_value):
@@ -211,7 +234,7 @@ def build_default_guest_logo_html():
 def get_guest_logo_html():
     brand = db.get_brand_settings()
     override = brand.get("logo_html_guest", "")
-    return override if override else build_default_guest_logo_html()
+    return flatten_html(override) if override else build_default_guest_logo_html()
 
 
 def inject_guest_logo_css():
