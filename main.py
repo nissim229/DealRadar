@@ -125,6 +125,25 @@ else:
                 align-items: center;
             }
 
+            /* Below ~1300px (e.g. a laptop-width window with the Pro
+            sidebar open) the topbar's full content genuinely doesn't fit
+            on one row. Hiding the tagline is a real, if partial,
+            reclaim - Streamlit's st.columns() gives each column a fixed
+            percentage share regardless of content, so it doesn't
+            single-handedly prevent every possible wrap at extreme
+            widths, but it's a safe, honest trim (nothing functional
+            depends on the tagline) that helps and can't make anything
+            worse, unlike forcing column widths directly (tried and
+            reverted - it started clipping the "DealRadar" wordmark
+            itself instead of just removing dead space). */
+            @media (max-width: 1300px) {
+                div.st-key-scoutai_topbar .dealradar-logo-tag,
+                div.st-key-scoutai_topbar .dealradar-logo-spacer,
+                div.st-key-scoutai_topbar .dealradar-logo-divider {
+                    display: none !important;
+                }
+            }
+
             /* Logo name + tagline - set via a real <style> rule, not an
             inline style="...!important" attribute, since Streamlit's HTML
             sanitizer silently strips !important out of inline style
@@ -203,90 +222,111 @@ else:
                 color: #cbd5e1 !important;
                 border-color: transparent !important;
             }
-            /* Compact avatar trigger - just the user's initial in a circular
-            badge, replacing the old icon+full-email button so the topbar
-            reclaims width (same problem class the category pill dropdown
-            solved). Hover reveals role/email via st.popover's native help=
-            tooltip; click still opens the full menu unchanged below. These
-            selectors carry equal-or-higher specificity than the generic
-            transparent rule above and are declared after it, so they win
-            the cascade instead of being flattened back to transparent. */
-            /* Streamlit's stVerticalBlock wrapper is flex-direction:column,
-            so justify-content controls the VERTICAL axis here and
-            align-items controls the horizontal one - align-items is what
-            actually pushes content to the wrap's right edge. (Confirmed
-            live: with justify-content:flex-end the button was sitting
-            ~150px left of the true edge, unaffected, since that property
-            was only ever governing an axis with nothing to push against.) */
-            div.st-key-topbar_account_popover_wrap { display: flex !important; align-items: flex-end !important; }
+
+            /* Nav's own column and the icon cluster's column each get a
+            hard pixel floor, not just a fractional share. Three different
+            approaches to sharing one flex row between them (justify-
+            content:space-between, flex:1 growth) were tried and rejected -
+            Streamlit's own containers are wrapped in several layers of
+            nested flex divs with inconsistent default flex-grow/basis
+            behavior between layers, and forcing growth at one layer kept
+            silently not propagating to the one that actually determines
+            rendered width (confirmed via direct inline-style experiments
+            in the live DOM, not just guessing). Two independent
+            st.columns with a min-width floor is far more predictable:
+            :has() lets the floor target the actual stColumn box (the
+            thing that needs to not shrink) using the same key classes
+            already applied to their contents - nav's floor covers the
+            longest real category's button set (real-estate's 3), icons'
+            floor covers the fixed 3-circle cluster (34*3 + 10*2 gaps). */
+            div[data-testid="stColumn"]:has(div.st-key-scoutai_nav_row) {
+                min-width: 365px !important;
+            }
+            div[data-testid="stColumn"]:has(div.st-key-topbar_icons_row) {
+                min-width: 126px !important;
+            }
+
+            /* Help/alerts/avatar as one tight cluster, Control-M-style
+            (reference image: uniform circles, small gap, hugging the right
+            edge) instead of three independently-positioned columns with
+            Streamlit's own inter-column gutter between them. display:flex/
+            flex-direction:row overrides Streamlit's default column-
+            direction stVerticalBlock. */
+            div.st-key-topbar_icons_row {
+                display: flex !important; flex-direction: row !important;
+                align-items: center !important; justify-content: flex-end !important;
+                gap: 10px !important;
+            }
+            div.st-key-topbar_icons_row > div { flex: none !important; }
+
+            /* All three circles share one size/centering fix. Streamlit
+            puts a -5px right margin on a popover trigger's label wrapper
+            (reserved space for its own chevron, which we hide) - with the
+            chevron gone that negative margin was still being counted by
+            the button's flex centering, visibly skewing the glyph ~2.5px
+            off-center. Zeroing every descendant div's margin removes it. */
+            div.st-key-topbar_icons_row [data-testid="stPopoverButton"] div {
+                margin: 0 !important;
+            }
+
+            /* Compact avatar trigger - just the user's initial in a
+            circular badge, replacing the old icon+full-email button so
+            the topbar reclaims width (same problem class the category
+            pill dropdown solved). Hover reveals role/email via
+            st.popover's native help= tooltip; click still opens the full
+            menu unchanged below. */
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
                 color: white !important;
                 width: 34px !important; height: 34px !important; min-height: 0 !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
-                font-weight: 700 !important; font-size: 30px !important;
+                font-weight: 700 !important; font-size: 31px !important;
             }
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] p {
-                color: white !important; margin: 0 !important; font-size: 30px !important; line-height: 1 !important;
+                color: white !important; margin: 0 !important; font-size: 31px !important; line-height: 1 !important;
             }
             /* Streamlit auto-appends a decorative chevron (aria-hidden) as a
-            sibling of the label inside every popover trigger button - fine
-            for the category dropdown (it reads as a real dropdown) but
-            wrong here, where the whole button IS the icon/initial. */
+            descendant of the label inside every popover trigger button -
+            fine for the category dropdown (it reads as a real dropdown)
+            but wrong here, where the whole button IS the icon/initial. */
             div.st-key-topbar_account_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
                 display: none !important;
             }
 
-            /* Help icon trigger - small ghost circle matching the navbar's
-            muted text color, consistent with the account avatar's circular
-            shape but visually secondary (outline, not filled) since it's a
-            reference action, not identity/navigation. */
-            div.st-key-topbar_help_popover_wrap { display: flex !important; align-items: center !important; }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] {
-                background: transparent !important;
-                border: 1px solid rgba(148, 163, 184, 0.35) !important;
-                color: #cbd5e1 !important;
-                width: 30px !important; height: 30px !important; min-height: 0 !important;
-                border-radius: 50% !important; padding: 0 !important; flex: none !important;
-                display: flex !important; align-items: center !important; justify-content: center !important;
-            }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
-                display: none !important;
-            }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
-                font-size: 27px !important;
-            }
-            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover {
-                background: rgba(148, 163, 184, 0.15) !important;
-                color: white !important;
-            }
-
-            /* Alerts bell - same ghost-circle shape as the help icon.
-            position:relative on the wrapper is what lets the unread-count
-            badge below overlay the button's corner instead of pushing
-            layout around: the badge is a sibling markdown block, but
-            position:absolute takes it out of flow and anchors it to this
-            div regardless of source order. */
-            div.st-key-topbar_alerts_popover_wrap { position: relative; display: flex !important; align-items: center !important; }
+            /* Help icon and alerts bell - same-size circle as the avatar
+            (was smaller/dimmer before; brightened to solid white to
+            actually read at a glance against the dark navbar, matching
+            the reference navbar's icon weight) with a visible outline so
+            they still look like secondary actions next to the filled
+            avatar, not a 4th nav destination. */
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"],
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] {
-                background: transparent !important;
-                border: 1px solid rgba(148, 163, 184, 0.35) !important;
-                color: #cbd5e1 !important;
-                width: 30px !important; height: 30px !important; min-height: 0 !important;
+                background: rgba(255, 255, 255, 0.06) !important;
+                border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+                color: white !important;
+                width: 34px !important; height: 34px !important; min-height: 0 !important;
                 border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
             }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"],
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] div[aria-hidden="true"] {
                 display: none !important;
             }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
-                font-size: 27px !important;
+                font-size: 31px !important; color: white !important;
             }
+            div.st-key-topbar_help_popover_wrap [data-testid="stPopoverButton"]:hover,
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"]:hover {
-                background: rgba(148, 163, 184, 0.15) !important;
-                color: white !important;
+                background: rgba(255, 255, 255, 0.16) !important;
             }
+            /* position:relative on the alerts wrapper is what lets the
+            unread-count badge below overlay the button's corner instead
+            of pushing layout around: the badge is a sibling markdown
+            block, but position:absolute takes it out of flow and anchors
+            it to this div regardless of source order. */
+            div.st-key-topbar_alerts_popover_wrap { position: relative; }
             /* Streamlit gives every element's own wrapper div (stElement
             Container) position:relative by default - that's a closer
             positioned ancestor than our wrap div above, so the badge's
@@ -298,7 +338,7 @@ else:
                 position: static !important;
             }
             .dealradar-alert-badge {
-                position: absolute; top: -4px; right: calc(50% - 19px);
+                position: absolute; top: -4px; right: -4px;
                 background: #ef4444; color: white; font-size: 10px; font-weight: 700;
                 min-width: 15px; height: 15px; border-radius: 999px;
                 display: flex; align-items: center; justify-content: center;
@@ -370,7 +410,7 @@ else:
     menu_options = CATEGORY_MENUS[st.session_state.active_category]
 
     with st.container(key="scoutai_topbar"):
-        col_logo, col_category, col_nav, col_help, col_alerts, col_user = st.columns([1.35, 0.85, 2.6, 0.35, 0.35, 0.9])
+        col_logo, col_category, col_nav, col_icons = st.columns([1.5, 1.0, 2.7, 0.9])
 
         with col_logo:
             st.markdown("""
@@ -387,8 +427,8 @@ else:
                         <span class='dealradar-logo-name' style='font-size: 16px; font-weight: 700;'>DealRadar</span>
                         <span class='dealradar-logo-tag' style='font-size: 10px; font-weight: 500; letter-spacing: 0.5px; display:block;'>PRECISION DEAL SCANNING</span>
                     </div>
-                    <div style='flex: 1;'></div>
-                    <div style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none;'></div>
+                    <div class='dealradar-logo-spacer' style='flex: 1;'></div>
+                    <div class='dealradar-logo-divider' style='width: 1px; height: 28px; background: rgba(148, 163, 184, 0.35); flex: none;'></div>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -426,103 +466,102 @@ else:
                                 st.session_state.current_page = option
                                 st.rerun()
 
-        with col_help:
-            with st.container(key="topbar_help_popover_wrap"):
-                with st.popover(":material/help:", help="Help",
-                                 key=f"topbar_help_popover_{st.session_state.active_category}"):
-                    st.markdown(f"**How {active_category['label']} scanning works**")
-                    if st.session_state.active_category == "real_estate":
-                        st.caption("1. **Run Property Scans** - set your criteria and scan for deals.")
-                        st.caption("2. **Manage Searches** - save criteria to re-run or edit later.")
-                        st.caption("3. **My Portfolio** - track properties you already own.")
-                    else:
-                        st.caption("1. **Find a Car** - set your criteria and scan live listings.")
-                        st.caption("2. **Saved Searches** - save criteria to re-run or edit later.")
-                    st.markdown("---")
-                    st.caption("A **deal grade** compares a listing to real market comps - "
-                                "if there isn't enough comparable data, we say so rather than guess.")
+        with col_icons:
+            with st.container(key="topbar_icons_row"):
+                with st.container(key="topbar_help_popover_wrap"):
+                    with st.popover(":material/help:", help="Help",
+                                     key=f"topbar_help_popover_{st.session_state.active_category}"):
+                        st.markdown(f"**How {active_category['label']} scanning works**")
+                        if st.session_state.active_category == "real_estate":
+                            st.caption("1. **Run Property Scans** - set your criteria and scan for deals.")
+                            st.caption("2. **Manage Searches** - save criteria to re-run or edit later.")
+                            st.caption("3. **My Portfolio** - track properties you already own.")
+                        else:
+                            st.caption("1. **Find a Car** - set your criteria and scan live listings.")
+                            st.caption("2. **Saved Searches** - save criteria to re-run or edit later.")
+                        st.markdown("---")
+                        st.caption("A **deal grade** compares a listing to real market comps - "
+                                    "if there isn't enough comparable data, we say so rather than guess.")
 
-        with col_alerts:
-            recent_activity = db.get_recent_activity(st.session_state.user_id, st.session_state.active_category, limit=5)
-            alerts_broadcast = db.get_broadcast_message()
-            alerts_broadcast_at = db.get_broadcast_message_set_at() if alerts_broadcast else None
-            last_read = db.get_last_notifications_read_at(st.session_state.user_id)
-            low_credits = st.session_state.user_credits <= 3
+                recent_activity = db.get_recent_activity(st.session_state.user_id, st.session_state.active_category, limit=5)
+                alerts_broadcast = db.get_broadcast_message()
+                alerts_broadcast_at = db.get_broadcast_message_set_at() if alerts_broadcast else None
+                last_read = db.get_last_notifications_read_at(st.session_state.user_id)
+                low_credits = st.session_state.user_credits <= 3
 
-            unread_count = sum(
-                1 for _, _, generated_at in recent_activity
-                if last_read is None or (generated_at and generated_at > last_read)
-            )
-            if alerts_broadcast and (last_read is None or (alerts_broadcast_at and alerts_broadcast_at > last_read)):
-                unread_count += 1
+                unread_count = sum(
+                    1 for _, _, generated_at in recent_activity
+                    if last_read is None or (generated_at and generated_at > last_read)
+                )
+                if alerts_broadcast and (last_read is None or (alerts_broadcast_at and alerts_broadcast_at > last_read)):
+                    unread_count += 1
 
-            with st.container(key="topbar_alerts_popover_wrap"):
-                with st.popover(":material/notifications:", help="Alerts",
-                                 key=f"topbar_alerts_popover_{st.session_state.current_page}"):
-                    if low_credits:
-                        st.warning(f"Running low on credits ({st.session_state.user_credits} left).", icon=":material/bolt:")
-                    if alerts_broadcast:
-                        st.info(alerts_broadcast, icon=":material/campaign:")
-                    if recent_activity:
-                        st.caption(f"Recent {active_category['label']} activity")
-                        for profile_name, location, generated_at in recent_activity:
-                            label = f"**{profile_name}**" + (f" — {location}" if location else "")
-                            st.caption(f"{label}  ·  {_relative_time(generated_at)}")
-                    elif not low_credits and not alerts_broadcast:
-                        st.caption("Nothing yet - run a scan to see activity here.")
-                    # Marking read happens on every render of an *open*
-                    # popover (this code only executes while it's open - see
-                    # [[feedback_popover_navigation]]'s confirmed open/closed
-                    # rendering model) - idempotent, and clears the badge
-                    # starting the next rerun rather than the one that just
-                    # displayed it, matching normal bell-icon UX.
-                    db.mark_notifications_read(st.session_state.user_id)
-                if unread_count > 0:
-                    st.markdown(f"<div class='dealradar-alert-badge'>{unread_count if unread_count <= 9 else '9+'}</div>", unsafe_allow_html=True)
+                with st.container(key="topbar_alerts_popover_wrap"):
+                    with st.popover(":material/notifications:", help="Alerts",
+                                     key=f"topbar_alerts_popover_{st.session_state.current_page}"):
+                        if low_credits:
+                            st.warning(f"Running low on credits ({st.session_state.user_credits} left).", icon=":material/bolt:")
+                        if alerts_broadcast:
+                            st.info(alerts_broadcast, icon=":material/campaign:")
+                        if recent_activity:
+                            st.caption(f"Recent {active_category['label']} activity")
+                            for profile_name, location, generated_at in recent_activity:
+                                label = f"**{profile_name}**" + (f" — {location}" if location else "")
+                                st.caption(f"{label}  ·  {_relative_time(generated_at)}")
+                        elif not low_credits and not alerts_broadcast:
+                            st.caption("Nothing yet - run a scan to see activity here.")
+                        # Marking read happens on every render of an *open*
+                        # popover (this code only executes while it's open - see
+                        # [[feedback_popover_navigation]]'s confirmed open/closed
+                        # rendering model) - idempotent, and clears the badge
+                        # starting the next rerun rather than the one that just
+                        # displayed it, matching normal bell-icon UX.
+                        db.mark_notifications_read(st.session_state.user_id)
+                    if unread_count > 0:
+                        st.markdown(f"<div class='dealradar-alert-badge'>{unread_count if unread_count <= 9 else '9+'}</div>", unsafe_allow_html=True)
 
-        with col_user:
-            user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
-            # Keyed on current_page so navigating away (e.g. clicking "Admin
-            # Controls" inside this popover) gives it a fresh, closed
-            # identity on the next page instead of staying open on top of
-            # the new page - Streamlit popovers deliberately stay open
-            # across a rerun triggered by a widget inside them (so filter
-            # popovers elsewhere in the app can stay open while adjusting a
-            # slider), which is right for in-place edits but wrong for a
-            # full page-navigation click like this one.
-            with st.container(key="topbar_account_popover_wrap"):
-                with st.popover(user_initial, use_container_width=False,
-                                 help=f"{st.session_state.user_email}  ·  {st.session_state.user_role.upper()}",
-                                 key=f"account_popover_{st.session_state.current_page}"):
-                    st.caption(st.session_state.user_email)
-                    st.caption(f"Role: **{st.session_state.user_role.upper()}**")
-                    st.caption(f"Plan: **{st.session_state.user_plan}**")
-                    st.caption(f"Credits: **{st.session_state.user_credits}**")
-                    if st.button(":material/upgrade: Upgrade Plan", use_container_width=True, key="topbar_upgrade_btn"):
-                        render_pricing_dialog()
-                    st.markdown("---")
-                    if st.button(":material/settings: Settings", use_container_width=True, key="topbar_settings_btn"):
-                        st.session_state.current_page = "Settings"
-                        st.rerun()
-                    st.markdown("---")
-
-                    if roles.is_staff(st.session_state.user_role):
-                        if st.button(":material/shield_person: Admin Controls", use_container_width=True, key="topbar_admin_btn"):
-                            st.session_state.current_page = "Admin Controls"
+                user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
+                # Keyed on current_page so navigating away (e.g. clicking "Admin
+                # Controls" inside this popover) gives it a fresh, closed
+                # identity on the next page instead of staying open on top of
+                # the new page - Streamlit popovers deliberately stay open
+                # across a rerun triggered by a widget inside them (so filter
+                # popovers elsewhere in the app can stay open while adjusting a
+                # slider), which is right for in-place edits but wrong for a
+                # full page-navigation click like this one.
+                with st.container(key="topbar_account_popover_wrap"):
+                    with st.popover(user_initial, use_container_width=False,
+                                     help=f"{st.session_state.user_email}  ·  {st.session_state.user_role.upper()}",
+                                     key=f"account_popover_{st.session_state.current_page}"):
+                        st.caption(st.session_state.user_email)
+                        st.caption(f"Role: **{st.session_state.user_role.upper()}**")
+                        st.caption(f"Plan: **{st.session_state.user_plan}**")
+                        st.caption(f"Credits: **{st.session_state.user_credits}**")
+                        if st.button(":material/upgrade: Upgrade Plan", use_container_width=True, key="topbar_upgrade_btn"):
+                            render_pricing_dialog()
+                        st.markdown("---")
+                        if st.button(":material/settings: Settings", use_container_width=True, key="topbar_settings_btn"):
+                            st.session_state.current_page = "Settings"
                             st.rerun()
-                    if st.button(":material/logout: Log Out", use_container_width=True, key="topbar_logout_btn"):
-                        st.session_state.authenticated = False
-                        st.session_state.user_id = None
-                        st.session_state.user_role = "user"
-                        st.session_state.user_email = None
-                        st.session_state.user_name = ""
-                        st.session_state.user_plan = "Free"
-                        st.session_state.current_page = "Run Property Scans"
-                        st.session_state.active_category = "real_estate"
-                        st.session_state.show_login_form = False
-                        st.session_state.settings_show_change_password_form = False
-                        st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
-                        st.rerun()
+                        st.markdown("---")
+
+                        if roles.is_staff(st.session_state.user_role):
+                            if st.button(":material/shield_person: Admin Controls", use_container_width=True, key="topbar_admin_btn"):
+                                st.session_state.current_page = "Admin Controls"
+                                st.rerun()
+                        if st.button(":material/logout: Log Out", use_container_width=True, key="topbar_logout_btn"):
+                            st.session_state.authenticated = False
+                            st.session_state.user_id = None
+                            st.session_state.user_role = "user"
+                            st.session_state.user_email = None
+                            st.session_state.user_name = ""
+                            st.session_state.user_plan = "Free"
+                            st.session_state.current_page = "Run Property Scans"
+                            st.session_state.active_category = "real_estate"
+                            st.session_state.show_login_form = False
+                            st.session_state.settings_show_change_password_form = False
+                            st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
+                            st.rerun()
 
     broadcast_message = db.get_broadcast_message()
     if broadcast_message:
