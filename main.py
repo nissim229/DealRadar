@@ -127,95 +127,77 @@ else:
 
             /* Below ~1300px (e.g. a laptop-width window with the Pro
             sidebar open) the topbar's full content genuinely doesn't fit
-            on one row. Hiding the category tag pill is a real, if
-            partial, reclaim - Streamlit's st.columns() gives each column
-            a fixed percentage share regardless of content, so it doesn't
+            on one row. Hiding the caption line is a real, if partial,
+            reclaim - Streamlit's st.columns() gives each column a fixed
+            percentage share regardless of content, so it doesn't
             single-handedly prevent every possible wrap at extreme
             widths, but it's a safe, honest trim (nothing functional
-            depends on the tag) that helps and can't make anything worse,
-            unlike forcing column widths directly (tried and reverted -
-            it started clipping the "DEAL RADAR" wordmark itself instead
-            of just removing dead space). */
+            depends on the caption) that helps and can't make anything
+            worse, unlike forcing column widths directly (tried and
+            reverted - it started clipping the "DEAL RADAR" wordmark
+            itself instead of just removing dead space). */
             @media (max-width: 1300px) {
-                div.st-key-scoutai_topbar .dealradar-logo-category-tag {
+                div.st-key-scoutai_topbar .dealradar-logo-caption {
                     display: none !important;
                 }
             }
 
-            /* Premium logo lockup - user-supplied design (icon scope with
-            a rotating dashed ring + glow ping dot, "DEAL"/"RADAR"
-            wordmark, small mono category tag), swapped per active
-            category (house icon + "PROP" vs car icon + "AUTO") so a
-            customer always sees a mark that matches what they're
-            browsing. Colors come from --radar-accent (not a literal
-            cyan hex) so this re-skins along with the rest of the
-            cyberpunk UI when the admin changes the brand accent - see
-            [[brand-design-admin-panel]]. */
-            @keyframes dealradar-logo-spin {
-                to { transform: rotate(360deg); }
-            }
+            /* Premium logo lockup, round 2 - user supplied a reference
+            screenshot of a circular-ring icon badge + "DEAL"/"RADAR"
+            wordmark + a small descriptive caption line, replacing round
+            1's rounded-square icon with a dashed spin animation + ping
+            dot + mono tag pill (that spec was followed exactly too, but
+            got superseded by this screenshot - "this is how the logo
+            should look"). Each category gets its own color, not a shared
+            one: real estate uses --radar-primary (blue, NOT admin-
+            controlled), cars uses --radar-accent (cyan, admin-controlled
+            via Brand & Design) - set once per render as the --logo-color
+            custom property on the wrapping group so every child rule
+            below can just reference var(--logo-color) instead of
+            duplicating a whole rule set per category. */
             div.st-key-scoutai_topbar .dealradar-logo-group {
-                display: flex; align-items: center; gap: 14px; cursor: pointer;
+                display: flex; align-items: center; gap: 12px; cursor: pointer;
             }
             div.st-key-scoutai_topbar .dealradar-logo-scope {
-                position: relative; width: 36px; height: 36px; flex: none;
+                position: relative; width: 38px; height: 38px; flex: none;
                 display: flex; align-items: center; justify-content: center;
-                border-radius: 8px;
-                background: rgba(15, 23, 42, 0.6);
-                border: 1px solid var(--radar-navy-light);
-                transition: border-color 0.5s ease, box-shadow 0.5s ease;
+                border-radius: 50%;
+                border: 1.5px solid var(--logo-color);
+                transition: box-shadow 0.3s ease;
             }
             div.st-key-scoutai_topbar .dealradar-logo-group:hover .dealradar-logo-scope {
-                border-color: rgba(var(--radar-accent-rgb), 0.4);
-                box-shadow: 0 0 20px rgba(var(--radar-accent-rgb), 0.15);
-            }
-            div.st-key-scoutai_topbar .dealradar-logo-ring {
-                position: absolute; inset: 4px;
-                border: 1px dashed rgba(var(--radar-accent-rgb), 0.2);
-                border-radius: 50%;
-                animation: dealradar-logo-spin 20s linear infinite;
+                box-shadow: 0 0 14px rgba(var(--radar-accent-rgb), 0.25);
             }
             div.st-key-scoutai_topbar .dealradar-logo-icon {
-                position: relative; z-index: 1;
-                width: 14px; height: 14px; color: var(--radar-accent) !important;
-                transition: transform 0.5s ease;
+                width: 16px; height: 16px; color: var(--logo-color) !important;
             }
-            div.st-key-scoutai_topbar .dealradar-logo-group:hover .dealradar-logo-icon {
-                transform: scale(1.1);
+            div.st-key-scoutai_topbar .dealradar-logo-text {
+                display: flex; flex-direction: column; line-height: 1.2;
             }
-            div.st-key-scoutai_topbar .dealradar-logo-ping {
-                position: absolute; top: 6px; right: 6px;
-                width: 4px; height: 4px; border-radius: 50%;
-                background: var(--radar-accent);
-                box-shadow: 0 0 6px var(--radar-accent);
+            div.st-key-scoutai_topbar .dealradar-logo-word-row {
+                display: flex; align-items: center; gap: 6px;
             }
             /* !important on every color below - Streamlit's base theme
             sets [data-testid="stAppViewContainer"] span/p/... to the
             light-theme slate text color with !important, which otherwise
             silently wins over these (non-important) rules and makes the
-            wordmark/tag invisible against the dark navbar - same root
-            cause the old logo markup's own comment already warned about. */
+            wordmark/caption invisible against the dark navbar - same
+            root cause round 1's own comment already warned about. */
             div.st-key-scoutai_topbar .dealradar-logo-word-deal {
                 font-family: var(--radar-font-display) !important;
-                font-size: 16px; font-weight: 900; color: var(--radar-text-on-dark) !important;
+                font-size: 15px; font-weight: 800; color: var(--radar-text-on-dark) !important;
                 text-transform: uppercase; letter-spacing: normal;
-                transition: color 0.3s ease;
-            }
-            div.st-key-scoutai_topbar .dealradar-logo-group:hover .dealradar-logo-word-deal {
-                color: white !important;
             }
             div.st-key-scoutai_topbar .dealradar-logo-word-radar {
                 font-family: var(--radar-font-display) !important;
-                font-size: 16px; font-weight: 300; color: var(--radar-accent) !important;
-                text-transform: uppercase; letter-spacing: 0.025em;
+                font-size: 15px; font-weight: 800; color: var(--logo-color) !important;
+                text-transform: uppercase; letter-spacing: 0.01em;
             }
-            div.st-key-scoutai_topbar .dealradar-logo-category-tag {
+            div.st-key-scoutai_topbar .dealradar-logo-caption {
                 font-family: var(--radar-font-mono) !important;
-                font-size: 7px; font-weight: 700; letter-spacing: 0.15em;
+                font-size: 8px; font-weight: 600; letter-spacing: 0.1em;
                 color: #64748b !important; text-transform: uppercase;
-                margin-left: 8px; background: var(--radar-navy);
-                padding: 2px 6px; border-radius: 4px;
-                border: 1px solid var(--radar-navy-light);
+                margin-top: 1px;
             }
 
             /* Regular nav buttons */
@@ -549,44 +531,53 @@ else:
 
         with col_logo:
             # Two category-specific icons (house for real estate, car for
-            # cars) inside the same "premium logo" lockup, per the user's
-            # own supplied HTML - a customer browsing Cars shouldn't see a
-            # house mark, same reasoning as the scan-loading radar's icon
-            # swap (see scan_loading.py). A custom logo uploaded via Admin
+            # cars) inside the same "premium logo" lockup - round 2, built
+            # from the user's reference screenshot (circular ring badge +
+            # "DEAL"/"RADAR" wordmark + a descriptive caption line),
+            # replacing round 1's rounded-square/dashed-ring/mono-tag
+            # version once the user showed how it should actually look.
+            # Real estate's ring/icon/RADAR-text all use --radar-primary
+            # (blue, not admin-controlled); cars uses --radar-accent
+            # (cyan, admin-controlled via Brand & Design) - a customer
+            # browsing Cars shouldn't see a house mark or the real-estate
+            # color, same reasoning as the scan-loading radar's icon swap
+            # (see scan_loading.py). A custom logo uploaded via Admin
             # Controls > Brand & Design still overrides the icon entirely
-            # (dropping the decorative ring/ping, which are chrome for
-            # *our* icon, not something that should overlay someone
-            # else's uploaded artwork) - the wordmark/tag stay either way.
+            # (dropping the ring, which is chrome for *our* icon, not
+            # something that should overlay someone else's uploaded
+            # artwork) - the wordmark/caption stay either way.
             if st.session_state.active_category == "cars":
                 icon_path_html = (
                     '<path d="M15.75 6H8.25L6.155 9.143a.75.75 0 00-.096.36V15c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75v-.75h10.5v.75a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75V9.502a.75.75 0 00-.096-.36L15.75 6zm-7.875 5.25a.75.75 0 110-1.5.75.75 0 010 1.5zm8.25 0a.75.75 0 110-1.5.75.75 0 010 1.5zM4.5 16.5h15M6 16.5v1.5a.75.75 0 01-.75.75H4.5A.75.75 0 013.75 18v-1.5M20.25 16.5V18a.75.75 0 01-.75.75h-.75a.75.75 0 01-.75-.75v-1.5" />'
                 )
-                category_tag = "AUTO"
+                caption = "PREMIUM AUTOMOTIVE TRACKER"
+                logo_color_var = "var(--radar-accent)"
             else:
                 icon_path_html = (
                     '<path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />'
                 )
-                category_tag = "PROP"
+                caption = "PREMIUM REAL ESTATE LOCATOR"
+                logo_color_var = "var(--radar-primary)"
 
             custom_logo = db.get_brand_settings()["logo_data_uri"]
             if custom_logo:
-                scope_content = f"<img src='{custom_logo}' style='width: 100%; height: 100%; object-fit: cover; border-radius: 8px;' />"
+                scope_content = f"<img src='{custom_logo}' style='width: 100%; height: 100%; object-fit: cover; border-radius: 50%;' />"
             else:
                 scope_content = (
-                    "<span class='dealradar-logo-ring'></span>"
-                    '<svg class="dealradar-logo-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" '
+                    '<svg class="dealradar-logo-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" '
                     'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
                     f"{icon_path_html}</svg>"
-                    "<span class='dealradar-logo-ping'></span>"
                 )
 
             st.markdown(
-                "<div class='dealradar-logo-group'>"
+                f"<div class='dealradar-logo-group' style='--logo-color: {logo_color_var};'>"
                 f"<div class='dealradar-logo-scope'>{scope_content}</div>"
-                "<div style='display: flex; align-items: center; gap: 6px;'>"
+                "<div class='dealradar-logo-text'>"
+                "<div class='dealradar-logo-word-row'>"
                 "<span class='dealradar-logo-word-deal'>DEAL</span>"
                 "<span class='dealradar-logo-word-radar'>RADAR</span>"
-                f"<span class='dealradar-logo-category-tag'>{category_tag}</span>"
+                "</div>"
+                f"<span class='dealradar-logo-caption'>{caption}</span>"
                 "</div>"
                 "</div>",
                 unsafe_allow_html=True,
