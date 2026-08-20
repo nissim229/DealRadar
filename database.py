@@ -1055,6 +1055,14 @@ DEFAULT_BRAND_SETTINGS = {
     "font_body": "Work Sans",
     "font_mono": "JetBrains Mono",
     "logo_data_uri": "",  # empty = use the built-in radar SVG mark
+    # Per-category raw HTML override for the topbar logo lockup - empty
+    # means "use the built-in coded house/car badge" (see main.py's
+    # col_logo block). Separate from logo_data_uri above: that one swaps
+    # just the icon image inside the built-in badge, these replace the
+    # *entire* lockup (icon + wordmark + caption) with whatever HTML the
+    # admin pastes, one per deal category.
+    "logo_html_real_estate": "",
+    "logo_html_cars": "",
 }
 
 def get_brand_settings():

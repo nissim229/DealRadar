@@ -4,6 +4,7 @@ import theme
 import roles
 from datetime import datetime
 from design_tokens import inject_design_tokens
+from topbar_logo import render_topbar_logo_html
 
 
 def _relative_time(timestamp_str):
@@ -536,52 +537,11 @@ else:
             # "DEAL"/"RADAR" wordmark + a descriptive caption line),
             # replacing round 1's rounded-square/dashed-ring/mono-tag
             # version once the user showed how it should actually look.
-            # Real estate's ring/icon/RADAR-text all use --radar-primary
-            # (blue, not admin-controlled); cars uses --radar-accent
-            # (cyan, admin-controlled via Brand & Design) - a customer
-            # browsing Cars shouldn't see a house mark or the real-estate
-            # color, same reasoning as the scan-loading radar's icon swap
-            # (see scan_loading.py). A custom logo uploaded via Admin
-            # Controls > Brand & Design still overrides the icon entirely
-            # (dropping the ring, which is chrome for *our* icon, not
-            # something that should overlay someone else's uploaded
-            # artwork) - the wordmark/caption stay either way.
-            if st.session_state.active_category == "cars":
-                icon_path_html = (
-                    '<path d="M15.75 6H8.25L6.155 9.143a.75.75 0 00-.096.36V15c0 .414.336.75.75.75h1.5a.75.75 0 00.75-.75v-.75h10.5v.75a.75.75 0 00.75.75h1.5a.75.75 0 00.75-.75V9.502a.75.75 0 00-.096-.36L15.75 6zm-7.875 5.25a.75.75 0 110-1.5.75.75 0 010 1.5zm8.25 0a.75.75 0 110-1.5.75.75 0 010 1.5zM4.5 16.5h15M6 16.5v1.5a.75.75 0 01-.75.75H4.5A.75.75 0 013.75 18v-1.5M20.25 16.5V18a.75.75 0 01-.75.75h-.75a.75.75 0 01-.75-.75v-1.5" />'
-                )
-                caption = "PREMIUM AUTOMOTIVE TRACKER"
-                logo_color_var = "var(--radar-accent)"
-            else:
-                icon_path_html = (
-                    '<path d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />'
-                )
-                caption = "PREMIUM REAL ESTATE LOCATOR"
-                logo_color_var = "var(--radar-primary)"
-
-            custom_logo = db.get_brand_settings()["logo_data_uri"]
-            if custom_logo:
-                scope_content = f"<img src='{custom_logo}' style='width: 100%; height: 100%; object-fit: cover; border-radius: 50%;' />"
-            else:
-                scope_content = (
-                    '<svg class="dealradar-logo-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" '
-                    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">'
-                    f"{icon_path_html}</svg>"
-                )
-
-            st.markdown(
-                f"<div class='dealradar-logo-group' style='--logo-color: {logo_color_var};'>"
-                f"<div class='dealradar-logo-scope'>{scope_content}</div>"
-                "<div class='dealradar-logo-text'>"
-                "<div class='dealradar-logo-word-row'>"
-                "<span class='dealradar-logo-word-deal'>DEAL</span>"
-                "<span class='dealradar-logo-word-radar'>RADAR</span>"
-                "</div>"
-                f"<span class='dealradar-logo-caption'>{caption}</span>"
-                "</div>"
-                "</div>",
-                unsafe_allow_html=True,
-            )
+            # This is now the DEFAULT for each category, overridable per
+            # category via Admin Controls > Brand & Design's raw-HTML
+            # logo editor (render_topbar_logo_html below) - an empty
+            # override falls through to this coded version.
+            render_topbar_logo_html(st.session_state.active_category)
 
         with col_category:
             with st.container(key="topbar_category_popover"):

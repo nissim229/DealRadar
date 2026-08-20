@@ -8,6 +8,7 @@ import email_utils
 import plan_limits
 import roles
 import design_tokens
+import topbar_logo
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
 from nav import render_side_nav
@@ -711,6 +712,18 @@ def _render_brand_design_tab():
     )
 
     brand = db.get_brand_settings()
+    # st.text_area (unlike color_picker/selectbox) ignores a changed
+    # `value=` on rerun once the user has typed in it - the frontend
+    # treats its own edited content as authoritative and never re-syncs
+    # from the server, even after the underlying session_state key is
+    # popped. Confirmed live: after Reset to defaults, the DB and the
+    # preview below both correctly showed the built-in default, but the
+    # textarea itself kept showing the just-cleared custom HTML - a real,
+    # if purely cosmetic, bug. The fix that actually forces a re-render is
+    # changing the widget's *key* (a nonce bumped on reset), not clearing
+    # session_state - a new key is a new frontend component with no local
+    # edit state to preserve.
+    logo_html_nonce = st.session_state.setdefault("brand_logo_html_nonce", 0)
 
     st.markdown("##### Accent color")
     st.caption("Drives the cyan cyberpunk accents (nav highlight, Run Live Scan button, scan-loading radar).")
@@ -752,6 +765,38 @@ def _render_brand_design_tab():
     if brand["logo_data_uri"]:
         remove_logo = st.checkbox("Remove custom logo on save (revert to the built-in mark)", key="brand_logo_remove")
 
+    st.markdown("##### Category logo overrides")
+    st.caption(
+        "The house/car badge lockup shown in the topbar is the default for each category - paste raw HTML "
+        "here to replace it entirely, per category. Leave blank to keep the default. Inline styles and this "
+        "app's CSS variables (e.g. `var(--radar-accent)`, `var(--radar-navy)`) work; Tailwind utility classes "
+        "don't, since this app doesn't load Tailwind - translate any Tailwind class to inline CSS first. "
+        "The preview below updates as soon as you leave the box (Ctrl+Enter or click away), before you save."
+    )
+    logo_html_col1, logo_html_col2 = st.columns(2)
+    logo_html_inputs = {}
+    for category_value, category_label, col in (
+        ("real_estate", "Real Estate logo HTML", logo_html_col1),
+        ("cars", "Cars logo HTML", logo_html_col2),
+    ):
+        with col:
+            logo_html_inputs[category_value] = st.text_area(
+                category_label, value=brand.get(f"logo_html_{category_value}", ""),
+                height=140, key=f"brand_logo_html_{category_value}_{logo_html_nonce}",
+                placeholder="Leave blank for the built-in default...",
+            )
+            st.caption("Preview")
+            # Reusing the real topbar's own class (not a fresh
+            # st.container(key=...), which would collide with the actual
+            # topbar's key) is what makes this an accurate, not
+            # approximate, preview - main.py's <style> block (already
+            # injected earlier in this same page render) targets
+            # `div.st-key-scoutai_topbar` by class, and CSS doesn't care
+            # whether that class came from Streamlit's own container
+            # machinery or a plain div in raw markdown.
+            preview_html = logo_html_inputs[category_value].strip() or topbar_logo.build_default_logo_html(category_value)
+            st.markdown(f"<div class='st-key-scoutai_topbar' style='border-radius: 8px;'>{preview_html}</div>", unsafe_allow_html=True)
+
     st.markdown("---")
     save_col, reset_col = st.columns([1, 1])
     with save_col:
@@ -761,6 +806,8 @@ def _render_brand_design_tab():
             new_settings["font_display"] = font_display
             new_settings["font_body"] = font_body
             new_settings["font_mono"] = font_mono
+            new_settings["logo_html_real_estate"] = logo_html_inputs["real_estate"].strip()
+            new_settings["logo_html_cars"] = logo_html_inputs["cars"].strip()
             if remove_logo:
                 new_settings["logo_data_uri"] = ""
             elif uploaded_logo is not None:
@@ -784,6 +831,9 @@ def _render_brand_design_tab():
             # page's CSS) already reverted.
             for widget_key in ("brand_accent_picker", "brand_font_display", "brand_font_body", "brand_font_mono"):
                 st.session_state.pop(widget_key, None)
+            # text_area needs a new key entirely, not just a cleared
+            # session_state entry - see the comment above logo_html_nonce.
+            st.session_state.brand_logo_html_nonce = logo_html_nonce + 1
             st.toast("Brand settings reset to defaults.")
             st.rerun()
 
