@@ -2637,8 +2637,8 @@ def get_portfolio_properties(user_id):
     enough columns that positional tuple-unpacking elsewhere in this codebase
     would be error-prone), most recently added first."""
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
     try:
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
             f"SELECT id, {', '.join(PORTFOLIO_FIELDS)} FROM portfolio_properties WHERE user_id=? ORDER BY created_at DESC",
@@ -2688,8 +2688,8 @@ def delete_tenant(tenant_id, user_id):
 
 def get_tenants(property_id, user_id):
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
     try:
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
             "SELECT id, name, phone, email, lease_start, lease_end, notes FROM portfolio_tenants WHERE property_id=? AND user_id=? ORDER BY created_at",
@@ -2716,8 +2716,8 @@ def add_document(property_id, user_id, original_filename, stored_filename):
 
 def get_documents(property_id, user_id):
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row
     try:
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute(
             "SELECT id, original_filename, stored_filename, uploaded_at FROM portfolio_documents WHERE property_id=? AND user_id=? ORDER BY uploaded_at DESC",

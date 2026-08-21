@@ -85,6 +85,21 @@ def test_register_user_end_to_end(temp_db):
     stored_hash = _get_hash(temp_db, "brandnew@example.com")
     assert db._is_bcrypt_hash(stored_hash)
 
+    conn = sqlite3.connect(temp_db)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT name, first_name, middle_name, last_name, credits FROM users WHERE id=?", (user_id,))
+        name, first_name, middle_name, last_name, credits = cur.fetchone()
+    finally:
+        conn.close()
+    # The legacy combined `name` column stays in sync with the parts -
+    # _combine_name() skips the empty middle_name rather than leaving a
+    # stray double space.
+    assert name == "Jane Doe"
+    assert (first_name, middle_name, last_name) == ("Jane", "", "Doe")
+    # Every new signup seeds 3 free scan credits.
+    assert credits == 3
+
     result = db.authenticate_user("brandnew@example.com", "FreshPassword1!")
     assert result is not None
     assert result["role"] == "user"
