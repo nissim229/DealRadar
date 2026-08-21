@@ -455,6 +455,162 @@ def _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_va
     )
 
 
+def _render_table_view(coords_json, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                        filter_grades, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                        calc_down_pct, calc_interest, calc_target_yield, key_prefix, is_guest):
+    """Every matched property as a sortable/filterable/paginated spreadsheet-
+    style grid, with Save/View ButtonColumns wired to the same save-property
+    flow and floating property-detail dialog (st.session_state.property_dialog_ctx -
+    a real producer/consumer contract with components/property_card.py, key
+    name unchanged by this move) the other 3 views use. Extracted out of
+    _render_scan_results as the last of its 4 view-mode branches (Section 5
+    monolith-split plan) - pure extract-method, no logic/key= changes."""
+    st.caption("Drag a column header to reorder it, click a header to sort, or use the toolbar above the table to search, hide columns, or export to CSV.")
+    if coords_json:
+        try:
+            parsed_points = json.loads(coords_json)
+            df_listings_grid = pd.DataFrame(parsed_points)
+            if filter_min_price is not None:
+                df_listings_grid = df_listings_grid[
+                    (df_listings_grid["price"] >= filter_min_price) &
+                    (df_listings_grid["price"] <= filter_max_price) &
+                    (df_listings_grid["beds"] >= filter_min_beds) &
+                    (df_listings_grid["baths"] >= filter_min_baths)
+                ].reset_index(drop=True)
+            if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
+                grade_mask = []
+                for _, r in df_listings_grid.iterrows():
+                    m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                              hoa_monthly=_safe_hoa(r))
+                    grade_mask.append(m["grade"] in filter_grades)
+                df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
+
+            if df_listings_grid.empty:
+                st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
+            else:
+                table_page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=1, key=f"{key_prefix}_table_page_size")
+                table_total_rows = len(df_listings_grid)
+                table_total_pages = max(1, (table_total_rows + table_page_size - 1) // table_page_size)
+                table_current_page = min(st.session_state.get(f"{key_prefix}_table_current_page", 1), table_total_pages)
+
+                table_nav1, table_nav2, table_nav3 = st.columns([1, 2, 1])
+                with table_nav1:
+                    if st.button(":material/chevron_left: Previous", disabled=table_current_page <= 1, use_container_width=True, key=f"{key_prefix}_table_prev_page_btn"):
+                        st.session_state[f"{key_prefix}_table_current_page"] = table_current_page - 1
+                        st.session_state[f"{key_prefix}_table_selected_idx"] = None
+                        st.rerun()
+                with table_nav2:
+                    st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {table_current_page} of {table_total_pages} · {table_total_rows} total properties</div>", unsafe_allow_html=True)
+                with table_nav3:
+                    if st.button("Next :material/chevron_right:", disabled=table_current_page >= table_total_pages, use_container_width=True, key=f"{key_prefix}_table_next_page_btn"):
+                        st.session_state[f"{key_prefix}_table_current_page"] = table_current_page + 1
+                        st.session_state[f"{key_prefix}_table_selected_idx"] = None
+                        st.rerun()
+
+                df_listings_page = df_listings_grid.iloc[(table_current_page - 1) * table_page_size: table_current_page * table_page_size].reset_index(drop=True)
+
+                grade_emojis = {"excellent": "🟢", "average": "🟡", "critical": "🔴"}
+                table_rows = []
+                for idx, row_item in df_listings_page.iterrows():
+                    m = compute_deal_metrics(float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                              hoa_monthly=_safe_hoa(row_item))
+                    is_saved = db.is_property_saved(st.session_state.user_id, row_item.get("address", "")) if st.session_state.user_id else False
+                    table_rows.append({
+                        "Address": row_item.get("address", ""),
+                        "Price": float(row_item["price"]),
+                        "Beds": row_item.get("beds", 0),
+                        "Baths": row_item.get("baths", 0),
+                        "Sqft": row_item.get("sqft"),
+                        "Type": row_item.get("property_type", ""),
+                        "Grade": f"{grade_emojis.get(m['grade'], '')} {m['grade'].title()}",
+                        "Cap Rate %": round(m["cap_rate"], 2),
+                        "Cash-on-Cash %": round(m["coc"], 2),
+                        "Annual Cash Flow": round(m["cashflow"], 2),
+                        "MAO": round(m["mao"], 2),
+                        "Save": "★" if is_saved else "☆",
+                        "View": ":material/visibility:",
+                    })
+                table_df = pd.DataFrame(table_rows)
+
+                st.dataframe(
+                    table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
+                    key=f"{key_prefix}_table_view_grid",
+                    column_config={
+                        "Price": st.column_config.NumberColumn(format="$%d"),
+                        "MAO": st.column_config.NumberColumn(format="$%d"),
+                        "Annual Cash Flow": st.column_config.NumberColumn(format="$%d"),
+                        "Cap Rate %": st.column_config.NumberColumn(format="%.2f%%"),
+                        "Cash-on-Cash %": st.column_config.NumberColumn(format="%.2f%%"),
+                        "Save": st.column_config.ButtonColumn("", width="small", type="tertiary", key=f"{key_prefix}_table_save_click"),
+                        "View": st.column_config.ButtonColumn("", width="small", type="tertiary", key=f"{key_prefix}_table_view_click"),
+                    },
+                )
+
+                save_click = st.session_state.get(f"{key_prefix}_table_save_click")
+                if save_click and save_click.get("row") is not None and is_guest:
+                    st.toast("Sign in to save this property.", icon=":material/lock:")
+                    st.session_state.show_login_form = True
+                    st.session_state[f"{key_prefix}_table_save_click"] = None
+                    st.rerun()
+                elif save_click and save_click.get("row") is not None:
+                    clicked_row = df_listings_page.iloc[save_click["row"]]
+                    clicked_address = clicked_row.get("address", "")
+                    if db.is_property_saved(st.session_state.user_id, clicked_address):
+                        db.unsave_property(st.session_state.user_id, clicked_address)
+                        st.rerun()
+                    elif plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan,
+                                                      "saved_properties", db.count_saved_properties(st.session_state.user_id)):
+                        db.save_property(st.session_state.user_id, clicked_address, clicked_row.get("title", "Property"),
+                                          clicked_row["price"], clicked_row.get("beds", 0), clicked_row.get("baths", 0),
+                                          clicked_row.get("latitude"), clicked_row.get("longitude"))
+                        st.rerun()
+                    else:
+                        st.toast(f"Your {st.session_state.user_plan} plan's saved-properties limit is reached.", icon=":material/lock:")
+                        pricing.render_pricing_dialog()
+
+                # Jumps straight to the same floating detail dialog
+                # "View Full Details" opens elsewhere, instead of
+                # setting a flag that rendered an inline "Selected
+                # Property" card below the (often long) table - easy
+                # to miss without scrolling, per direct user feedback
+                # ("its not easy for me to see that the information
+                # is down the page"). The dialog is also naturally
+                # width-capped (st.dialog(width="large")), which
+                # fixes a second complaint for free: the same photo
+                # carousel rendered at full page width here before
+                # was being cropped into an extreme, ugly-looking
+                # wide strip - not actually "stretched" (the carousel
+                # already uses object-fit:cover, which preserves
+                # aspect ratio), but a wide-open container made the
+                # crop itself look distorted. A bounded dialog width
+                # gives the image a sane aspect ratio to fit into.
+                view_click = st.session_state.get(f"{key_prefix}_table_view_click")
+                if view_click and view_click.get("row") is not None:
+                    idx = view_click["row"]
+                    if idx < len(df_listings_page):
+                        sel_row = df_listings_page.iloc[idx]
+                        sel_metrics = compute_deal_metrics(
+                            float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                            calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                            hoa_monthly=_safe_hoa(sel_row)
+                        )
+                        st.session_state.property_dialog_ctx = {
+                            "row_item": sel_row, "metrics": sel_metrics, "address": sel_row.get("address", ""),
+                            "user_id": st.session_state.user_id,
+                            "reference_point": st.session_state.get("distance_reference_point"),
+                            "calc_target_yield": calc_target_yield,
+                            "current_assumptions": {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                                     "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
+                            "key_prefix": f"{key_prefix}_table_view_dialog", "idx": idx,
+                        }
+                        render_property_detail_dialog()
+        except Exception as e:
+            print(f"[Analytics] Table view render failed: {e}")
+            st.caption("Unable to load the table for this scan.")
+
+
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
                           calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield,
@@ -556,150 +712,9 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                filter_grades)
 
     else:  # Table View - every matched property as a sortable/filterable spreadsheet-style grid
-        st.caption("Drag a column header to reorder it, click a header to sort, or use the toolbar above the table to search, hide columns, or export to CSV.")
-        if coords_json:
-            try:
-                parsed_points = json.loads(coords_json)
-                df_listings_grid = pd.DataFrame(parsed_points)
-                if filter_min_price is not None:
-                    df_listings_grid = df_listings_grid[
-                        (df_listings_grid["price"] >= filter_min_price) &
-                        (df_listings_grid["price"] <= filter_max_price) &
-                        (df_listings_grid["beds"] >= filter_min_beds) &
-                        (df_listings_grid["baths"] >= filter_min_baths)
-                    ].reset_index(drop=True)
-                if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
-                    grade_mask = []
-                    for _, r in df_listings_grid.iterrows():
-                        m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                  hoa_monthly=_safe_hoa(r))
-                        grade_mask.append(m["grade"] in filter_grades)
-                    df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
-
-                if df_listings_grid.empty:
-                    st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
-                else:
-                    table_page_size = st.selectbox("Rows per page", [10, 25, 50, 100], index=1, key=f"{key_prefix}_table_page_size")
-                    table_total_rows = len(df_listings_grid)
-                    table_total_pages = max(1, (table_total_rows + table_page_size - 1) // table_page_size)
-                    table_current_page = min(st.session_state.get(f"{key_prefix}_table_current_page", 1), table_total_pages)
-
-                    table_nav1, table_nav2, table_nav3 = st.columns([1, 2, 1])
-                    with table_nav1:
-                        if st.button(":material/chevron_left: Previous", disabled=table_current_page <= 1, use_container_width=True, key=f"{key_prefix}_table_prev_page_btn"):
-                            st.session_state[f"{key_prefix}_table_current_page"] = table_current_page - 1
-                            st.session_state[f"{key_prefix}_table_selected_idx"] = None
-                            st.rerun()
-                    with table_nav2:
-                        st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {table_current_page} of {table_total_pages} · {table_total_rows} total properties</div>", unsafe_allow_html=True)
-                    with table_nav3:
-                        if st.button("Next :material/chevron_right:", disabled=table_current_page >= table_total_pages, use_container_width=True, key=f"{key_prefix}_table_next_page_btn"):
-                            st.session_state[f"{key_prefix}_table_current_page"] = table_current_page + 1
-                            st.session_state[f"{key_prefix}_table_selected_idx"] = None
-                            st.rerun()
-
-                    df_listings_page = df_listings_grid.iloc[(table_current_page - 1) * table_page_size: table_current_page * table_page_size].reset_index(drop=True)
-
-                    grade_emojis = {"excellent": "🟢", "average": "🟡", "critical": "🔴"}
-                    table_rows = []
-                    for idx, row_item in df_listings_page.iterrows():
-                        m = compute_deal_metrics(float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                  hoa_monthly=_safe_hoa(row_item))
-                        is_saved = db.is_property_saved(st.session_state.user_id, row_item.get("address", "")) if st.session_state.user_id else False
-                        table_rows.append({
-                            "Address": row_item.get("address", ""),
-                            "Price": float(row_item["price"]),
-                            "Beds": row_item.get("beds", 0),
-                            "Baths": row_item.get("baths", 0),
-                            "Sqft": row_item.get("sqft"),
-                            "Type": row_item.get("property_type", ""),
-                            "Grade": f"{grade_emojis.get(m['grade'], '')} {m['grade'].title()}",
-                            "Cap Rate %": round(m["cap_rate"], 2),
-                            "Cash-on-Cash %": round(m["coc"], 2),
-                            "Annual Cash Flow": round(m["cashflow"], 2),
-                            "MAO": round(m["mao"], 2),
-                            "Save": "★" if is_saved else "☆",
-                            "View": ":material/visibility:",
-                        })
-                    table_df = pd.DataFrame(table_rows)
-
-                    st.dataframe(
-                        table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
-                        key=f"{key_prefix}_table_view_grid",
-                        column_config={
-                            "Price": st.column_config.NumberColumn(format="$%d"),
-                            "MAO": st.column_config.NumberColumn(format="$%d"),
-                            "Annual Cash Flow": st.column_config.NumberColumn(format="$%d"),
-                            "Cap Rate %": st.column_config.NumberColumn(format="%.2f%%"),
-                            "Cash-on-Cash %": st.column_config.NumberColumn(format="%.2f%%"),
-                            "Save": st.column_config.ButtonColumn("", width="small", type="tertiary", key=f"{key_prefix}_table_save_click"),
-                            "View": st.column_config.ButtonColumn("", width="small", type="tertiary", key=f"{key_prefix}_table_view_click"),
-                        },
-                    )
-
-                    save_click = st.session_state.get(f"{key_prefix}_table_save_click")
-                    if save_click and save_click.get("row") is not None and is_guest:
-                        st.toast("Sign in to save this property.", icon=":material/lock:")
-                        st.session_state.show_login_form = True
-                        st.session_state[f"{key_prefix}_table_save_click"] = None
-                        st.rerun()
-                    elif save_click and save_click.get("row") is not None:
-                        clicked_row = df_listings_page.iloc[save_click["row"]]
-                        clicked_address = clicked_row.get("address", "")
-                        if db.is_property_saved(st.session_state.user_id, clicked_address):
-                            db.unsave_property(st.session_state.user_id, clicked_address)
-                            st.rerun()
-                        elif plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan,
-                                                          "saved_properties", db.count_saved_properties(st.session_state.user_id)):
-                            db.save_property(st.session_state.user_id, clicked_address, clicked_row.get("title", "Property"),
-                                              clicked_row["price"], clicked_row.get("beds", 0), clicked_row.get("baths", 0),
-                                              clicked_row.get("latitude"), clicked_row.get("longitude"))
-                            st.rerun()
-                        else:
-                            st.toast(f"Your {st.session_state.user_plan} plan's saved-properties limit is reached.", icon=":material/lock:")
-                            pricing.render_pricing_dialog()
-
-                    # Jumps straight to the same floating detail dialog
-                    # "View Full Details" opens elsewhere, instead of
-                    # setting a flag that rendered an inline "Selected
-                    # Property" card below the (often long) table - easy
-                    # to miss without scrolling, per direct user feedback
-                    # ("its not easy for me to see that the information
-                    # is down the page"). The dialog is also naturally
-                    # width-capped (st.dialog(width="large")), which
-                    # fixes a second complaint for free: the same photo
-                    # carousel rendered at full page width here before
-                    # was being cropped into an extreme, ugly-looking
-                    # wide strip - not actually "stretched" (the carousel
-                    # already uses object-fit:cover, which preserves
-                    # aspect ratio), but a wide-open container made the
-                    # crop itself look distorted. A bounded dialog width
-                    # gives the image a sane aspect ratio to fit into.
-                    view_click = st.session_state.get(f"{key_prefix}_table_view_click")
-                    if view_click and view_click.get("row") is not None:
-                        idx = view_click["row"]
-                        if idx < len(df_listings_page):
-                            sel_row = df_listings_page.iloc[idx]
-                            sel_metrics = compute_deal_metrics(
-                                float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                hoa_monthly=_safe_hoa(sel_row)
-                            )
-                            st.session_state.property_dialog_ctx = {
-                                "row_item": sel_row, "metrics": sel_metrics, "address": sel_row.get("address", ""),
-                                "user_id": st.session_state.user_id,
-                                "reference_point": st.session_state.get("distance_reference_point"),
-                                "calc_target_yield": calc_target_yield,
-                                "current_assumptions": {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                         "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
-                                "key_prefix": f"{key_prefix}_table_view_dialog", "idx": idx,
-                            }
-                            render_property_detail_dialog()
-            except Exception as e:
-                print(f"[Analytics] Table view render failed: {e}")
-                st.caption("Unable to load the table for this scan.")
+        _render_table_view(coords_json, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                            filter_grades, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                            calc_down_pct, calc_interest, calc_target_yield, key_prefix, is_guest)
 
     st.markdown("<br>", unsafe_allow_html=True)
     pdf_data_uri = generate_pdf_download_link(profile_name, report_body)
