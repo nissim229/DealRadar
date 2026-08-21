@@ -485,6 +485,42 @@ def _render_car_view_toolbar(results, key_prefix):
             )
             filter_grades = [grade_key_by_label[label] for label in (picked_grade_labels or [])]
 
+            # Sort control - defaults to Best Deal First so results arrive
+            # best-to-worst without any click needed, but stays a real,
+            # user-adjustable choice (not just a fixed default) since price/
+            # mileage/year are all legitimate ways to want a list ordered.
+            sort_options = [
+                ("best_deal", "Best Deal First"),
+                ("price_asc", "Price: Low to High"),
+                ("price_desc", "Price: High to Low"),
+                ("mileage_asc", "Mileage: Low to High"),
+                ("year_desc", "Year: Newest First"),
+                ("year_asc", "Year: Oldest First"),
+            ]
+            sort_label_by_key = dict(sort_options)
+            sort_key_by_label = {label: key for key, label in sort_options}
+            sort_state_key = f"{key_prefix}_car_sort"
+            if sort_state_key not in st.session_state:
+                st.session_state[sort_state_key] = "best_deal"
+            with st.popover(f":material/swap_vert: {sort_label_by_key[st.session_state[sort_state_key]]}", use_container_width=True):
+                picked_sort_label = st.radio(
+                    "Sort by", [label for _, label in sort_options],
+                    index=[key for key, _ in sort_options].index(st.session_state[sort_state_key]),
+                    key=f"{key_prefix}_car_sort_radio",
+                )
+                # The popover's own trigger label above was already built
+                # from the OLD session_state value before this radio ran -
+                # without the rerun, picking a new sort correctly reorders
+                # the results below (that code runs later in this same
+                # script) but the button itself keeps showing the previous
+                # choice until some other interaction happens to trigger a
+                # second rerun. Matches the view-mode buttons' own
+                # st.rerun()-on-change pattern just above.
+                new_sort_key = sort_key_by_label[picked_sort_label]
+                if new_sort_key != st.session_state[sort_state_key]:
+                    st.session_state[sort_state_key] = new_sort_key
+                    st.rerun()
+
     if not results:
         return st.session_state[view_mode_key], []
 
@@ -503,6 +539,28 @@ def _render_car_view_toolbar(results, key_prefix):
         and filter_min_mileage <= r["mileage"] <= filter_max_mileage
         and _passes_grade_filter(r)
     ]
+
+    sort_choice = st.session_state.get(f"{key_prefix}_car_sort", "best_deal")
+    if sort_choice == "best_deal":
+        # Graded listings first, best pct_below_market first; ungraded
+        # listings (too few comps for a real grade) go to the end rather
+        # than being sorted in among them - there's no honest "best" rank
+        # to give a listing that was never confidently graded in the
+        # first place. See [[feedback_honest_deal_grading]].
+        graded = sorted((r for r in filtered if r.get("has_reliable_grade")), key=lambda r: r["pct_below_market"], reverse=True)
+        ungraded = [r for r in filtered if not r.get("has_reliable_grade")]
+        filtered = graded + ungraded
+    elif sort_choice == "price_asc":
+        filtered = sorted(filtered, key=lambda r: r["price"])
+    elif sort_choice == "price_desc":
+        filtered = sorted(filtered, key=lambda r: r["price"], reverse=True)
+    elif sort_choice == "mileage_asc":
+        filtered = sorted(filtered, key=lambda r: r["mileage"])
+    elif sort_choice == "year_desc":
+        filtered = sorted(filtered, key=lambda r: r["year"], reverse=True)
+    elif sort_choice == "year_asc":
+        filtered = sorted(filtered, key=lambda r: r["year"])
+
     return st.session_state[view_mode_key], filtered
 
 
