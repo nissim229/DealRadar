@@ -651,8 +651,12 @@ def _render_car_table_view(filtered, key_prefix):
             # (cards, filter pills) - not the raw internal grade key
             # title-cased, which would show generic "Critical"/"Average"/
             # "Excellent" instead of car-appropriate "Above Market"/"Fair
-            # Deal"/"Great Deal".
-            "Grade": car_engine.CAR_GRADE_STYLES[grade]["label"] if listing.get("has_reliable_grade") and grade else "Not graded",
+            # Deal"/"Great Deal". get_car_grade_label (not a plain dict
+            # lookup) is what keeps this honest when "critical" was
+            # reached via a condition/history downgrade rather than
+            # actually being priced above market - see car_engine's
+            # _car_grade_style_key docstring.
+            "Grade": car_engine.get_car_grade_label(grade, listing.get("pct_below_market")) if listing.get("has_reliable_grade") and grade else "Not graded",
             "vs. Market %": round(listing["pct_below_market"], 1) if listing.get("has_reliable_grade") else None,
             "View": ":material/visibility:",
         })

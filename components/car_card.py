@@ -58,7 +58,7 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False)
         # - a neutral "Not enough data" chip, not a colored grade badge
         # that would look like a real assessment happened. See
         # [[feedback_honest_deal_grading]].
-        badge_html = render_car_deal_badge(grade) if has_reliable_grade else (
+        badge_html = render_car_deal_badge(grade, listing.get("pct_below_market")) if has_reliable_grade else (
             "<span style='background-color:#f1f5f9; color:#64748b; padding:6px 12px; "
             "border-radius:6px; font-weight:700; font-size:12px; border:1px solid #e2e8f0; "
             "white-space:nowrap;'>Not enough data to grade</span>"

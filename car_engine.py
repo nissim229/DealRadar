@@ -273,13 +273,43 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
 # "Negative Cash Flow" on a used Jeep read as nonsensical.
 CAR_GRADE_STYLES = {
     "critical": {"label": "🔴 Above Market", "bg": "#fee2e2", "fg": "#991b1b", "border": "#fca5a5"},
+    # Same red as "critical" - still a real, visible warning - but a
+    # different label. "critical" gets reached two genuinely different
+    # ways for a real listing (see _grade_real_listings): priced above
+    # market, OR priced fine but downgraded for accident history/owner
+    # count/rental use/high mileage. pct_below_market is computed once
+    # from price alone and never touched by those downgrades, so a
+    # listing can be both "critical" (badge: Above Market) AND
+    # genuinely priced below market (the price-comparison text, which
+    # checks pct_below_market directly, correctly says "below estimated
+    # market value") - a real, confirmed contradiction a user hit live.
+    # This second style exists so the badge only ever claims "Above
+    # Market" when that's actually true.
+    "critical_condition": {"label": "🔴 Condition Concerns", "bg": "#fee2e2", "fg": "#991b1b", "border": "#fca5a5"},
     "excellent": {"label": "🟢 Great Deal", "bg": "#d1fae5", "fg": "#065f46", "border": "#6ee7b7"},
     "average": {"label": "🟡 Fair Deal", "bg": "#fef3c7", "fg": "#92400e", "border": "#fcd34d"},
 }
 
 
-def render_car_deal_badge(grade):
-    return render_grade_badge(grade, CAR_GRADE_STYLES)
+def _car_grade_style_key(grade, pct_below_market=None):
+    """Picks which CAR_GRADE_STYLES entry actually matches the truth -
+    "critical" only means "Above Market" when the listing's own price-vs-
+    market number agrees (pct_below_market < 0); otherwise the grade was
+    downgraded for a condition/history reason unrelated to price, and
+    "critical_condition" is the honest label. Mock listings (see
+    compute_car_deal_metrics) never downgrade, so pct_below_market and
+    grade always agree there and this is a no-op for them."""
+    if grade == "critical" and pct_below_market is not None and pct_below_market >= 0:
+        return "critical_condition"
+    return grade
+
+
+def get_car_grade_label(grade, pct_below_market=None):
+    return CAR_GRADE_STYLES[_car_grade_style_key(grade, pct_below_market)]["label"]
+
+
+def render_car_deal_badge(grade, pct_below_market=None):
+    return render_grade_badge(_car_grade_style_key(grade, pct_below_market), CAR_GRADE_STYLES)
 
 
 def compute_car_deal_metrics(price, market_value):
