@@ -264,6 +264,69 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
     return view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades
 
 
+def _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                   filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                   calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                   calc_target_yield, view_mode, key_prefix, focused_key):
+    """Full-width property grid, no map alongside - lets the cards use the
+    whole page width (3 per row instead of 2) for someone who just wants to
+    compare listings without the map competing for space. Extracted out of
+    _render_scan_results as part of splitting its 4 view-mode branches into
+    named functions (Section 5 monolith-split plan) - each branch takes every
+    parent-scope local it references as an explicit parameter, no implicit
+    closures."""
+    # Full-width property grid, no map alongside - lets the
+    # cards use the whole page width (3 per row instead of 2)
+    # for someone who just wants to compare listings without
+    # the map competing for space.
+    if coords_json:
+        try:
+            parsed_points = json.loads(coords_json)
+            df_listings_grid = pd.DataFrame(parsed_points)
+            if filter_min_price is not None:
+                df_listings_grid = df_listings_grid[
+                    (df_listings_grid["price"] >= filter_min_price) &
+                    (df_listings_grid["price"] <= filter_max_price) &
+                    (df_listings_grid["beds"] >= filter_min_beds) &
+                    (df_listings_grid["baths"] >= filter_min_baths)
+                ].reset_index(drop=True)
+            if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
+                grade_mask = []
+                for _, r in df_listings_grid.iterrows():
+                    m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                              hoa_monthly=_safe_hoa(r))
+                    grade_mask.append(m["grade"] in filter_grades)
+                df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
+
+            if df_listings_grid.empty:
+                st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
+            else:
+                row_indices = list(df_listings_grid.index)
+                for pair_start in range(0, len(row_indices), 3):
+                    pair_indices = row_indices[pair_start:pair_start + 3]
+                    grid_cols = st.columns(3)
+                    for slot, idx in enumerate(pair_indices):
+                        row_item = df_listings_grid.loc[idx]
+                        with grid_cols[slot]:
+                            metrics = compute_deal_metrics(
+                                float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                hoa_monthly=_safe_hoa(row_item)
+                            )
+                            is_focused = st.session_state[focused_key] == idx
+                            if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_grid_only_card", is_focused,
+                                                     st.session_state.user_id, st.session_state.get("distance_reference_point"),
+                                                     calc_target_yield,
+                                                     {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                                      "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
+                                st.session_state[focused_key] = None if is_focused else idx
+                                st.rerun()
+        except Exception as e:
+            print(f"[Analytics] Properties-only grid render failed: {e}")
+            st.caption("Unable to load property listings for this scan.")
+
+
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
                           calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield,
@@ -347,56 +410,10 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
         st.session_state[focused_key] = None
 
     if view_toggle == ":material/grid_view: Properties Only":
-        # Full-width property grid, no map alongside - lets the
-        # cards use the whole page width (3 per row instead of 2)
-        # for someone who just wants to compare listings without
-        # the map competing for space.
-        if coords_json:
-            try:
-                parsed_points = json.loads(coords_json)
-                df_listings_grid = pd.DataFrame(parsed_points)
-                if filter_min_price is not None:
-                    df_listings_grid = df_listings_grid[
-                        (df_listings_grid["price"] >= filter_min_price) &
-                        (df_listings_grid["price"] <= filter_max_price) &
-                        (df_listings_grid["beds"] >= filter_min_beds) &
-                        (df_listings_grid["baths"] >= filter_min_baths)
-                    ].reset_index(drop=True)
-                if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
-                    grade_mask = []
-                    for _, r in df_listings_grid.iterrows():
-                        m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                  hoa_monthly=_safe_hoa(r))
-                        grade_mask.append(m["grade"] in filter_grades)
-                    df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
-
-                if df_listings_grid.empty:
-                    st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
-                else:
-                    row_indices = list(df_listings_grid.index)
-                    for pair_start in range(0, len(row_indices), 3):
-                        pair_indices = row_indices[pair_start:pair_start + 3]
-                        grid_cols = st.columns(3)
-                        for slot, idx in enumerate(pair_indices):
-                            row_item = df_listings_grid.loc[idx]
-                            with grid_cols[slot]:
-                                metrics = compute_deal_metrics(
-                                    float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                    hoa_monthly=_safe_hoa(row_item)
-                                )
-                                is_focused = st.session_state[focused_key] == idx
-                                if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_grid_only_card", is_focused,
-                                                         st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                                         calc_target_yield,
-                                                         {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                          "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
-                                    st.session_state[focused_key] = None if is_focused else idx
-                                    st.rerun()
-            except Exception as e:
-                print(f"[Analytics] Properties-only grid render failed: {e}")
-                st.caption("Unable to load property listings for this scan.")
+        _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                      filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                      calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                      calc_target_yield, view_mode, key_prefix, focused_key)
 
     elif view_toggle == ":material/splitscreen: Properties + Map":
         # Give the cards their own fixed-height scrollable box (like
