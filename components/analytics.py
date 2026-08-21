@@ -6,7 +6,7 @@ import json
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-from underwriting import compute_deal_metrics, GRADE_STYLES, render_deal_badge
+from underwriting import compute_deal_metrics
 from pdf_export import generate_pdf_download_link
 from components.property_card import render_property_card, render_property_detail_dialog
 from components import pricing
@@ -1402,65 +1402,6 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                             render_property_detail_dialog()
             except Exception:
                 st.caption("Unable to load the table for this scan.")
-
-    # ---- PRO MODE ONLY: full underwriting tab breakdown ----
-    if view_mode == "Pro" and coords_json:
-        try:
-            parsed_points = json.loads(coords_json)
-            df_listings_grid = pd.DataFrame(parsed_points)
-
-            st.markdown("---")
-            st.markdown("### :material/apartment: Full Underwriting Breakdown")
-            st.caption("Click a property's tab below to see its full underwriting numbers and deal grade.")
-
-            property_titles_list = [row_item["title"] for idx, row_item in df_listings_grid.iterrows()]
-
-            if property_titles_list:
-                asset_sub_tabs = st.tabs(property_titles_list)
-
-                for idx, row_item in df_listings_grid.iterrows():
-                    prop_title = row_item["title"]
-                    prop_price = float(row_item["price"])
-                    prop_address = row_item["address"]
-
-                    metrics = compute_deal_metrics(prop_price, calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                    hoa_monthly=_safe_hoa(row_item))
-
-                    with asset_sub_tabs[idx]:
-                        col_b1, col_b2 = st.columns([2.5, 1])
-                        with col_b1:
-                            st.markdown(f"#### :material/location_on: {prop_title}")
-                            st.caption(f"Address: {prop_address}")
-                        with col_b2:
-                            st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
-                            st.markdown(render_deal_badge(metrics["grade"]), unsafe_allow_html=True)
-
-                        st.markdown("---")
-                        col_mao1, col_mao2 = st.columns([1.5, 2])
-                        with col_mao1:
-                            st.metric(label="Maximum Allowable Offer (MAO)", value=f"${metrics['mao']:,.2f}",
-                                      delta=f"-${metrics['mao_delta']:,.2f}" if metrics['mao_delta'] > 0 else None,
-                                      delta_color="inverse")
-                        with col_mao2:
-                            st.info(f"**Suggested Offer:** This price targets a **{calc_target_yield:.2f}% cash-on-cash return**.", icon=":material/lightbulb:")
-                        st.markdown("---")
-
-                        c1, c2, c3, c4 = st.columns(4)
-                        with c1:
-                            st.metric(label="Purchase Price", value=f"${prop_price:,.2f}")
-                            st.metric(label="Cap Rate", value=f"{metrics['cap_rate']:.2f}%")
-                        with c2:
-                            st.metric(label="Down Payment", value=f"${metrics['down_amt']:,.2f}")
-                            st.metric(label="Cash-on-Cash", value=f"{metrics['coc']:.2f}%")
-                        with c3:
-                            st.metric(label="Annual NOI", value=f"${metrics['noi']:,.2f}")
-                            st.metric(label="Loan Amount", value=f"${metrics['loan_amt']:,.2f}")
-                        with c4:
-                            st.metric(label="Annual Cash Flow", value=f"${metrics['cashflow']:,.2f}")
-                            st.metric(label="Annual Debt Expense", value=f"${metrics['a_debt']:,.2f}")
-        except Exception:
-            pass
 
     st.markdown("<br>", unsafe_allow_html=True)
     pdf_data_uri = generate_pdf_download_link(profile_name, report_body)
