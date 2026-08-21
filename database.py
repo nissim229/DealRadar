@@ -10,18 +10,67 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from plan_limits import PLAN_ORDER
 
-load_dotenv()
-
-# Anchor the database file to this script's own directory, not the terminal's
-# current working directory. Using a bare relative filename here meant that
-# launching the app from a slightly different folder (or a fresh terminal
-# session) would silently create/read a DIFFERENT database file - looking
-# like saved data (profiles, theme preference, credits) had been forgotten,
-# when really it was just written to a different file each time.
+# Anchor the database file AND the .env file to this script's own directory,
+# not the terminal's current working directory. Using a bare relative
+# filename for the DB meant launching the app from a slightly different
+# folder (or a fresh terminal session) would silently create/read a
+# DIFFERENT database file - looking like saved data (profiles, theme
+# preference, credits) had been forgotten, when really it was just written
+# to a different file each time. A bare load_dotenv() below the DB fix has
+# the identical failure mode for .env: it resolves relative to the CALLER's
+# working directory/call stack, not this file's location - confirmed live
+# that it finds nothing at all when database.py is imported from an
+# unrelated directory. That matters a lot more for PASSWORD_PEPPER
+# specifically (see _load_or_create_password_pepper()) than it does for the
+# other API keys .env holds: a silently-missing pepper doesn't just misuse a
+# feature, it triggers self-provisioning a BRAND NEW one, permanently
+# breaking every already-bcrypt-hashed password.
 DB_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_config.db")
 _ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(_ENV_PATH)
 
 BCRYPT_COST = 12
+
+def _check_for_duplicate_pepper_lines():
+    """python-dotenv resolves a duplicate key within one file by silently
+    taking the last occurrence - if .env ever ends up with two
+    PASSWORD_PEPPER= lines (e.g. from the exact re-provisioning bug this
+    anchoring fix closes), a future load could silently pick the WRONG one
+    relative to whichever pepper actual stored hashes were created with.
+    Refuses to start rather than guess."""
+    if not os.path.exists(_ENV_PATH):
+        return
+    with open(_ENV_PATH, "r", encoding="utf-8") as f:
+        count = sum(1 for line in f if line.strip().startswith("PASSWORD_PEPPER="))
+    if count > 1:
+        raise RuntimeError(
+            f"Found {count} PASSWORD_PEPPER= lines in .env - refusing to start. "
+            "python-dotenv would silently use only the last one, which may not "
+            "be the pepper existing bcrypt password hashes were created with. "
+            "Manually remove all but the correct line, then restart."
+        )
+
+def _any_bcrypt_hash_exists():
+    """True if the users table already has at least one bcrypt hash. Used
+    as a safety interlock: if PASSWORD_PEPPER is missing but bcrypt hashes
+    already exist, minting a fresh pepper would silently make every one of
+    those hashes unverifiable forever. Returns False (nothing to protect
+    yet) if the database or table doesn't exist - a genuinely fresh
+    install, not a lost pepper."""
+    if not os.path.exists(DB_NAME):
+        return False
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='users'")
+        if cursor.fetchone()[0] == 0:
+            return False
+        cursor.execute("SELECT COUNT(*) FROM users WHERE password_hash LIKE '$2%'")
+        return cursor.fetchone()[0] > 0
+    except sqlite3.Error:
+        return False
+    finally:
+        conn.close()
 
 def _load_or_create_password_pepper():
     """The HMAC key used to pre-hash passwords before bcrypt (see
@@ -32,11 +81,24 @@ def _load_or_create_password_pepper():
     everything needed to authenticate against the new scheme. Self-
     provisions on first run, the same way init_db() seeds a first admin
     account - but unlike that seed, losing this value after real passwords
-    have been hashed with it would lock every user out, so it's written to
-    .env immediately once generated and never silently regenerated after."""
+    have been hashed with it would lock every user out, so (a) it's loaded
+    from the anchored _ENV_PATH explicitly rather than ambient os.getenv()
+    (see the module-level load_dotenv() note above), (b) it refuses to
+    silently mint a replacement if bcrypt hashes already exist without one,
+    and (c) once generated, it's written to .env immediately and never
+    silently regenerated again."""
+    _check_for_duplicate_pepper_lines()
     pepper = os.getenv("PASSWORD_PEPPER")
     if pepper:
         return pepper.encode()
+    if _any_bcrypt_hash_exists():
+        raise RuntimeError(
+            "PASSWORD_PEPPER is missing from .env, but the database already "
+            "contains bcrypt-hashed passwords. Generating a new pepper now "
+            "would make every one of those hashes permanently unverifiable - "
+            "refusing to start. Restore the correct PASSWORD_PEPPER line in "
+            ".env instead (check backups / other machines), then restart."
+        )
     pepper = secrets.token_hex(32)
     with open(_ENV_PATH, "a", encoding="utf-8") as f:
         f.write(f"\nPASSWORD_PEPPER={pepper}\n")
