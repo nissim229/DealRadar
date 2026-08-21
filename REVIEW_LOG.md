@@ -15,6 +15,17 @@ Each entry lists what changed, the commit hash(es) it can check the real
 diff against, how it was verified before being marked done, and a "What to
 check" list of specific questions for the reviewer.
 
+**Reviewer's feedback goes in its own file, `REVIEWER_FEEDBACK.md`** (same
+project root), not directly into this one. The reviewer has write access
+scoped to this project folder, so it can create/overwrite that file itself
+each round rather than the owner having to paste its response into chat -
+but this file (`REVIEW_LOG.md`) is only ever written by the assistant
+doing the fixes, so its own history can't be altered by anything else that
+touches this folder. `REVIEWER_FEEDBACK.md` gets fully overwritten each
+round (always "latest feedback", no need to hunt through old ones); once
+its claims are independently checked, anything that holds up gets folded
+into the matching entry here as a "Reviewer Feedback" subsection.
+
 ---
 
 ## Entry 1 — FIXLIST.md Sections 1–2 (2026-08-21)
