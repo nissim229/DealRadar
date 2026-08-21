@@ -754,3 +754,112 @@ shaped value rather than an app password - this is an owner-side config
 gap flagged for the owner directly, not something for me to change.
 No new feedback file was required for this fold-in; recorded directly
 from the reviewer's sweep content already on file.
+
+---
+
+## Entry 8 — FIXLIST.md Section 8, deal-math audit (2026-08-21)
+
+**Status**: Bug 1 and Gaps 2-3 done; awaiting reviewer verification.
+
+Commits: `cbcbc07` (Bug 1), `089b498` (Gaps 2-3).
+
+### The audit (reviewer-initiated, not requested by this log)
+
+The reviewer independently recomputed every metric `compute_deal_metrics`
+produces by hand against a worked $400k/$3,500-rent example, spot-checked
+`monthly_payment_factor` against a hand computation at 6.5%/30yr,
+verified the MAO closed-form is algebraically exact (the price where CoC
+hits target) and that HOA propagates correctly through both cash flow and
+MAO, checked zero-down/zero-rate guard rails, and separately verified the
+car-grading engine (median-based comps, mileage-adjustment direction,
+no-comp honesty) - all confirmed correct as-is. One real bug and one
+consistency gap surfaced.
+
+### Bug 1: NOI floor hides real losses on all-cash deals
+
+`underwriting.py:41` (`max(0.0, ...)`) and the matching `Math.max(0, ...)`
+in `whatif_calculator.py`'s JS clamped NOI at zero. With no debt service
+(all-cash or near free-and-clear), cashflow = NOI directly, so a
+genuinely money-losing property (the reviewer's cited case: -$2,600/yr
+true cash flow) reported $0 cashflow and graded "average" instead of
+"critical" - the one badge that exists specifically to warn these buyers
+off. A mortgaged loser was never affected (debt service alone pushes
+cashflow negative regardless), which is why this went unnoticed.
+
+Fix (`cbcbc07`): NOI stays unclamped everywhere it feeds cashflow/CoC/
+grade in both the Python and JS implementations; only the *displayed*
+cap-rate value is floored at 0% (`max(0.0, noi)` applied just at that one
+read site) to avoid a confusing negative percentage.
+
+### Gaps 2-3: card verdict vs What-If verdict could disagree
+
+The What-If sandbox modeled property management %, maintenance reserve %
+(its own default: 5%), and closing costs (added to the CoC denominator);
+the shared `compute_deal_metrics()` used by every card/summary surface
+modeled none of them. Consequence: the identical listing could grade
+"excellent" on its card and drop to "average" inside What-If for the same
+inputs - both implementations were internally correct, just different
+models.
+
+**Owner decision** (asked directly, since this changes every existing
+grade in the app, not just a bug fix): fold all 3 lines into
+`compute_deal_metrics()` using What-If's own defaults (mgmt 0%,
+maintenance 5%, closing $0) rather than the smaller options (maintenance
+only, or leave the two models different and just document it). Chosen
+specifically so grades stop disagreeing app-wide, accepting that some
+currently-"excellent" cards will grade lower once the real 5% maintenance
+reserve applies everywhere, not just in the sandbox.
+
+Fix (`089b498`): `compute_deal_metrics()` gains `calc_mgmt_pct=0.0`,
+`calc_maint_pct=5.0`, `calc_closing_costs=0.0` - defaults exactly matching
+What-If's own sliders, so none of the 18 existing call sites across the
+app needed to change. Management fee and maintenance reserve compute the
+same way What-If already does (% of effective gross rent); closing costs
+join the down payment in the CoC denominator. The MAO closed-form was
+re-derived by hand to absorb all three (mgmt/maintenance/HOA move to the
+numerator as fixed income reductions; closing costs move to the numerator
+scaled by the target yield) - mirroring, not reinventing,
+`whatif_calculator.py`'s own suggested-max-offer algebra. Also updated
+`property_card.py`'s "Why This Grade" breakdown table to show the new
+management/maintenance/closing-cost lines (only when non-zero, same
+pattern as the existing HOA row) - otherwise the table's own numbers
+would stop adding up once a nonzero default reserve was silently
+subtracted.
+
+### Verification
+
+Constructed an identical-input test comparing `compute_deal_metrics()`
+against a line-by-line Python port of the JS formula: noi/cap_rate/
+cashflow/coc/mao all matched to `0.0000000000` (floating-point exact) -
+confirms the two surfaces are now the same formula, not two independent
+ones that happen to agree. A constructed all-cash-loss case now correctly
+returns negative NOI/cashflow and grades "critical" (previously "average"
+at $0/$0). Live browser check: a property's "Why This Grade" tab and
+"What-If Calculator" tab show identical NOI ($32,209) and matching CoC
+(13.4%/13.43%) for the same listing - previously these could diverge.
+Reran the pre-existing $400k/$3,500-rent worked example and a profitable
+all-cash case: both unchanged (mgmt defaults to 0%, so only maintenance's
+5% default shifts any existing number, matching What-If's own default
+exactly - no silent behavior change beyond what was decided). All 14
+tests in `tests/test_auth.py` pass throughout.
+
+### What to check
+
+- Does the MAO re-derivation actually match `whatif_calculator.py`'s own
+  algebra in every term, or did the hand-derivation diverge somewhere the
+  bit-for-bit test case didn't happen to exercise?
+- Are there other display surfaces (PDF export, dashboard stat cards,
+  portfolio) that read `metrics["noi"]`/`metrics["cap_rate"]` and might
+  now show a value inconsistent with a table that wasn't updated to
+  surface the new mgmt/maintenance/closing-cost lines the way
+  `property_card.py`'s breakdown table was? (Checked before writing this
+  entry: `pdf_export.py` and the dashboard sidebar preview only show
+  final aggregate numbers - NOI/cap rate/cash flow/CoC/MAO - with no
+  itemized expense list to sum against, so they can't go visibly
+  inconsistent the way an itemized table could. `property_card.py`'s
+  table was the only itemized breakdown in the app, and it's the one
+  already fixed. Reviewer: please double-check this conclusion rather
+  than take it at face value.)
+- Is defaulting `calc_maint_pct` to 5.0 (a real, non-zero behavior change
+  applied to every existing caller with no code change) the right call,
+  or should it have required each caller to opt in explicitly instead?

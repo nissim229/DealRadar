@@ -141,6 +141,36 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
       token/code was enough to exercise them without a real OAuth/email
       round-trip).
 
+## 8. Deal-math audit (property + car engines)
+
+- [x] **Bug 1: NOI floor hides real losses on all-cash deals.**
+      `underwriting.py:41`'s `max(0.0, ...)` and the What-If JS's matching
+      `Math.max(0, ...)` clamped NOI at zero. With no debt service (all-cash
+      or near free-and-clear), cashflow = NOI directly, so a genuinely
+      money-losing property reported $0 cashflow and graded "average"
+      instead of "critical" - the one badge meant to warn these buyers off.
+      A mortgaged loser was never affected (debt service alone pushes
+      cashflow negative regardless). Fixed: NOI stays unclamped everywhere
+      it feeds cashflow/CoC/grade; only the displayed cap-rate is floored
+      at 0%.
+- [x] **Gaps 2-3: card verdict vs What-If verdict could disagree.** The
+      What-If sandbox modeled property management %, maintenance reserve %,
+      and closing costs; the shared `compute_deal_metrics()` used by every
+      card/summary surface did not - the same listing could grade
+      "excellent" on its card and "average" in What-If for identical
+      inputs. Owner decision: fold all 3 lines into `compute_deal_metrics()`
+      with What-If's own defaults (mgmt 0%, maintenance 5%, closing $0),
+      so one formula powers every surface. Verified bit-for-bit identical
+      to the JS on a constructed test case; live-checked a property's card
+      and What-If tab now show the same NOI/CoC.
+- Car engine grading: reviewer confirmed correct as-is, no changes needed
+  (median-based comps, mileage adjustment direction, no-comp honesty all
+  verified).
+- Minor notes (no action needed): car comps' "any year" fallback mixes
+  model years without adjustment (acceptable, rare trigger); loan term is
+  hardcoded 30y outside the What-If sandbox (fine, just not user-facing
+  elsewhere).
+
 ---
 
 ## Pre-launch checklist (NOT now — owner's explicit decision)
