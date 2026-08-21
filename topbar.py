@@ -304,7 +304,25 @@ def render_main_topbar(is_guest=False):
             actually reaches the element that needs fixing. */
             div.st-key-topbar_icons_row .st-key-topbar_help_popover_wrap,
             div.st-key-topbar_icons_row .st-key-topbar_alerts_popover_wrap,
-            div.st-key-topbar_icons_row .st-key-topbar_account_popover_wrap {
+            div.st-key-topbar_icons_row .st-key-topbar_account_popover_wrap,
+            div.st-key-topbar_icons_row [class*="st-key-topbar_rentcast_badge_wrap_"] {
+                flex: none !important; width: fit-content !important;
+            }
+            /* The wraps above are GRANDchildren of topbar_icons_row - the
+            REAL direct children are Streamlit's own intermediate wrapper
+            divs, and THEIR flex-basis is what actually reserves each
+            item's horizontal slot in the row. For three same-width 34px
+            circles the fit-content rule above was enough (each wrapper's
+            real content still shrank close enough to 34px that a few
+            stray px of overflow just disappeared into the row's own
+            10px gap) - but the RentCast badge's wider "29/50" pill (65px)
+            overflowed its own ~26px-wide direct-child slot by far more
+            than the gap could absorb, visibly overlapping Help next to
+            it (confirmed live via getBoundingClientRect - badge left
+            edge sat 28px inside Help's right edge). Sizing the true
+            direct children fixes every item's slot at once, badge
+            included, instead of patching the badge alone. */
+            div.st-key-topbar_icons_row > div {
                 flex: none !important; width: fit-content !important;
             }
 
@@ -386,6 +404,41 @@ def render_main_topbar(is_guest=False):
             div.st-key-topbar_alerts_popover_wrap [data-testid="stPopoverButton"]:hover {
                 background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
             }
+
+            /* Admin-only RentCast usage pill - a rounded rectangle (holds
+            text like "29/50", so a same-size circle wouldn't fit it)
+            rather than a fifth identical nav icon. Its color depends on
+            live usage data computed at render time, so the color is baked
+            into the container's own key (green/amber/red variant) and
+            matched here as 3 static rules, instead of injecting a fresh
+            <style> tag inside the wrap on every render - that approach
+            was tried first and broke alignment: the injected tag became
+            an extra sibling inside the wrap's own default column layout,
+            pushing the actual button down and sideways out of the row. */
+            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] {
+                color: white !important; border: none !important;
+                height: 34px !important; min-height: 0 !important; width: auto !important;
+                border-radius: 17px !important; padding: 0 14px !important; flex: none !important;
+                display: flex !important; align-items: center !important; justify-content: center !important;
+                font-weight: 700 !important;
+            }
+            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] p {
+                color: white !important; margin: 0 !important; font-size: 13px !important;
+                font-variant-numeric: tabular-nums !important;
+            }
+            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] div[aria-hidden="true"] {
+                display: none !important;
+            }
+            div.st-key-topbar_rentcast_badge_wrap_green [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+            }
+            div.st-key-topbar_rentcast_badge_wrap_amber [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+            }
+            div.st-key-topbar_rentcast_badge_wrap_red [data-testid="stPopoverButton"] {
+                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+            }
+
             /* position:relative on the alerts wrapper is what lets the
             unread-count badge below overlay the button's corner instead
             of pushing layout around: the badge is a sibling markdown
@@ -520,6 +573,27 @@ def render_main_topbar(is_guest=False):
 
         with col_icons:
             with st.container(key="topbar_icons_row"):
+                # Admin-only RentCast usage badge - computed before Help
+                # renders so it lands right next to it in visual order
+                # ("keep track of it" without opening the alerts bell or
+                # Admin Controls). Same shared-quota framing as the bell's
+                # own threshold warning below, just always-visible instead
+                # of alert-only, so it's read once here and reused for
+                # both instead of querying the DB twice.
+                rentcast_badge_text, rentcast_badge_color, rc_conf = None, None, None
+                if not is_guest and roles.is_admin_or_above(st.session_state.user_role):
+                    rc_conf = db.get_rentcast_config()
+                    if rc_conf["monthly_limit"] > 0:
+                        rc_used = db.get_rentcast_usage_this_month()
+                        rc_pct = (rc_used / rc_conf["monthly_limit"]) * 100
+                        rentcast_badge_text = f"{rc_used}/{rc_conf['monthly_limit']}"
+                        if rc_used >= rc_conf["monthly_limit"]:
+                            rentcast_badge_color = "red"
+                        elif rc_pct >= rc_conf["alert_threshold_pct"]:
+                            rentcast_badge_color = "amber"
+                        else:
+                            rentcast_badge_color = "green"
+
                 with st.container(key="topbar_help_popover_wrap"):
                     with st.popover(":material/help:", help="Help",
                                      key=f"topbar_help_popover_{st.session_state.active_category}"):
@@ -535,6 +609,13 @@ def render_main_topbar(is_guest=False):
                         st.caption("A **deal grade** compares a listing to real market comps - "
                                     "if there isn't enough comparable data, we say so rather than guess.")
 
+                if rentcast_badge_text:
+                    with st.container(key=f"topbar_rentcast_badge_wrap_{rentcast_badge_color}"):
+                        with st.popover(rentcast_badge_text, help=f"RentCast usage this month · {rc_conf['plan_name']} plan",
+                                         key=f"topbar_rentcast_badge_popover_{st.session_state.current_page}"):
+                            st.caption(f"**{rentcast_badge_text}** RentCast calls used this month.")
+                            st.caption(f"Alerts fire at {rc_conf['alert_threshold_pct']}% - adjust in Admin Controls > Pricing.")
+
                 if is_guest:
                     recent_activity = []
                     unread_count = 0
@@ -545,19 +626,12 @@ def render_main_topbar(is_guest=False):
                     last_read = db.get_last_notifications_read_at(st.session_state.user_id)
                     low_credits = st.session_state.user_credits <= 3
 
-                    # Admin-only: the shared RentCast quota is an
-                    # operational concern, not a per-user one, so it's
-                    # surfaced here rather than gated behind Settings like
-                    # the per-user alerts above - same idea as low_credits,
-                    # just for staff instead of every user.
+                    # Same threshold the badge above already computed -
+                    # only the framing differs (a one-time-feeling alert
+                    # inside the bell vs. an always-visible number).
                     rentcast_quota_warning = None
-                    if roles.is_admin_or_above(st.session_state.user_role):
-                        rc_conf = db.get_rentcast_config()
-                        if rc_conf["monthly_limit"] > 0:
-                            rc_used = db.get_rentcast_usage_this_month()
-                            rc_pct = (rc_used / rc_conf["monthly_limit"]) * 100
-                            if rc_pct >= rc_conf["alert_threshold_pct"]:
-                                rentcast_quota_warning = f"RentCast usage at {rc_pct:.0f}% this month ({rc_used}/{rc_conf['monthly_limit']} calls)."
+                    if rentcast_badge_color in ("amber", "red"):
+                        rentcast_quota_warning = f"RentCast usage at {rc_pct:.0f}% this month ({rentcast_badge_text} calls)."
 
                     unread_count = sum(
                         1 for _, _, generated_at in recent_activity
