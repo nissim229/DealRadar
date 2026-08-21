@@ -345,6 +345,19 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
             color: var(--radar-primary) !important;
             background: transparent !important;
         }}
+        /* The address IS the "Focus" control the caption above the card
+        grid refers to - previously styled identically to plain heading
+        text (no color, no underline), so nothing on the card visually
+        promised it was clickable; a user had to blindly hover it to
+        discover the tooltip. The small target icon now gives it the same
+        kind of at-a-glance affordance every other clickable icon in this
+        app already has. */
+        div.st-key-{card_key}_clicktarget button span[role="img"] {{
+            color: var(--radar-primary) !important; font-size: 15px !important;
+        }}
+        div.st-key-{card_key}_clicktarget button:hover span[role="img"] {{
+            color: var(--radar-primary-dark) !important;
+        }}
         div.st-key-{card_key}_favbtn button {{
             border: none !important;
             background: transparent !important;
@@ -414,8 +427,8 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
         info_col, action_col = st.columns([4, 1])
         with info_col:
             with st.container(key=f"{card_key}_clicktarget"):
-                if st.button(address, key=f"{key_prefix}_{idx}", use_container_width=True,
-                             help="Click to focus this property on the map"):
+                if st.button(f":material/center_focus_strong: {address}", key=f"{key_prefix}_{idx}", use_container_width=True,
+                             help="Focus this property on the map"):
                     focus_clicked = True
             info_parts = [f"{row_item.get('beds', '-')} bd", f"{row_item.get('baths', '-')} ba"]
             sqft = row_item.get('sqft')
