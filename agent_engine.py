@@ -354,12 +354,12 @@ def fetch_live_listings(location, property_type, max_price, min_beds, allow_live
     # Safe data type formatting for numeric boundaries calculations
     try:
         max_p = int(max_price[0]) if isinstance(max_price, (tuple, list)) else int(max_price)
-    except:
+    except (TypeError, ValueError):
         max_p = 750000
 
     try:
         min_b = int(min_beds[0]) if isinstance(min_beds, (tuple, list)) else int(min_beds)
-    except:
+    except (TypeError, ValueError):
         min_b = 3
 
     # --- ADVANCED GEOGRAPHIC ROUTING MATRIX ---
