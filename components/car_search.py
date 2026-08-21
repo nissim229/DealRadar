@@ -111,8 +111,9 @@ def _clean_num(value):
     return value
 
 
-def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius, use_live):
+def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius, use_live, fuel_type=None):
     max_price, max_mileage, max_year = _clean_num(max_price), _clean_num(max_mileage), _clean_num(max_year)
+    fuel_type = fuel_type if fuel_type and fuel_type != "Any fuel type" else None
     listings = None
     if use_live:
         listings = car_engine.fetch_live_car_listings(
@@ -120,7 +121,7 @@ def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, z
             model=None if model == "Any model" else model,
             trim=None if trim == "Any trim" else trim,
             min_year=min_year, max_year=max_year, max_price=max_price, max_mileage=max_mileage,
-            zip_code=zip_code or None, radius=radius, user_id=st.session_state.user_id,
+            zip_code=zip_code or None, radius=radius, fuel_type=fuel_type, user_id=st.session_state.user_id,
         )
     if listings is None:
         listings = car_engine.generate_mock_car_listings(
@@ -128,7 +129,7 @@ def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, z
             model=None if model == "Any model" else model,
             trim=None if trim == "Any trim" else trim,
             min_year=min_year, max_year=max_year, max_price=max_price, max_mileage=max_mileage,
-            zip_code=zip_code, count=9,
+            zip_code=zip_code, fuel_type=fuel_type, count=9,
         )
         was_live = False
     else:
@@ -136,7 +137,7 @@ def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, z
 
     st.session_state.car_search_results = listings
     st.session_state.car_search_was_live = was_live
-    criteria_label = _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius)
+    criteria_label = _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius, fuel_type)
     st.session_state.car_search_criteria_label = criteria_label
 
     if st.session_state.get("is_guest"):
@@ -150,8 +151,9 @@ def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, z
     db.save_history_log(st.session_state.user_id, "Car Search", criteria_label, "", was_live=was_live, category="cars")
 
 
-def _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius):
+def _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius, fuel_type=None):
     zip_code = zip_code if isinstance(zip_code, str) else None
+    fuel_type = fuel_type if isinstance(fuel_type, str) and fuel_type != "Any fuel type" else None
     max_price, max_mileage, max_year = _clean_num(max_price), _clean_num(max_mileage), _clean_num(max_year)
     bits = []
     make_model = " ".join(p for p in [None if make == "Any make" else make, None if model == "Any model" else model] if p)
@@ -164,6 +166,8 @@ def _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileag
         bits.append(year_bit)
     if trim and trim != "Any trim":
         bits.append(f"{trim} trim")
+    if fuel_type and fuel_type in car_engine.FUEL_TYPE_DISPLAY:
+        bits.append(car_engine.FUEL_TYPE_DISPLAY[fuel_type][1])
     bits.append(f"under ${max_price:,.0f}" if max_price else "any price")
     bits.append(f"under {max_mileage:,.0f} mi" if max_mileage else "any mileage")
     if zip_code:
@@ -197,15 +201,21 @@ def render_car_search_page(is_guest=False):
         # inside one would keep showing the *previous* Make's model options
         # after picking a new Make (see [[cars-category-feature]]).
         with st.container(key="car_search_action_card"):
-            row1 = st.columns(5)
+            row1 = st.columns(6)
             with row1[0]:
                 make = st.selectbox("Make", ["Any make"] + car_engine.get_available_makes(user_id=st.session_state.user_id), key="car_search_make")
             with row1[1]:
+                fuel_options = ["Any fuel type"] + list(car_engine.FUEL_TYPE_DISPLAY.keys())
+                fuel_type = st.selectbox(
+                    "Fuel Type", fuel_options, key="car_search_fuel_type",
+                    format_func=lambda v: v if v == "Any fuel type" else f"{car_engine.FUEL_TYPE_DISPLAY[v][0]} {car_engine.FUEL_TYPE_DISPLAY[v][1]}",
+                )
+            with row1[2]:
                 model_options = ["Any model"] + (car_engine.get_available_models(make, user_id=st.session_state.user_id) if make != "Any make" else [])
                 if st.session_state.get("car_search_model") not in model_options:
                     st.session_state.car_search_model = "Any model"
                 model = st.selectbox("Model", model_options, key="car_search_model")
-            with row1[2]:
+            with row1[3]:
                 # Trim depends on BOTH Make and Model (Auto.dev's live facets
                 # only return real trims once a specific model is picked -
                 # see car_engine.get_available_trims) - same "outside any
@@ -218,9 +228,9 @@ def render_car_search_page(is_guest=False):
                     st.session_state.car_search_trim = "Any trim"
                 trim = st.selectbox("Trim", trim_options, key="car_search_trim",
                                      help="Populated from real current inventory once a specific Make and Model are picked." if model != "Any model" else "Pick a specific Make and Model first.")
-            with row1[3]:
-                min_year = st.number_input("Year (min)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_min_year", 2018), step=1, key="car_search_min_year")
             with row1[4]:
+                min_year = st.number_input("Year (min)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_min_year", 2018), step=1, key="car_search_min_year")
+            with row1[5]:
                 max_year = st.number_input("Year (max)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_max_year", 2026), step=1, key="car_search_max_year",
                                             help="Together with Year (min) above, this sets a real year range - not just a floor.")
 
@@ -269,7 +279,7 @@ def render_car_search_page(is_guest=False):
                 render_scan_loading_radar("cars")
             try:
                 _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code.strip(), radius,
-                             use_live=(not test_clicked) and not is_guest)
+                             use_live=(not test_clicked) and not is_guest, fuel_type=fuel_type)
             finally:
                 loading_placeholder.empty()
             st.rerun()
@@ -313,6 +323,7 @@ def render_car_search_page(is_guest=False):
                                 car_min_year=int(min_year), car_max_year=int(max_year),
                                 car_max_mileage=int(max_mileage) if max_mileage is not None else None,
                                 car_trim=None if trim == "Any trim" else trim,
+                                car_fuel_type=None if fuel_type == "Any fuel type" else fuel_type,
                             )
                             st.toast(f"Saved '{save_name.strip()}'")
                         else:
@@ -760,7 +771,7 @@ def render_saved_car_searches_page(is_guest=False):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT profile_name, max_price, zip_code, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year "
+            "SELECT profile_name, max_price, zip_code, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year, car_fuel_type "
             "FROM reports WHERE user_id=? AND category='cars' ORDER BY profile_name",
             (int(st.session_state.user_id),),
         )
@@ -774,7 +785,7 @@ def render_saved_car_searches_page(is_guest=False):
         st.info("No saved searches yet - run a search on Find a Car and use \"Save this search\" to bookmark one.", icon=":material/bookmark_border:")
         return
 
-    df = pd.DataFrame(rows, columns=["Profile Name", "Max Price", "ZIP", "Make", "Model", "Min Year", "Max Mileage", "Trim", "Max Year"])
+    df = pd.DataFrame(rows, columns=["Profile Name", "Max Price", "ZIP", "Make", "Model", "Min Year", "Max Mileage", "Trim", "Max Year", "Fuel Type"])
     # `mk or "Any make"` looks right but isn't: a NULL car_make column
     # reads back through pandas as NaN (a float), not None, once the
     # column has any real string values mixed in - and NaN is truthy in
@@ -786,8 +797,9 @@ def render_saved_car_searches_page(is_guest=False):
     # which _criteria_label already applies) - passed through as-is here.
     df["Criteria"] = [
         _criteria_label(mk if isinstance(mk, str) else "Any make", md if isinstance(md, str) else "Any model",
-                         tr if isinstance(tr, str) else "Any trim", yr, my, pr, ml, zp, 50)
-        for mk, md, tr, yr, my, pr, ml, zp in zip(df["Make"], df["Model"], df["Trim"], df["Min Year"], df["Max Year"], df["Max Price"], df["Max Mileage"], df["ZIP"])
+                         tr if isinstance(tr, str) else "Any trim", yr, my, pr, ml, zp, 50,
+                         fuel_type=ft if isinstance(ft, str) else None)
+        for mk, md, tr, yr, my, pr, ml, zp, ft in zip(df["Make"], df["Model"], df["Trim"], df["Min Year"], df["Max Year"], df["Max Price"], df["Max Mileage"], df["ZIP"], df["Fuel Type"])
     ]
     df["Run"] = ":material/travel_explore:"
     df["Delete"] = ":material/delete:"
@@ -809,6 +821,7 @@ def render_saved_car_searches_page(is_guest=False):
         car_make = row["Make"] if isinstance(row["Make"], str) else "Any make"
         car_model = row["Model"] if isinstance(row["Model"], str) else "Any model"
         car_trim = row["Trim"] if isinstance(row["Trim"], str) else "Any trim"
+        car_fuel_type = row["Fuel Type"] if isinstance(row["Fuel Type"], str) else "Any fuel type"
         min_year = int(row["Min Year"]) if pd.notna(row["Min Year"]) else 2018
         max_year = int(row["Max Year"]) if pd.notna(row["Max Year"]) else 2026
         # NULL here is a genuine, saved "Any price"/"Any mileage" pick, not
@@ -822,6 +835,7 @@ def render_saved_car_searches_page(is_guest=False):
         st.session_state.car_search_make = car_make
         st.session_state.car_search_model = car_model
         st.session_state.car_search_trim = car_trim
+        st.session_state.car_search_fuel_type = car_fuel_type
         st.session_state.car_search_min_year = min_year
         st.session_state.car_search_max_year = max_year
         st.session_state.car_search_price_unlimited = max_price is None
@@ -832,7 +846,7 @@ def render_saved_car_searches_page(is_guest=False):
             st.session_state.car_search_max_mileage = max_mileage
         st.session_state.car_search_zip = zip_code
         st.session_state.car_search_radius = 50
-        _run_search(car_make, car_model, car_trim, min_year, max_year, max_price, max_mileage, zip_code, 50, use_live=True)
+        _run_search(car_make, car_model, car_trim, min_year, max_year, max_price, max_mileage, zip_code, 50, use_live=True, fuel_type=car_fuel_type)
         st.session_state.current_page = "Find a Car"
         st.rerun()
 

@@ -397,6 +397,7 @@ def init_db():
             ("car_max_mileage", "INTEGER"),
             ("car_trim", "TEXT"),
             ("car_max_year", "INTEGER"),
+            ("car_fuel_type", "TEXT"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reports ADD COLUMN {column} {col_type}")
@@ -2005,7 +2006,7 @@ def create_super_user_admin(email, password, role="admin"):
 
 def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
                         state=None, cities_json=None, zip_code=None, category=None,
-                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None, car_trim=None, car_max_year=None):
+                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None, car_trim=None, car_max_year=None, car_fuel_type=None):
     """`state`/`cities_json`/`zip_code` are the new structured location
     picker's fields (see location_data.py); left as None for callers that
     still only have a free-text location string (e.g. the legacy path, or
@@ -2026,10 +2027,10 @@ def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year, car_fuel_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (int(user_id), name, loc, int(price) if price is not None else None, int(beds), p_type, email, s_time,
-              state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year))
+              state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year, car_fuel_type))
         conn.commit()
     finally:
         conn.close()

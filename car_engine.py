@@ -167,18 +167,29 @@ FUEL_TYPE_DISPLAY = {
 }
 
 
+FUEL_TYPE_TO_AUTODEV_PARAM = {"ev": "Electric", "phev": "Plug-in Hybrid", "hybrid": "Hybrid", "gas": "Gasoline"}
+
+
 def classify_fuel_type(fuel_raw, engine_raw=None):
     """Buckets Auto.dev's own 'fuel' facet (Electric/Plug-in Hybrid/
-    Gasoline/Diesel/...) plus the free-text 'engine' description into the
-     4 categories a shopper actually thinks in: ev/phev/hybrid/gas.
-    Confirmed live against the real API that Auto.dev's own 'fuel' value
-    does NOT distinguish a regular hybrid from a pure-gas car - a hybrid
-    Prius still comes back fuel='Gasoline', with 'Hybrid' only appearing
-    in the engine text (e.g. '1.8L Hybrid I4 134hp') - so 'fuel' alone
-    isn't enough; regular hybrids have to be sniffed out of engine text.
-    Returns None when there's no fuel data at all (rather than guessing
-    "gas"), so a listing with genuinely unknown fuel type doesn't display
-    a possibly-wrong chip."""
+    Hybrid/Gasoline/Diesel/...) plus the free-text 'engine' description
+    into the 4 categories a shopper actually thinks in: ev/phev/hybrid/gas.
+    Confirmed live against the real API that Auto.dev's 'fuel' value is
+    inconsistent about regular hybrids specifically - a Toyota Sienna
+    listing correctly came back fuel='Hybrid', but a hybrid Prius listing
+    came back fuel='Gasoline' with 'Hybrid' only appearing in the engine
+    text (e.g. '1.8L Hybrid I4 134hp'). This function is the one place
+    that reconciles both signals for DISPLAY, so a mislabeled listing
+    still shows the right chip. Search-time filtering (fetch_live_car_listings's
+    fuel_type param) still passes the request straight through as
+    Auto.dev's own 'vehicle.fuel' param via FUEL_TYPE_TO_AUTODEV_PARAM -
+    faster (server-side, doesn't waste the API's own result limit on
+    irrelevant vehicles) and right for the vast majority of listings; only
+    the rare mislabeled-as-gas hybrid could be missed by a "Hybrid" search
+    filter despite still showing correctly once returned by some other
+    filter combination. Returns None when there's no fuel data at all
+    (rather than guessing "gas"), so a listing with genuinely unknown fuel
+    type doesn't display a possibly-wrong chip."""
     fuel = (fuel_raw or "").lower()
     engine = (engine_raw or "").lower()
     if "plug-in" in fuel or "phev" in fuel:
@@ -223,7 +234,7 @@ def _estimate_market_value(make, model, year, mileage, current_year=2026):
 
 
 def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, max_year=None, max_price=None,
-                                max_mileage=None, zip_code=None, count=6):
+                                max_mileage=None, zip_code=None, fuel_type=None, count=6):
     """Returns a list of mock car listing dicts, each already graded. Every
     field a real listings API would plausibly provide is present (even if
     only mocked) so the results UI and a future real integration share the
@@ -246,6 +257,21 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
     else:
         model_pool = [(mk, m) for mk, models in CAR_CATALOG.items() for m in models]
     candidates = model_pool
+
+    # Same honesty rule as _MOCK_EV_MODELS' own definition: this small
+    # catalog has no real hybrid/plug-in models at all, so filtering to
+    # "hybrid" or "phev" here correctly leaves candidates empty (an
+    # honest 0 mock results) rather than mislabeling an ordinary gas
+    # model as one to satisfy the filter.
+    if fuel_type == "ev":
+        candidates = [c for c in candidates if c in _MOCK_EV_MODELS]
+    elif fuel_type == "gas":
+        candidates = [c for c in candidates if c not in _MOCK_EV_MODELS]
+    elif fuel_type in ("hybrid", "phev"):
+        candidates = []
+
+    if not candidates:
+        return []
 
     # Mock listings have no real dealer to geocode, so - same trick
     # agent_engine.py's own mock property generator uses - resolve one
@@ -512,7 +538,7 @@ def _grade_real_listings(listings):
     return listings
 
 
-def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, trim=None, max_year=None, user_id=None, limit=20):
+def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, trim=None, max_year=None, fuel_type=None, user_id=None, limit=20):
     """Calls Auto.dev's real vehicle-listings API (api.auto.dev/listings)
     and maps the response into this app's internal listing shape - mirrors
     agent_engine.py's _fetch_rentcast_listings: returns None on any failure
@@ -551,6 +577,8 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
             params["vehicle.model"] = model
         if trim and trim != "Any trim":
             params["vehicle.trim"] = trim
+        if fuel_type and fuel_type in FUEL_TYPE_TO_AUTODEV_PARAM:
+            params["vehicle.fuel"] = FUEL_TYPE_TO_AUTODEV_PARAM[fuel_type]
         if max_price:
             params["retailListing.price"] = f"0-{int(max_price)}"
         if zip_code:
