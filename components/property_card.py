@@ -483,7 +483,7 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
                 "calc_target_yield": calc_target_yield, "current_assumptions": current_assumptions,
                 "key_prefix": key_prefix, "idx": idx,
             }
-            _property_detail_dialog()
+            render_property_detail_dialog()
 
         if address:
             mls_number = row_item.get('mls_number')
