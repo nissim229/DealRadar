@@ -79,14 +79,33 @@ def _render_hero_title(title, subtitle, icon_name="car"):
     """, unsafe_allow_html=True)
 
 
-def _run_search(make, model, trim, min_year, max_price, max_mileage, zip_code, radius, use_live):
+def _clean_num(value):
+    """None or a real number stays as-is; NaN (a pandas-read NULL column,
+    read back as a float, not None) becomes None too - `if value:` alone
+    doesn't catch NaN, since NaN is truthy in Python. Same trap already
+    documented for zip_code/make/model in this file, now applied to
+    max_price/max_mileage/max_year, which can be genuinely NULL ("Any
+    price"/"Any mileage" was picked) as well as pandas-NaN once read back
+    from a saved search."""
+    if value is None:
+        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
+
+
+def _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius, use_live):
+    max_price, max_mileage, max_year = _clean_num(max_price), _clean_num(max_mileage), _clean_num(max_year)
     listings = None
     if use_live:
         listings = car_engine.fetch_live_car_listings(
             make=None if make == "Any make" else make,
             model=None if model == "Any model" else model,
             trim=None if trim == "Any trim" else trim,
-            min_year=min_year, max_price=max_price, max_mileage=max_mileage,
+            min_year=min_year, max_year=max_year, max_price=max_price, max_mileage=max_mileage,
             zip_code=zip_code or None, radius=radius, user_id=st.session_state.user_id,
         )
     if listings is None:
@@ -94,7 +113,7 @@ def _run_search(make, model, trim, min_year, max_price, max_mileage, zip_code, r
             make=None if make == "Any make" else make,
             model=None if model == "Any model" else model,
             trim=None if trim == "Any trim" else trim,
-            min_year=min_year, max_price=max_price, max_mileage=max_mileage,
+            min_year=min_year, max_year=max_year, max_price=max_price, max_mileage=max_mileage,
             zip_code=zip_code, count=9,
         )
         was_live = False
@@ -103,7 +122,7 @@ def _run_search(make, model, trim, min_year, max_price, max_mileage, zip_code, r
 
     st.session_state.car_search_results = listings
     st.session_state.car_search_was_live = was_live
-    criteria_label = _criteria_label(make, model, trim, min_year, max_price, zip_code, radius)
+    criteria_label = _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius)
     st.session_state.car_search_criteria_label = criteria_label
 
     if st.session_state.get("is_guest"):
@@ -117,23 +136,22 @@ def _run_search(make, model, trim, min_year, max_price, max_mileage, zip_code, r
     db.save_history_log(st.session_state.user_id, "Car Search", criteria_label, "", was_live=was_live, category="cars")
 
 
-def _criteria_label(make, model, trim, min_year, max_price, zip_code, radius):
-    # zip_code (and in principle min_year/max_price too) can arrive as
-    # NaN from a pandas-read DB column with nulls in it, not just a plain
-    # None - `if zip_code:` alone doesn't catch that, since NaN is truthy
-    # in Python. Confirmed live: rows saved without a ZIP rendered "within
-    # 50 mi of nan" until this normalized it away first.
+def _criteria_label(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code, radius):
     zip_code = zip_code if isinstance(zip_code, str) else None
+    max_price, max_mileage, max_year = _clean_num(max_price), _clean_num(max_mileage), _clean_num(max_year)
     bits = []
     make_model = " ".join(p for p in [None if make == "Any make" else make, None if model == "Any model" else model] if p)
+    year_bit = f"{min_year}+" if min_year else ""
+    if max_year:
+        year_bit = f"{min_year}-{max_year}" if min_year else f"up to {max_year}"
     if make_model:
-        bits.append(f"{min_year}+ {make_model}")
-    elif min_year:
-        bits.append(f"{min_year}+")
+        bits.append(f"{year_bit} {make_model}".strip())
+    elif year_bit:
+        bits.append(year_bit)
     if trim and trim != "Any trim":
         bits.append(f"{trim} trim")
-    if max_price:
-        bits.append(f"under ${max_price:,.0f}")
+    bits.append(f"under ${max_price:,.0f}" if max_price else "any price")
+    bits.append(f"under {max_mileage:,.0f} mi" if max_mileage else "any mileage")
     if zip_code:
         bits.append(f"within {radius} mi of {zip_code}")
     return " · ".join(bits) if bits else "All listings"
@@ -189,26 +207,42 @@ def render_car_search_page(is_guest=False):
             with row1[3]:
                 min_year = st.number_input("Year (min)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_min_year", 2018), step=1, key="car_search_min_year")
             with row1[4]:
-                max_price = st.number_input("Max price ($)", min_value=1000, value=st.session_state.get("car_search_max_price", 30000), step=1000, key="car_search_max_price")
+                max_year = st.number_input("Year (max)", min_value=1990, max_value=2026, value=st.session_state.get("car_search_max_year", 2026), step=1, key="car_search_max_year",
+                                            help="Together with Year (min) above, this sets a real year range - not just a floor.")
 
             row2 = st.columns(4)
             with row2[0]:
-                max_mileage = st.number_input("Max mileage", min_value=0, value=st.session_state.get("car_search_max_mileage", 80000), step=5000, key="car_search_max_mileage")
+                # Every "Any X" checkbox below still renders its number_input
+                # (disabled, not hidden) so the grid's row height doesn't
+                # jump when toggled - but the number_input's own value is
+                # discarded in favor of None once the checkbox is checked,
+                # so a stale/leftover number never silently leaks back in
+                # as a real cap.
+                price_unlimited = st.checkbox("Any price", value=st.session_state.get("car_search_price_unlimited", False), key="car_search_price_unlimited")
+                price_input = st.number_input("Max price ($)", min_value=1000, value=st.session_state.get("car_search_max_price", 30000), step=1000,
+                                               key="car_search_max_price", disabled=price_unlimited)
+                max_price = None if price_unlimited else price_input
             with row2[1]:
-                zip_code = st.text_input("ZIP code", value=st.session_state.get("car_search_zip", ""), placeholder="e.g., 60614", key="car_search_zip")
+                mileage_unlimited = st.checkbox("Any mileage", value=st.session_state.get("car_search_mileage_unlimited", False), key="car_search_mileage_unlimited")
+                mileage_input = st.number_input("Max mileage", min_value=0, value=st.session_state.get("car_search_max_mileage", 80000), step=5000,
+                                                 key="car_search_max_mileage", disabled=mileage_unlimited)
+                max_mileage = None if mileage_unlimited else mileage_input
             with row2[2]:
+                zip_code = st.text_input("ZIP code", value=st.session_state.get("car_search_zip", ""), placeholder="e.g., 60614", key="car_search_zip")
+            with row2[3]:
                 radius_options = [10, 25, 50, 75, 100, 150, 250]
                 radius = st.selectbox("Radius of ZIP (mi)", radius_options,
                                        index=radius_options.index(st.session_state.get("car_search_radius", 50)) if st.session_state.get("car_search_radius", 50) in radius_options else 2,
                                        key="car_search_radius", help="Only applies when a ZIP code is set above - results are limited to within this distance of it.")
-            with row2[3]:
-                st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-                search_clicked = st.button(":material/travel_explore: Search", type="primary", use_container_width=True, key="car_search_btn")
 
+            btn_col1, btn_col2, _ = st.columns([1, 1.4, 2.6])
+            with btn_col1:
+                search_clicked = st.button(":material/travel_explore: Search", type="primary", use_container_width=True, key="car_search_btn")
             test_clicked = False
             if roles.is_staff(st.session_state.user_role):
-                test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn",
-                                          help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
+                with btn_col2:
+                    test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn", use_container_width=True,
+                                              help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
 
         if search_clicked or test_clicked:
             # Same big radar-scope loading state as real estate's Run Live
@@ -220,7 +254,7 @@ def render_car_search_page(is_guest=False):
             with loading_placeholder.container():
                 render_scan_loading_radar("cars")
             try:
-                _run_search(make, model, trim, min_year, max_price, max_mileage, zip_code.strip(), radius,
+                _run_search(make, model, trim, min_year, max_year, max_price, max_mileage, zip_code.strip(), radius,
                              use_live=(not test_clicked) and not is_guest)
             finally:
                 loading_placeholder.empty()
@@ -258,11 +292,12 @@ def render_car_search_page(is_guest=False):
                         if save_name.strip():
                             db.save_report_config(
                                 st.session_state.user_id, save_name.strip(), zip_code or "Nationwide",
-                                int(max_price), 0, None, st.session_state.user_email, "08:00",
+                                max_price, 0, None, st.session_state.user_email, "08:00",
                                 zip_code=zip_code or None, category="cars",
                                 car_make=None if make == "Any make" else make,
                                 car_model=None if model == "Any model" else model,
-                                car_min_year=int(min_year), car_max_mileage=int(max_mileage),
+                                car_min_year=int(min_year), car_max_year=int(max_year),
+                                car_max_mileage=int(max_mileage) if max_mileage is not None else None,
                                 car_trim=None if trim == "Any trim" else trim,
                             )
                             st.toast(f"Saved '{save_name.strip()}'")
@@ -352,7 +387,7 @@ def render_saved_car_searches_page(is_guest=False):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT profile_name, max_price, zip_code, car_make, car_model, car_min_year, car_max_mileage, car_trim "
+            "SELECT profile_name, max_price, zip_code, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year "
             "FROM reports WHERE user_id=? AND category='cars' ORDER BY profile_name",
             (int(st.session_state.user_id),),
         )
@@ -366,17 +401,20 @@ def render_saved_car_searches_page(is_guest=False):
         st.info("No saved searches yet - run a search on Find a Car and use \"Save this search\" to bookmark one.", icon=":material/bookmark_border:")
         return
 
-    df = pd.DataFrame(rows, columns=["Profile Name", "Max Price", "ZIP", "Make", "Model", "Min Year", "Max Mileage", "Trim"])
+    df = pd.DataFrame(rows, columns=["Profile Name", "Max Price", "ZIP", "Make", "Model", "Min Year", "Max Mileage", "Trim", "Max Year"])
     # `mk or "Any make"` looks right but isn't: a NULL car_make column
     # reads back through pandas as NaN (a float), not None, once the
     # column has any real string values mixed in - and NaN is truthy in
     # Python, so `or` never falls through to the default, and
     # _criteria_label's string .join() then chokes on a float. Checking
     # isinstance(..., str) catches both None and NaN the same way.
+    # Max Price/Max Mileage/Max Year are legitimately NULL when "Any
+    # price"/"Any mileage"/no max-year cap was saved (see _clean_num,
+    # which _criteria_label already applies) - passed through as-is here.
     df["Criteria"] = [
         _criteria_label(mk if isinstance(mk, str) else "Any make", md if isinstance(md, str) else "Any model",
-                         tr if isinstance(tr, str) else "Any trim", yr, pr, zp, 50)
-        for mk, md, tr, yr, pr, zp in zip(df["Make"], df["Model"], df["Trim"], df["Min Year"], df["Max Price"], df["ZIP"])
+                         tr if isinstance(tr, str) else "Any trim", yr, my, pr, ml, zp, 50)
+        for mk, md, tr, yr, my, pr, ml, zp in zip(df["Make"], df["Model"], df["Trim"], df["Min Year"], df["Max Year"], df["Max Price"], df["Max Mileage"], df["ZIP"])
     ]
     df["Run"] = ":material/travel_explore:"
     df["Delete"] = ":material/delete:"
@@ -399,18 +437,29 @@ def render_saved_car_searches_page(is_guest=False):
         car_model = row["Model"] if isinstance(row["Model"], str) else "Any model"
         car_trim = row["Trim"] if isinstance(row["Trim"], str) else "Any trim"
         min_year = int(row["Min Year"]) if pd.notna(row["Min Year"]) else 2018
-        max_price = int(row["Max Price"]) if pd.notna(row["Max Price"]) else 30000
-        max_mileage = int(row["Max Mileage"]) if pd.notna(row["Max Mileage"]) else 80000
+        max_year = int(row["Max Year"]) if pd.notna(row["Max Year"]) else 2026
+        # NULL here is a genuine, saved "Any price"/"Any mileage" pick, not
+        # a missing value to paper over with a made-up default (same
+        # distinction _clean_num/_criteria_label already make) - restoring
+        # the checkbox state below is what makes the re-run form honestly
+        # reflect what was actually saved.
+        max_price = int(row["Max Price"]) if pd.notna(row["Max Price"]) else None
+        max_mileage = int(row["Max Mileage"]) if pd.notna(row["Max Mileage"]) else None
         zip_code = row["ZIP"] if isinstance(row["ZIP"], str) else ""
         st.session_state.car_search_make = car_make
         st.session_state.car_search_model = car_model
         st.session_state.car_search_trim = car_trim
         st.session_state.car_search_min_year = min_year
-        st.session_state.car_search_max_price = max_price
-        st.session_state.car_search_max_mileage = max_mileage
+        st.session_state.car_search_max_year = max_year
+        st.session_state.car_search_price_unlimited = max_price is None
+        if max_price is not None:
+            st.session_state.car_search_max_price = max_price
+        st.session_state.car_search_mileage_unlimited = max_mileage is None
+        if max_mileage is not None:
+            st.session_state.car_search_max_mileage = max_mileage
         st.session_state.car_search_zip = zip_code
         st.session_state.car_search_radius = 50
-        _run_search(car_make, car_model, car_trim, min_year, max_price, max_mileage, zip_code, 50, use_live=True)
+        _run_search(car_make, car_model, car_trim, min_year, max_year, max_price, max_mileage, zip_code, 50, use_live=True)
         st.session_state.current_page = "Find a Car"
         st.rerun()
 

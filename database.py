@@ -396,6 +396,7 @@ def init_db():
             ("car_min_year", "INTEGER"),
             ("car_max_mileage", "INTEGER"),
             ("car_trim", "TEXT"),
+            ("car_max_year", "INTEGER"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reports ADD COLUMN {column} {col_type}")
@@ -2004,7 +2005,7 @@ def create_super_user_admin(email, password, role="admin"):
 
 def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
                         state=None, cities_json=None, zip_code=None, category=None,
-                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None, car_trim=None):
+                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None, car_trim=None, car_max_year=None):
     """`state`/`cities_json`/`zip_code` are the new structured location
     picker's fields (see location_data.py); left as None for callers that
     still only have a free-text location string (e.g. the legacy path, or
@@ -2015,15 +2016,20 @@ def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
     cars category existed, or "cars" for one built from the car-criteria
     form - car_* fields are only ever set together with category="cars";
     property_type/min_beds stay whatever the caller passes (car searches
-    pass p_type=None, beds=0) since they're meaningless for that category."""
+    pass p_type=None, beds=0) since they're meaningless for that category.
+
+    price/car_max_mileage may be None - "Any price"/"Any mileage" picked on
+    the car search form, a real, intentional "no cap" rather than a
+    missing value. max_price has no NOT NULL constraint, so this persists
+    as a real NULL, not a fake numeric sentinel."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (int(user_id), name, loc, int(price), int(beds), p_type, email, s_time, state, cities_json, zip_code,
-              category, car_make, car_model, car_min_year, car_max_mileage, car_trim))
+            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (int(user_id), name, loc, int(price) if price is not None else None, int(beds), p_type, email, s_time,
+              state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim, car_max_year))
         conn.commit()
     finally:
         conn.close()

@@ -181,16 +181,23 @@ def _estimate_market_value(make, model, year, mileage, current_year=2026):
     return max(2500, round(value, -2))
 
 
-def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, max_price=None,
+def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, max_year=None, max_price=None,
                                 max_mileage=None, zip_code=None, count=6):
     """Returns a list of mock car listing dicts, each already graded. Every
     field a real listings API would plausibly provide is present (even if
     only mocked) so the results UI and a future real integration share the
-    exact same shape - see CarListing-shaped keys below."""
-    min_year = min_year or 2016
-    max_price = max_price or 45000
-    max_mileage = max_mileage or 90000
+    exact same shape - see CarListing-shaped keys below.
+
+    max_price/max_mileage=None means "Any price"/"Any mileage" was picked -
+    genuinely uncapped, NOT "not specified, use a default". The old
+    `max_price or 45000` pattern silently collapsed those two different
+    meanings into one (an explicit 0/None both read as falsy), so picking
+    "Any price" would have quietly re-capped every mock listing at 45000
+    anyway - a real bug this rewrite avoids: the price/mileage clip below
+    is skipped entirely on None instead of substituting a fallback ceiling."""
     current_year = 2026
+    min_year = min_year if min_year is not None else 2016
+    max_year = max_year if max_year is not None else current_year
 
     candidates = []
     if make and make in CAR_CATALOG:
@@ -215,8 +222,12 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
     listings = []
     for i in range(count):
         pick_make, pick_model = random.choice(candidates)
-        year = random.randint(min_year, current_year)
-        mileage = random.randint(5000, max_mileage)
+        year = random.randint(min_year, max_year) if max_year >= min_year else min_year
+        # random.randint needs a real upper bound even for "Any mileage" -
+        # 150000 is just a generous ceiling for generating a plausible
+        # number, not a cap applied to the result (there's no clipping
+        # step for mileage the way there is for price below).
+        mileage = random.randint(5000, max_mileage if max_mileage is not None else 150000)
         market_value = _estimate_market_value(pick_make, pick_model, year, mileage, current_year)
 
         # Skew toward realistic listing prices clustered around market
@@ -225,7 +236,7 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
         # produce a believable "most listings are close to fair, a few
         # stand out" distribution.
         price = max(2000, round(market_value * random.uniform(0.78, 1.15), -2))
-        if price > max_price:
+        if max_price is not None and price > max_price:
             price = round(max_price * random.uniform(0.85, 1.0), -2)
 
         metrics = compute_car_deal_metrics(price, market_value)
@@ -429,7 +440,7 @@ def _grade_real_listings(listings):
     return listings
 
 
-def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, trim=None, user_id=None, limit=20):
+def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, trim=None, max_year=None, user_id=None, limit=20):
     """Calls Auto.dev's real vehicle-listings API (api.auto.dev/listings)
     and maps the response into this app's internal listing shape - mirrors
     agent_engine.py's _fetch_rentcast_listings: returns None on any failure
@@ -460,7 +471,7 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
             # payment or placeholder value leaking into the price field
             # upstream, not something this app can fix). The default sort
             # returns a normal, plausible-priced sample instead.
-            "vehicle.year": f"{min_year or current_year - 10}-{current_year}",
+            "vehicle.year": f"{min_year or current_year - 10}-{max_year or current_year}",
         }
         if make and make != "Any make":
             params["vehicle.make"] = make
