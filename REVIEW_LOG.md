@@ -355,3 +355,208 @@ pytest rerun) - all held up exactly as stated.
 
 Full suite after both: **14 passed** (test count unchanged - these were
 additional assertions in the existing test, not new tests).
+
+---
+
+## Entry 4 — FIXLIST.md Section 5, pre-split cleanup (2026-08-21)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commits:
+- `6ca678d` - resolve the untracked `.agents/`/`.claude/skills/`/
+  `.claude/settings.local.json` decision
+- `272205d` - widen mock street-name variety to every city
+- `8031062` - make Auto.dev's monthly limit admin-editable
+
+### `6ca678d`: untracked-file decision
+
+`.agents/` and `.claude/skills/` turned out to be real Windows symlinks
+into `venv/site-packages/streamlit/...` (confirmed via `Get-Item` before
+acting) - committing a symlink on Windows is fragile and goes dangling on
+a fresh clone, so both got added to `.gitignore` instead of tracked.
+`.claude/settings.local.json` is a real file (just the `Bash(git push:*)`
+permission rule, no secrets) - committed normally.
+
+### `272205d`: mock street-name generalization
+
+`agent_engine.py`'s mock-data generator had per-city hardcoded street
+lists for exactly the 4 cities in `GUEST_QUICK_SEARCH_CITIES` (Denver,
+Austin, Miami, Boulder - the guest first-scan fast path), falling back to
+a generic 5-name list everywhere else. Merged into one 24-name
+`MOCK_STREET_NAMES` pool assigned unconditionally before the city-match
+branch, so no code path can still reach the old generic list. Deliberately
+did **not** touch the 4-city coordinate cache itself (removing it would
+put a live Nominatim geocoding call on an anonymous visitor's very first
+scan) - scope was "generalize the variety, keep the reliability
+optimization."
+
+### `8031062`: Auto.dev admin-editable limit
+
+Auto.dev's monthly call cap was a flat `1000` constant in `car_engine.py`,
+inconsistent with RentCast/Places/OpenAI's already-admin-editable configs.
+Added `get_autodev_config()`/`update_autodev_config()` to `database.py`
+(same `app_settings`-backed upsert-and-finally shape as the other three
+setters, default `1000` matching the old constant), updated both gate
+sites in `car_engine.py` to read the config at call time, and wired the
+value into `topbar.py`'s usage badge/tooltip and `admin_controls.py`'s
+usage card + a new Pricing tab config form. Verified live: set the limit
+to 1500 in Admin Controls, confirmed the topbar badge and gate both
+picked it up without a restart, reset to 1000.
+
+### Reviewer Feedback (Entry 4)
+
+**Verdict: approved**, all three commits confirmed. Spot-verified two of
+the reviewer's central claims myself before folding this in (per this
+log's practice of not trusting external-reviewer claims blindly): the
+`.gitignore` really does list `.agents/` and `.claude/skills/` and
+`git check-ignore` confirms both paths resolve as ignored; and
+`GUEST_QUICK_SEARCH_CITIES` (now living in
+`components/analytics_scan_form.py` after Entry 5's split) is still
+exactly Denver/Austin/Miami/Boulder, matching the reviewer's cross-check.
+
+- `6ca678d`: confirmed correct - symlink claim verified on disk, permission
+  file confirmed secret-free.
+- `272205d`: confirmed, and the reviewer noted the scope judgment (widen
+  variety, keep the coordinate-cache optimization) was better than
+  FIXLIST's literal wording.
+- `8031062`: confirmed complete and pattern-consistent with the other
+  three provider configs across all four touched files; no DB-layer
+  validation on the new setter was flagged as consistent with the
+  existing three setters, not a gap.
+- Two informational-only observations, neither requiring action:
+  `MOCK_STREET_NAMES` is rebuilt per call (negligible cost, pure style);
+  the live threshold-toggle verification can't be re-run from the diff
+  alone but the end state (default resolves to 1000) is consistent.
+- Also reviewed in passing: `cdb5e39` (Entry 3 bookkeeping) and `ff13d2e`
+  (Entry 3's two optional hardening notes) - both confirmed as intended.
+
+### What to check (Entry 5, since this entry is already closed out)
+
+Nothing further here - see Entry 5 below for the follow-on monolith-split
+work this entry's own "Remaining Section 5 work" note flagged.
+
+---
+
+## Entry 5 — FIXLIST.md Section 5, monolith split (2026-08-21)
+
+**Status**: Pending review
+
+The three files FIXLIST.md Section 5 flagged as "fine to defer, cosmetic"
+- `topbar.py` (785 lines), `database.py` (2780 lines, 127 functions), and
+`components/analytics.py` (2194 lines, 29 functions) - all split into a
+thin **facade** (the original file, kept at its exact path so every
+existing `import database as db`/`from components.analytics import
+X`/`from topbar import render_main_topbar` call site needed zero changes)
+plus flat sibling modules holding the real code. 28 commits, one per
+extraction step, each independently verified (`py_compile`, the full
+`pytest` suite, a functional/import check, and - for every step - a live
+browser check of the specific feature just moved) before being committed.
+Full commit range: `38c560f`..`b201b4c`.
+
+### `topbar.py` (785 -> 306 lines)
+
+- `38c560f` - the ~481-line static `TOPBAR_CSS` block extracted verbatim
+  into `topbar_styles.py`; `topbar.py` imports the constant and calls
+  `st.markdown()` at the exact same call site relative to `main.py`'s
+  theme-injection calls (CSS-specificity ordering untouched). Deliberately
+  **not** further decomposed - `render_main_topbar`'s dynamic popover
+  `key=` f-strings (built from live `session_state` so popovers auto-close
+  on navigation) and its 7 paired `st.rerun()` calls are fragile-but-
+  load-bearing patterns not worth the risk for a readability-only gain.
+
+### `database.py` (2780 -> 223 lines), 13 domain modules + schema split
+
+Sequenced lowest-risk-first: `database_crypto.py` + `database_shared.py`
+first (the only group `tests/test_auth.py` exercises directly - validates
+the whole facade pattern before anything else depends on it), then
+`database_settings.py` -> `database_dashboard.py` -> `database_oauth.py`
+-> `database_profile.py` -> `database_reports.py` + `database_geocache.py`
+-> `database_history.py` -> `database_saved_properties.py` ->
+`database_portfolio.py` -> `database_billing.py` -> `database_admin.py` ->
+`database_auth.py`, finally `database_schema.py` (`init_db()` decomposed
+into 22 ordered helper functions, done last once every domain boundary was
+settled).
+
+Two load-bearing constraints verified before starting, both held for
+every step:
+- **Flat siblings, never a package** - `DB_NAME`/`_ENV_PATH`/
+  `PORTFOLIO_UPLOADS_DIR` are all `__file__`-relative; a `database/`
+  package would resolve these one directory too deep.
+- **Cross-module calls go through `database.func()`**, never a bare name
+  or a direct import of the concrete module - new sibling modules do
+  `import database` and read `database.DB_NAME`/`database.hash_password()`
+  etc. at call time, preserving `tests/test_auth.py`'s
+  `monkeypatch.setattr(db, "DB_NAME", ...)` pattern and working regardless
+  of extraction order (verified directly: `database_oauth.py` calls
+  `database.get_user_by_email()` before that function had even been
+  extracted yet, and it still resolved correctly).
+
+Highest-risk single step, `4071301` (`init_db()` -> `database_schema.py`):
+verified with a dedicated diff script confirming **0 mismatches across
+387 statement lines** between the original function body and the 22 new
+helpers, plus an idempotency check (`init_db()` called twice against a
+temp DB, no duplicate master-admin or credit packages) and a fresh-install
+smoke test (21 tables + `sqlite_sequence` created correctly). `6089faa`
+(`database_billing.py`) specifically re-verified `plan_limits.py`'s
+pre-existing lazy `import database as db` circular-import workaround
+still resolves `get_credit_packages()`/`update_credit_package()` correctly
+through the facade.
+
+### `components/analytics.py` (2194 -> 16 lines), 9 sibling modules
+
+`11cc6dd` atoms -> `7f0ad5b` dialogs -> `e37d1e0` map -> `603c567` scan
+form -> `9633e03` scan engine, then the plan's explicitly-flagged riskiest
+unit in the whole scope - `_render_scan_results` (588 lines, zero test
+coverage) - split as its own multi-step sequence: `ab7fb19` extracted the
+quick-filter toolbar first as pure extract-method (verified and committed
+alone before touching any view branch, per the plan's own instruction),
+then each of the 4 view-mode branches one at a time (`1e8aac1` Properties
+Only, `26ddea1` Properties + Map, `c6d876a` Map Only, `527910a` Table
+View - the last of which carries `st.session_state.property_dialog_ctx`,
+a real producer/consumer contract with `components/property_card.py`,
+verified to keep its exact key name). `03576c3` then relocated the whole
+toolbar+4-views+orchestrator group into `components/analytics_results.py`
+in one file move. `0dadfc8` history -> `7edeeed` saved properties ->
+`b201b4c` the top-level `render_analytics_dashboard` orchestrator (widest
+fan-in of the whole split) into `components/analytics_dashboard.py`,
+leaving `components/analytics.py` as a 16-line pure facade re-exporting
+exactly the 5 names other files still import directly (`main.py`'s
+`render_analytics_dashboard`/`render_history_page`,
+`components/portfolio.py`'s `render_empty_state`/`render_stat_card`,
+`components/car_search.py`'s `build_clustered_map_data`).
+
+### Verification applied to every one of the 28 steps
+
+`py_compile` on every touched file, the full `pytest` suite (all 14 tests
+in `tests/test_auth.py` stayed green after every single step, not just
+`database.py`'s own steps), `git diff --stat` confirming only the intended
+file(s) changed, and a live browser check scoped to whatever moved that
+step (a specific view mode, the History archived-scan viewer, the Saved
+Properties card grid, etc.) - logged in each commit message. The final
+step additionally re-ran a fuller smoke check across the whole app (guest
+dashboard auto-scan, sign-in as a real test account, sign-in as
+super-admin - Pro underwriter console, all 3 usage badges, Admin Controls
+dashboard - and My Portfolio) since it was the widest-reaching change in
+the whole plan.
+
+### What to check
+
+- Spot-check a handful of the 28 commits' diffs directly - are these pure
+  moves (facade re-export + sibling file), or did any step's line-count
+  change hide an actual logic edit?
+- `database_schema.py`: is the 387-line diff-verification script's
+  approach (excluding the dispatcher wholesale by slicing at
+  `def init_db():` rather than filtering by string content) actually sound,
+  or could it have a blind spot the same way the first version's `"try:"`
+  string-filter did?
+- Cross-module reference pattern: spot-check a few of the `database.func()`
+  / `analytics_atoms.func()` calls in the new sibling files - correct
+  target module in every case, no accidental bare-name reference that
+  would only work by import-order luck?
+- `_render_scan_results`'s 4-branch split: does `property_dialog_ctx`
+  really carry an unchanged key/shape into `components/property_card.py`
+  across all 4 view-mode functions, or did the explicit-parameter
+  refactor subtly change what's in the dict for any one of them?
+- Is the final `components/analytics.py` facade's 5-name re-export list
+  actually complete - any other file in the repo importing a 6th name
+  from `components.analytics` that got missed?
