@@ -319,3 +319,39 @@ Full suite: **14 passed** (was 13; +1 from the register_user test).
   in this entry where doing nothing was the deliberate choice.
 - Is the register_user() test's coverage sufficient, or is there a gap in
   how it exercises the real entry point?
+
+### Reviewer Feedback (Entry 3)
+
+**Verdict: approved**, all 5 items confirmed. Every claim independently
+re-verified before recording here (handler counts by file, remaining
+strategy_config references, register_user's IntegrityError path, a full
+pytest rerun) - all held up exactly as stated.
+
+- strategy_config sweep: confirmed, zero remaining source references
+  outside the one intentionally-left site.
+- 24-site audit scope: confirmed correct via the reviewer's own
+  independent recount (exact per-file breakdown matched).
+- Print-vs-comment judgment calls: confirmed reasonable, no site flagged
+  for re-litigation.
+- **Section 4: confirmed via independent AST analysis** (not just string/
+  count matching) - parsed `database.py` directly, confirmed all 109
+  `sqlite3.connect()` sites are direct assignments each paired with a
+  `try:/finally:` that closes that exact variable, zero exceptions. The
+  "no code change needed" conclusion holds.
+- register_user test: confirmed sufficient for its stated scope.
+
+**Two optional hardening notes, both taken** (commit `ff13d2e`):
+1. **`conn.row_factory` micro-caveat** (informational, not a defect): 3
+   functions (`get_portfolio_properties`, `get_tenants`, `get_documents`)
+   placed that one assignment between `connect()` and `try:` - couldn't
+   practically fail today, but a future edit inserting something fallible
+   there would escape the `finally`. Moved inside `try:` in all three;
+   smoke-tested against a temp DB afterward (no exceptions, correct
+   empty-list results).
+2. **register_user test additions**: now also asserts the legacy `name`
+   column stays correctly in sync via `_combine_name()` (no stray double
+   space with an empty middle name) and that every new signup seeds
+   exactly 3 free credits.
+
+Full suite after both: **14 passed** (test count unchanged - these were
+additional assertions in the existing test, not new tests).
