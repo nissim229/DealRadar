@@ -57,80 +57,18 @@ from components.analytics_scan_engine import (
 )
 
 
-def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
-                          calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                          calc_down_pct, calc_interest, calc_target_yield,
-                          show_preview_notice=False, pdf_button_label="Export Report to Document PDF / Print",
-                          pdf_filename_prefix="DealRadar_Report", is_guest=False):
-    """The full scan-results view (report, best-deal banner, view toggle,
-    quick filters, deal-grade chips, distance reference, property
-    cards/map in all three view modes, Pro underwriting tabs, PDF export) -
-    shared by both the just-ran live scan (analytics_tab1) and a selected
-    History entry (analytics_tab2), so browsing your history looks exactly
-    like the scan just happened, not a stripped-down summary.
+def _render_quick_filter_toolbar(key_prefix, coords_json):
+    """The one compact, icon-driven toolbar row for scan results: view-
+    mode icon cluster, distance-reference popover, and price/beds/baths/
+    deal-grade quick filters. Extracted out of _render_scan_results as
+    step 1 of splitting that function (Section 5 monolith-split plan) -
+    a pure extract-method, same CSS/key= strings, same logic, just drawn
+    into its own named boundary with an explicit return value instead of
+    falling straight through into the view-mode branches that used to
+    follow it in the same function body.
 
-    key_prefix must be unique per call site active in the same script run
-    (e.g. "live" vs f"hist_{log_id}") - every internal widget/session_state
-    key below is namespaced with it so two calls in the same run (live scan
-    still showing, plus a history row selected) never collide."""
-    if view_mode == "Pro":
-        with st.expander(":material/description: Full Written Report", expanded=False):
-            st.markdown(report_body)
-
-    try:
-        _header_count = len(json.loads(coords_json))
-    except Exception as e:
-        print(f"[Analytics] Failed to parse coords_json for results header count: {e}")
-        _header_count = 0
-    match_word = "Match" if _header_count == 1 else "Matches"
-
-    # Header + any preview/sample-data note share ONE compact line instead
-    # of a heading followed by a full-width colored st.info box each -
-    # real feedback was that these notices "take too much space" and
-    # "disturb the results view" for what's ultimately a small aside, not
-    # a headline-level message.
-    header_line = f"**:material/apartment: {profile_name}** — {_header_count} {match_word}"
-    preview_note = None
-    if show_preview_notice and st.session_state.get("last_scan_was_preview"):
-        if is_guest:
-            preview_note = "sample data as a guest - sign in for real listings"
-        elif st.session_state.get("last_scan_was_test"):
-            preview_note = "sample data (Test Scan) - no RentCast quota used"
-        else:
-            preview_note = "sample data - out of credits"
-    if preview_note:
-        st.caption(f"{header_line} · :material/visibility: {preview_note}")
-        if show_preview_notice and st.session_state.get("last_scan_was_preview") and not is_guest and not st.session_state.get("last_scan_was_test"):
-            if st.button(":material/add_card: Buy Credits", key=f"{key_prefix}_results_buy_credits_btn"):
-                pricing.render_pricing_dialog()
-    else:
-        st.caption(header_line)
-
-    best_deal_coc, best_deal_address = None, None
-    try:
-        _best_deal_points = json.loads(coords_json)
-        for p in _best_deal_points:
-            m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                      calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                      hoa_monthly=_safe_hoa(p))
-            if best_deal_coc is None or m["coc"] > best_deal_coc:
-                best_deal_coc, best_deal_address = m["coc"], p.get("address", "")
-    except Exception as e:
-        # A crash here looks identical to "no best deal" to the user (the
-        # banner just doesn't show) - logged so that silent-but-honest
-        # case (see [[feedback_honest_deal_grading]]) can be told apart
-        # from an actual bug in the data or the metrics computation.
-        print(f"[Analytics] Best-deal computation failed: {e}")
-
-    if best_deal_coc is not None and best_deal_coc > 0:
-        st.markdown(f"""
-            <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;'>
-                <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
-                <span style='font-weight:700; color:#065f46;'>Best deal in this scan:</span>
-                <span style='color:#065f46;'>{best_deal_coc:.1f}% cash-on-cash return at {best_deal_address}</span>
-            </div>
-        """, unsafe_allow_html=True)
-
+    Returns (view_toggle, filter_min_price, filter_max_price,
+    filter_min_beds, filter_min_baths, filter_grades)."""
     # One compact, icon-driven toolbar instead of several stacked rows
     # (a view-mode radio with long text labels, a permanently-visible
     # "set a distance reference" expander header, a price/beds/baths pill
@@ -323,6 +261,86 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                 print(f"[Analytics] Quick-filter toolbar failed to render: {e}")
 
     view_toggle = st.session_state[view_mode_state_key]
+    return view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades
+
+
+def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
+                          calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                          calc_down_pct, calc_interest, calc_target_yield,
+                          show_preview_notice=False, pdf_button_label="Export Report to Document PDF / Print",
+                          pdf_filename_prefix="DealRadar_Report", is_guest=False):
+    """The full scan-results view (report, best-deal banner, view toggle,
+    quick filters, deal-grade chips, distance reference, property
+    cards/map in all three view modes, Pro underwriting tabs, PDF export) -
+    shared by both the just-ran live scan (analytics_tab1) and a selected
+    History entry (analytics_tab2), so browsing your history looks exactly
+    like the scan just happened, not a stripped-down summary.
+
+    key_prefix must be unique per call site active in the same script run
+    (e.g. "live" vs f"hist_{log_id}") - every internal widget/session_state
+    key below is namespaced with it so two calls in the same run (live scan
+    still showing, plus a history row selected) never collide."""
+    if view_mode == "Pro":
+        with st.expander(":material/description: Full Written Report", expanded=False):
+            st.markdown(report_body)
+
+    try:
+        _header_count = len(json.loads(coords_json))
+    except Exception as e:
+        print(f"[Analytics] Failed to parse coords_json for results header count: {e}")
+        _header_count = 0
+    match_word = "Match" if _header_count == 1 else "Matches"
+
+    # Header + any preview/sample-data note share ONE compact line instead
+    # of a heading followed by a full-width colored st.info box each -
+    # real feedback was that these notices "take too much space" and
+    # "disturb the results view" for what's ultimately a small aside, not
+    # a headline-level message.
+    header_line = f"**:material/apartment: {profile_name}** — {_header_count} {match_word}"
+    preview_note = None
+    if show_preview_notice and st.session_state.get("last_scan_was_preview"):
+        if is_guest:
+            preview_note = "sample data as a guest - sign in for real listings"
+        elif st.session_state.get("last_scan_was_test"):
+            preview_note = "sample data (Test Scan) - no RentCast quota used"
+        else:
+            preview_note = "sample data - out of credits"
+    if preview_note:
+        st.caption(f"{header_line} · :material/visibility: {preview_note}")
+        if show_preview_notice and st.session_state.get("last_scan_was_preview") and not is_guest and not st.session_state.get("last_scan_was_test"):
+            if st.button(":material/add_card: Buy Credits", key=f"{key_prefix}_results_buy_credits_btn"):
+                pricing.render_pricing_dialog()
+    else:
+        st.caption(header_line)
+
+    best_deal_coc, best_deal_address = None, None
+    try:
+        _best_deal_points = json.loads(coords_json)
+        for p in _best_deal_points:
+            m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                      calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                      hoa_monthly=_safe_hoa(p))
+            if best_deal_coc is None or m["coc"] > best_deal_coc:
+                best_deal_coc, best_deal_address = m["coc"], p.get("address", "")
+    except Exception as e:
+        # A crash here looks identical to "no best deal" to the user (the
+        # banner just doesn't show) - logged so that silent-but-honest
+        # case (see [[feedback_honest_deal_grading]]) can be told apart
+        # from an actual bug in the data or the metrics computation.
+        print(f"[Analytics] Best-deal computation failed: {e}")
+
+    if best_deal_coc is not None and best_deal_coc > 0:
+        st.markdown(f"""
+            <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;'>
+                <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
+                <span style='font-weight:700; color:#065f46;'>Best deal in this scan:</span>
+                <span style='color:#065f46;'>{best_deal_coc:.1f}% cash-on-cash return at {best_deal_address}</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades = (
+        _render_quick_filter_toolbar(key_prefix, coords_json)
+    )
 
     focused_key = f"{key_prefix}_focused_card_index"
     if focused_key not in st.session_state:
