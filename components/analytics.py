@@ -388,7 +388,11 @@ def _render_mini_results_strip(coords_json, calc_rent, calc_vacancy_pct, calc_ta
         return
     try:
         points = json.loads(coords_json)
-    except Exception:
+    except Exception as e:
+        # coords_json is produced by this app's own scan pipeline (not
+        # user input), so a parse failure here means real corruption or an
+        # upstream bug - worth knowing about, not just a quietly-empty strip.
+        print(f"[Analytics] Failed to parse coords_json in mini results strip: {e}")
         return
     if not points:
         return
@@ -723,7 +727,8 @@ def _execute_scan(criteria, run_clicked, test_clicked, active_category):
 
         st.success("Scan complete!")
         st.rerun()
-    except Exception:
+    except Exception as e:
+        print(f"[Analytics] Live scan execution failed: {e}")
         st.error("Something went wrong running this scan. Please try again.")
     finally:
         loading_placeholder.empty()
@@ -834,7 +839,8 @@ def _render_clustered_results_map(coords_json, key_prefix, view_mode, calc_rent,
                                            "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
         else:
             st.info("Click a pin above to see that property's price, deal grade, and full details.", icon=":material/lightbulb:")
-    except Exception:
+    except Exception as e:
+        print(f"[Analytics] Split-view map render failed: {e}")
         st.caption("Unable to load the map for this scan.")
 
 
@@ -860,7 +866,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
 
     try:
         _header_count = len(json.loads(coords_json))
-    except Exception:
+    except Exception as e:
+        print(f"[Analytics] Failed to parse coords_json for results header count: {e}")
         _header_count = 0
     match_word = "Match" if _header_count == 1 else "Matches"
 
@@ -895,8 +902,12 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                       hoa_monthly=_safe_hoa(p))
             if best_deal_coc is None or m["coc"] > best_deal_coc:
                 best_deal_coc, best_deal_address = m["coc"], p.get("address", "")
-    except Exception:
-        pass
+    except Exception as e:
+        # A crash here looks identical to "no best deal" to the user (the
+        # banner just doesn't show) - logged so that silent-but-honest
+        # case (see [[feedback_honest_deal_grading]]) can be told apart
+        # from an actual bug in the data or the metrics computation.
+        print(f"[Analytics] Best-deal computation failed: {e}")
 
     if best_deal_coc is not None and best_deal_coc > 0:
         st.markdown(f"""
@@ -1091,8 +1102,12 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                         label_visibility="collapsed", help="Deal grade - all shown by default, click one to hide it",
                     )
                     filter_grades = [grade_key_by_label[label] for label in (picked_grade_labels or [])]
-            except Exception:
-                pass
+            except Exception as e:
+                # A failure anywhere in this block silently drops the whole
+                # quick-filter toolbar (price/beds/baths/grade pills) with
+                # no visible sign anything went wrong - logged so a UI
+                # regression here doesn't go unnoticed indefinitely.
+                print(f"[Analytics] Quick-filter toolbar failed to render: {e}")
 
     view_toggle = st.session_state[view_mode_state_key]
 
@@ -1148,7 +1163,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                                           "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
                                     st.session_state[focused_key] = None if is_focused else idx
                                     st.rerun()
-            except Exception:
+            except Exception as e:
+                print(f"[Analytics] Properties-only grid render failed: {e}")
                 st.caption("Unable to load property listings for this scan.")
 
     elif view_toggle == ":material/splitscreen: Properties + Map":
@@ -1247,7 +1263,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     )
                     fig_map.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
                     st.plotly_chart(fig_map, use_container_width=True, key=f"{key_prefix}_scatter_map", config={"displayModeBar": True, "scrollZoom": True})
-            except Exception:
+            except Exception as e:
+                print(f"[Analytics] Map Only view render failed: {e}")
                 st.caption("Unable to load the map for this scan.")
 
     elif view_toggle == ":material/map: Map Only":  # full-width map, click a pin to see that property's details
@@ -1400,7 +1417,8 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                 "key_prefix": f"{key_prefix}_table_view_dialog", "idx": idx,
                             }
                             render_property_detail_dialog()
-            except Exception:
+            except Exception as e:
+                print(f"[Analytics] Table view render failed: {e}")
                 st.caption("Unable to load the table for this scan.")
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1560,7 +1578,8 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
                     grade_counts[m["grade"]] += 1
                 grades_str = f"🟢{grade_counts['excellent']} 🟡{grade_counts['average']} 🔴{grade_counts['critical']}"
                 return str(len(pts)), price_range, grades_str
-            except Exception:
+            except Exception as e:
+                print(f"[Analytics] History row summary failed: {e}")
                 return "-", "-", "-"
 
         summaries = df_hist_page["Hidden Coordinates"].apply(_summarize_history_row)
@@ -1822,6 +1841,13 @@ def render_analytics_dashboard(is_guest=False):
                         # because this sidebar has no HOA input of its own.
                         default_sidebar_hoa = _safe_hoa(parsed_pts[clicked_row_idx])
                     except Exception:
+                        # Deliberately silent: a stale selection index (the
+                        # grid's row selection can briefly point past the
+                        # end of parsed_pts during a rerun transition, e.g.
+                        # right after a fresh scan replaces the data) is an
+                        # expected, harmless race here - falling back to a
+                        # generic preview price is the correct UX, not a
+                        # bug worth surfacing every time it happens.
                         default_sidebar_price = 500000
                         default_sidebar_hoa = 0
                 else:
@@ -1917,8 +1943,12 @@ def render_analytics_dashboard(is_guest=False):
 
                 total_value = sum(p["price"] for p in _pts)
                 total_value_display = f"${total_value:,.0f}"
-        except Exception:
-            pass
+        except Exception as e:
+            # These three feed the hero's prominent stat cards (Best Deal/
+            # Deals Meeting Target/Total Value) - a crash here silently
+            # falls back to their empty-state display, so it's logged
+            # rather than left indistinguishable from "no scan run yet".
+            print(f"[Analytics] Hero stat card computation failed: {e}")
 
     st.markdown("""
         <style>

@@ -60,6 +60,10 @@ def format_local_datetime(utc_str, tz_name=None, fmt="%b %d, %Y %I:%M %p"):
         try:
             return aware_utc.astimezone(ZoneInfo(tz_name)).strftime(fmt)
         except Exception:
+            # Deliberately silent: an invalid/removed IANA tz_name is
+            # exactly the documented fallback case above - falls through
+            # to the explicit "UTC"-labeled return below rather than
+            # crashing the page over a stale saved timezone preference.
             pass
     return aware_utc.strftime(fmt) + " UTC"
 

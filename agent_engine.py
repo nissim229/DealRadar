@@ -70,7 +70,13 @@ def get_street_view_status(latitude, longitude):
         params = {"location": f"{latitude},{longitude}", "key": google_maps_api_key}
         response = requests.get(url, params=params, timeout=5)
         return response.json().get("status")
-    except Exception:
+    except Exception as e:
+        # Best-effort only - per this function's own docstring, a failure
+        # here just means the placeholder icon shows instead of a real
+        # photo, never that the property gets hidden. Logged (not silent)
+        # so a persistent failure (bad key, quota, network) is at least
+        # visible to whoever's watching server logs.
+        print(f"[Street View] Metadata check failed: {e}")
         return None
 
 
@@ -665,6 +671,12 @@ def calculate_distance_miles(lat1, lon1, lat2, lon2):
     try:
         return geodesic((lat1, lon1), (lat2, lon2)).miles
     except Exception:
+        # Deliberately silent, not logged: this is a pure computation (no
+        # I/O to fail) called once per property card render, so a malformed
+        # coordinate here (e.g. a non-numeric value slipping past the
+        # None-check above) would print on every single card - a real bug
+        # elsewhere producing bad coordinates deserves its own fix at the
+        # source, not console noise from every card that happens to render.
         return None
 
 
