@@ -1436,37 +1436,23 @@ def _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pc
                                   calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
     """The one shared map area, directly under the search form + button
     row - before a scan, city-picker mode (pick a search area); after a
-    scan, the real results map, full width, no separate tab click needed
-    to see it. Everything else a scan produces (written report, best-deal
-    prose, filters, the full card grid/table view, PDF export) lives
-    behind "View Full Results" below instead of always rendering inline -
-    per the user's own ask, keep the default view to just form + chips +
-    map, put the "story text" one click away for whoever wants it.
-    See [[hero_redesign_compact_results]]."""
+    scan, the real property cards *with* the map and every view option
+    (Properties Only/+Map/Map Only/Table View), rendered directly, not
+    tucked behind a toggle - the browsing experience itself isn't "story
+    text" to hide away, only the narrative bits inside it (the written
+    report, preview notices) are, and those already stay compact/
+    collapsed on their own within _render_scan_results. See
+    [[hero_redesign_compact_results]]."""
     if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
-        _render_clustered_results_map(
-            st.session_state.active_scanned_coords, "hero_map", view_mode,
-            calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-            height=500,
+        _render_scan_results(
+            st.session_state.active_scanned_report,
+            st.session_state.get("active_scanned_profile", "Your Search"),
+            st.session_state.active_scanned_coords,
+            "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+            calc_down_pct, calc_interest, calc_target_yield,
+            show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
+            pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
         )
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-        show_full_key = "hero_show_full_results"
-        show_full = st.session_state.get(show_full_key, False)
-        if st.button(":material/expand_less: Hide Full Results" if show_full else ":material/expand_more: View Full Results, Filters & Report",
-                     key="hero_toggle_full_results_btn"):
-            st.session_state[show_full_key] = not show_full
-            st.rerun()
-        if show_full:
-            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-            _render_scan_results(
-                st.session_state.active_scanned_report,
-                st.session_state.get("active_scanned_profile", "Your Search"),
-                st.session_state.active_scanned_coords,
-                "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                calc_down_pct, calc_interest, calc_target_yield,
-                show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
-                pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
-            )
     else:
         render_city_picker_map(criteria.get("state") or "Colorado", criteria.get("selected_cities") or [], "scan_form", height=500)
 
