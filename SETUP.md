@@ -121,5 +121,7 @@ Log in with that, or register a new account (new accounts get 3 free credits).
 2. `agent_engine.py` / `analytics.py` - `run_agent_workflow()` now requires
    `user_id`, preventing cross-tenant profile lookups when two users share a
    profile name.
-3. `strategy_config.py` - fixed the Decommission tab, which previously passed
-   a list instead of a single row index, breaking all profile deletion.
+3. `strategy_config.py` (this module has since been removed entirely -
+   real-estate search is now ad-hoc, like cars, see `components/analytics.py`)
+   - fixed the Decommission tab, which previously passed a list instead of a
+   single row index, breaking all profile deletion.

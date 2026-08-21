@@ -25,13 +25,15 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 @pytest.fixture
-def temp_db(monkeypatch):
-    tmp_path = tempfile.mktemp(suffix=".db")
-    monkeypatch.setattr(db, "DB_NAME", tmp_path)
+def temp_db(monkeypatch, tmp_path):
+    """tmp_path is pytest's own built-in fixture (a unique pathlib.Path per
+    test, cleaned up per pytest's retention policy) - preferred over
+    tempfile.mktemp(), which only reserves a filename without creating it
+    and is documented as race-prone for exactly that reason."""
+    db_path = str(tmp_path / "test.db")
+    monkeypatch.setattr(db, "DB_NAME", db_path)
     db.init_db()
-    yield tmp_path
-    if os.path.exists(tmp_path):
-        os.remove(tmp_path)
+    yield db_path
 
 
 def _insert_user(db_path, email, password_hash, role="user", credits=3, suspended=0):
@@ -216,3 +218,57 @@ def test_pepper_regression_cwd_independent():
     with open(env_path, "r", encoding="utf-8") as f:
         after = f.read()
     assert before == after, ".env was modified merely by importing database.py from another CWD"
+
+
+def test_login_succeeds_even_if_hash_upgrade_write_fails(temp_db, monkeypatch):
+    """The opportunistic hash-upgrade write in authenticate_user() (commit
+    82828c2) is wrapped in try/except sqlite3.Error specifically so a
+    failed write can never turn an otherwise-correct login into a failure.
+    Forces that one UPDATE to raise and confirms the login still succeeds
+    - and that the failure was real (the hash stays un-upgraded), not just
+    an inert patch that never got exercised.
+
+    sqlite3.Cursor/Connection are immutable C types (can't monkeypatch
+    their methods directly), so this wraps sqlite3.connect() itself with
+    thin proxy objects that intercept only the one UPDATE statement and
+    forward everything else untouched."""
+    legacy_hash = hashlib.sha256("UpgradeMeSoon1!".encode()).hexdigest()
+    _insert_user(temp_db, "upgrade-fail@example.com", legacy_hash)
+
+    real_connect = sqlite3.connect
+
+    class _FlakyCursor:
+        def __init__(self, real_cursor):
+            self._real = real_cursor
+
+        def execute(self, sql, params=()):
+            if isinstance(sql, str) and sql.strip().startswith("UPDATE users SET password_hash"):
+                raise sqlite3.OperationalError("simulated failure for this test")
+            return self._real.execute(sql, params)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    class _FlakyConnection:
+        def __init__(self, real_conn):
+            self._real = real_conn
+
+        def cursor(self):
+            return _FlakyCursor(self._real.cursor())
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    def flaky_connect(*args, **kwargs):
+        return _FlakyConnection(real_connect(*args, **kwargs))
+
+    with monkeypatch.context() as m:
+        m.setattr(sqlite3, "connect", flaky_connect)
+        result = db.authenticate_user("upgrade-fail@example.com", "UpgradeMeSoon1!")
+
+    assert result is not None
+
+    assert _get_hash(temp_db, "upgrade-fail@example.com") == legacy_hash, (
+        "hash was upgraded despite the UPDATE being forced to fail - the "
+        "patch didn't actually exercise the failure path this test targets"
+    )

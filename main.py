@@ -43,7 +43,8 @@ if "active_category" not in st.session_state:
     # "real_estate" or "cars" - the single source of truth for which deal
     # type the app is currently scanning for, driving both the top nav's
     # own menu items (see CATEGORY_MENUS below) and every category-aware
-    # page (analytics.py's dashboard, strategy_config.py's hunt criteria).
+    # page (analytics.py's ad-hoc real-estate scan form, car_search.py's
+    # equivalent for cars).
     st.session_state.active_category = "real_estate"
 if "show_login_form" not in st.session_state:
     st.session_state.show_login_form = False
