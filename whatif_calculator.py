@@ -251,6 +251,10 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
                 <div class="wi-metric" title="Debt Service Coverage Ratio: NOI ÷ annual mortgage payment. Lenders typically require 1.20-1.25+ to approve a loan"><div class="wi-metric-label">DSCR</div><div class="wi-metric-value" id="m-dscr">0.00</div></div>
                 <div class="wi-metric" title="Gross Rent Multiplier: price ÷ annual gross rent. A quick screening ratio - lower generally means a better deal, typically compared within a local market"><div class="wi-metric-label">GRM</div><div class="wi-metric-value" id="m-grm">0.0</div></div>
                 <div class="wi-metric" title="Operating Expense Ratio: total operating expenses ÷ effective gross income. Lower means more of your rent turns into profit"><div class="wi-metric-label">OPEX RATIO</div><div class="wi-metric-value" id="m-oer">0%</div></div>
+                <div class="wi-metric" title="Offer price × down payment % - the upfront principal you're putting down, before closing costs"><div class="wi-metric-label">DOWN PAYMENT</div><div class="wi-metric-value" id="m-down">$0</div></div>
+                <div class="wi-metric" title="Offer price minus down payment - the amount actually financed by the mortgage"><div class="wi-metric-label">LOAN AMOUNT</div><div class="wi-metric-value" id="m-loan">$0</div></div>
+                <div class="wi-metric" title="The full year's mortgage payments (principal + interest) at this rate and term"><div class="wi-metric-label">ANNUAL DEBT SERVICE</div><div class="wi-metric-value" id="m-debt">$0</div></div>
+                <div class="wi-metric" title="HOA dues × 12 - already counted in Monthly Expenses and every metric above, broken out here so it's never a hidden cost"><div class="wi-metric-label">HOA (ANNUAL)</div><div class="wi-metric-value" id="m-hoa">$0</div></div>
             </div>
             <div class="wi-metrics-caption">Hover any metric for its definition</div>
         </div>
@@ -348,6 +352,10 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             el_v('m-grm', grm.toFixed(1));
             const oer = effGross > 0 ? (totalExpenses/effGross)*100 : 0;
             el_v('m-oer', fmtPct(oer));
+            el_v('m-down', fmtMoney(downAmt));
+            el_v('m-loan', fmtMoney(loanAmt));
+            el_v('m-debt', fmtMoney(aDebt));
+            el_v('m-hoa', fmtMoney(hoaAnnual));
 
             // Suggested Max Offer: solve for the price P where Cash-on-Cash ROI
             // exactly equals your target, holding rent/vacancy/mgmt/maintenance/

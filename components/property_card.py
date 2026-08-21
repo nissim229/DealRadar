@@ -259,32 +259,8 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             </a>
         """, unsafe_allow_html=True)
 
-    def _render_full_underwriting():
-        col_mao1, col_mao2 = st.columns([1.5, 2])
-        with col_mao1:
-            st.metric(label="Maximum Allowable Offer (MAO)", value=f"${metrics['mao']:,.2f}",
-                      delta=f"-${metrics['mao_delta']:,.2f}" if metrics['mao_delta'] > 0 else None,
-                      delta_color="inverse")
-        with col_mao2:
-            st.info(f"**Suggested Offer:** This price targets a **{calc_target_yield:.2f}% cash-on-cash return**.", icon=":material/lightbulb:")
-        st.markdown("---")
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric(label="Purchase Price", value=f"${row_item['price']:,.2f}")
-            st.metric(label="Cap Rate", value=f"{metrics['cap_rate']:.2f}%")
-        with c2:
-            st.metric(label="Down Payment", value=f"${metrics['down_amt']:,.2f}")
-            st.metric(label="Cash-on-Cash", value=f"{metrics['coc']:.2f}%")
-        with c3:
-            st.metric(label="Annual NOI", value=f"${metrics['noi']:,.2f}")
-            st.metric(label="Loan Amount", value=f"${metrics['loan_amt']:,.2f}")
-        with c4:
-            st.metric(label="Annual Cash Flow", value=f"${metrics['cashflow']:,.2f}")
-            st.metric(label="Annual Debt Expense", value=f"${metrics['a_debt']:,.2f}")
-
     tab_defs = [
         ("why", ":material/menu_book: Why This Grade", _render_why),
-        ("underwriting", ":material/calculate: Full Underwriting Breakdown", _render_full_underwriting),
         ("details", ":material/info: Property Details", _render_details),
         ("whatif", ":material/tune: What-If Calculator", _render_whatif),
         ("photos", ":material/photo_camera: Photos", _render_photos),
