@@ -907,21 +907,85 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
             </div>
         """, unsafe_allow_html=True)
 
-    _view_options = [":material/grid_view: Properties Only", ":material/splitscreen: Properties + Map",
-                      ":material/map: Map Only", ":material/table_chart: Table View"]
+    # One compact, icon-driven toolbar instead of several stacked rows
+    # (a view-mode radio with long text labels, a permanently-visible
+    # "set a distance reference" expander header, a price/beds/baths pill
+    # row, a caption line, then a deal-grade pill row) - real feedback
+    # was that the filter section alone "takes too much screen space".
+    # View mode becomes a small icon-only button cluster (tooltip shows
+    # the full name), distance reference becomes an icon button opening
+    # the same kind of popover the price/beds/baths pills already use,
+    # and everything shares one flex-wrapping row. Same proven CSS
+    # pattern as the hero's Quick Access/mini-results chips: the toolbar
+    # container needs flex-direction:row (Streamlit defaults to column),
+    # AND each direct-child wrapper needs flex:none + width:fit-content
+    # (Streamlit's per-widget wrapper otherwise defaults to full width,
+    # which forces a wrap after every single item regardless of the
+    # parent's own row layout) - see [[hero_redesign_compact_results]]
+    # for how that was originally worked out.
+    _view_options = [
+        (":material/grid_view:", ":material/grid_view: Properties Only", "Properties Only"),
+        (":material/splitscreen:", ":material/splitscreen: Properties + Map", "Properties + Map"),
+        (":material/map:", ":material/map: Map Only", "Map Only"),
+        (":material/table_chart:", ":material/table_chart: Table View", "Table View"),
+    ]
     _default_view_index = RESULTS_VIEW_OPTIONS.index(st.session_state.user_settings["default_results_view"])
-    view_toggle = st.radio(
-        "View", _view_options, index=_default_view_index,
-        horizontal=True, key=f"{key_prefix}_scan_results_view_mode", label_visibility="collapsed",
-    )
+    view_mode_state_key = f"{key_prefix}_scan_results_view_mode"
+    if view_mode_state_key not in st.session_state:
+        st.session_state[view_mode_state_key] = _view_options[_default_view_index][1]
 
-    with st.expander(":material/straighten: Set a distance reference point (optional)"):
-        ref_col1, ref_col2 = st.columns([3, 1])
-        with ref_col1:
-            ref_input = st.text_input("Address to measure distance from (e.g. your workplace, downtown)",
-                                       key=f"{key_prefix}_distance_reference_input", placeholder="e.g., 1600 Pennsylvania Ave, Washington DC")
-        with ref_col2:
-            st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+    toolbar_key = f"{key_prefix}_filter_toolbar"
+    st.markdown(f"""
+        <style>
+        div.st-key-{toolbar_key} {{
+            display: flex !important; flex-direction: row !important;
+            flex-wrap: wrap !important; align-items: center !important; gap: 6px !important;
+            margin-bottom: 14px !important;
+        }}
+        div.st-key-{toolbar_key} > div {{
+            flex: none !important; width: fit-content !important;
+        }}
+        div.st-key-{toolbar_key} [data-testid="stPopoverButton"] {{
+            border-radius: var(--radar-radius-pill) !important;
+            border: 1.5px solid var(--radar-border) !important;
+            background: var(--radar-surface) !important;
+            font-weight: 600 !important; font-size: 13px !important;
+            padding: 6px 14px !important; min-height: 34px !important;
+            color: var(--radar-navy) !important; box-shadow: var(--radar-shadow-sm);
+            white-space: nowrap !important;
+        }}
+        div.st-key-{toolbar_key} [data-testid="stPopoverButton"]:hover {{
+            border-color: var(--radar-primary) !important; color: var(--radar-primary) !important;
+        }}
+        /* View-mode icon cluster: small circles, active one filled solid
+        instead of a text-labeled radio row. */
+        div[class*="st-key-{toolbar_key}_viewbtn_"] button {{
+            width: 34px !important; height: 34px !important; min-height: 0 !important;
+            border-radius: 50% !important; padding: 0 !important;
+            border: 1.5px solid var(--radar-border) !important; background: var(--radar-surface) !important;
+        }}
+        div[class*="st-key-{toolbar_key}_viewbtn_"] button[kind="primary"] {{
+            background: var(--radar-primary) !important; border-color: var(--radar-primary) !important;
+        }}
+        div.st-key-{toolbar_key} .stVerticalBlockBorderWrapper {{ gap: 0 !important; }}
+        div.st-key-{toolbar_key} [data-testid="stMarkdownContainer"] p {{ margin: 0 !important; }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key=toolbar_key):
+        for i, (icon, full_value, label) in enumerate(_view_options):
+            with st.container(key=f"{toolbar_key}_viewbtn_{i}"):
+                is_active = st.session_state[view_mode_state_key] == full_value
+                if st.button(icon, key=f"{toolbar_key}_viewbtn_btn_{i}", help=label,
+                             type="primary" if is_active else "secondary"):
+                    st.session_state[view_mode_state_key] = full_value
+                    st.rerun()
+
+        with st.popover(":material/straighten:", help="Set a distance reference point"):
+            st.caption("Measure every property's distance from an address (e.g. your workplace or downtown).")
+            ref_input = st.text_input("Address to measure distance from",
+                                       key=f"{key_prefix}_distance_reference_input", placeholder="e.g., 1600 Pennsylvania Ave, Washington DC",
+                                       label_visibility="collapsed")
             if st.button("Set", key=f"{key_prefix}_set_distance_reference_btn", use_container_width=True):
                 geo_result = engine.validate_and_geocode_location(ref_input)
                 if geo_result:
@@ -931,65 +995,40 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     st.rerun()
                 else:
                     st.error("Couldn't find that address.")
-        if st.session_state.get("distance_reference_point"):
-            st.caption(f"✓ Measuring from: **{st.session_state.distance_reference_point['label']}**")
-            if st.button("Clear reference point", key=f"{key_prefix}_clear_distance_reference_btn"):
-                st.session_state.distance_reference_point = None
-                st.rerun()
+            if st.session_state.get("distance_reference_point"):
+                st.caption(f"✓ Measuring from: **{st.session_state.distance_reference_point['label']}**")
+                if st.button("Clear reference point", key=f"{key_prefix}_clear_distance_reference_btn"):
+                    st.session_state.distance_reference_point = None
+                    st.rerun()
 
-    focused_key = f"{key_prefix}_focused_card_index"
-    if focused_key not in st.session_state:
-        st.session_state[focused_key] = None
-
-    # Quick filter chips - filter the CURRENT scan's results instantly,
-    # no new scan needed. Computed from whatever this scan actually
-    # returned, so the range always matches the real data.
-    filter_min_price, filter_max_price, filter_min_beds, filter_min_baths = None, None, 0, 0
-    filter_grades = ["excellent", "average", "critical"]
-    if coords_json:
-        try:
-            _filter_check_points = json.loads(coords_json)
-            if _filter_check_points:
-                _prices = [p["price"] for p in _filter_check_points]
-                _beds = [p.get("beds", 0) for p in _filter_check_points]
-                _baths = [p.get("baths", 0) for p in _filter_check_points]
-                price_floor, price_ceiling = int(min(_prices)), int(max(_prices))
-                # Every listing in a scan already meets the search profile's
-                # own min-beds/baths criteria (enforced both server-side in
-                # the mock generator and client-side on real RentCast
-                # results), so a dropdown starting at 0 offered options that
-                # could never filter out a single row - looking like the
-                # filter "did nothing" when a user picked a value at or
-                # below the search's own minimum. Starting the range at
-                # what's actually present in this scan's data means every
-                # selectable option is guaranteed to have a visible effect.
-                min_beds_available = int(min(_beds)) if _beds else 0
-                max_beds_available = int(max(_beds)) if _beds else 0
-                min_baths_available = int(min(_baths)) if _baths else 0
-                max_baths_available = int(max(_baths)) if _baths else 0
-
-                filter_bar_key = f"{key_prefix}_quick_filter_bar"
-                with st.container(key=filter_bar_key):
-                    st.markdown(f"""
-                        <style>
-                        div.st-key-{filter_bar_key} {{ max-width: 820px; }}
-                        div.st-key-{filter_bar_key} [data-testid="stPopoverButton"] {{
-                            border-radius: var(--radar-radius-pill) !important;
-                            border: 1.5px solid var(--radar-border) !important;
-                            background: var(--radar-surface) !important;
-                            font-weight: 600 !important;
-                            font-size: 13px !important;
-                            padding: 6px 16px !important;
-                            min-height: 34px !important;
-                            color: var(--radar-navy) !important;
-                            box-shadow: var(--radar-shadow-sm);
-                        }}
-                        div.st-key-{filter_bar_key} [data-testid="stPopoverButton"]:hover {{
-                            border-color: var(--radar-primary) !important;
-                            color: var(--radar-primary) !important;
-                        }}
-                        </style>
-                    """, unsafe_allow_html=True)
+        # Price / Beds / Baths / Deal-grade filters share this same
+        # toolbar row (moved out of their own separate row + caption
+        # line below) - filter the CURRENT scan's results instantly, no
+        # new scan needed. Computed from whatever this scan actually
+        # returned, so the range always matches the real data.
+        filter_min_price, filter_max_price, filter_min_beds, filter_min_baths = None, None, 0, 0
+        filter_grades = ["excellent", "average", "critical"]
+        if coords_json:
+            try:
+                _filter_check_points = json.loads(coords_json)
+                if _filter_check_points:
+                    _prices = [p["price"] for p in _filter_check_points]
+                    _beds = [p.get("beds", 0) for p in _filter_check_points]
+                    _baths = [p.get("baths", 0) for p in _filter_check_points]
+                    price_floor, price_ceiling = int(min(_prices)), int(max(_prices))
+                    # Every listing in a scan already meets the search profile's
+                    # own min-beds/baths criteria (enforced both server-side in
+                    # the mock generator and client-side on real RentCast
+                    # results), so a dropdown starting at 0 offered options that
+                    # could never filter out a single row - looking like the
+                    # filter "did nothing" when a user picked a value at or
+                    # below the search's own minimum. Starting the range at
+                    # what's actually present in this scan's data means every
+                    # selectable option is guaranteed to have a visible effect.
+                    min_beds_available = int(min(_beds)) if _beds else 0
+                    max_beds_available = int(max(_beds)) if _beds else 0
+                    min_baths_available = int(min(_baths)) if _baths else 0
+                    max_baths_available = int(max(_baths)) if _baths else 0
 
                     # Each filter is a rounded pill that opens a popover with the actual
                     # control inside, and the pill's own label shows the current
@@ -1008,41 +1047,35 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     beds_pill_label = "Any Beds" if current_min_beds <= min_beds_available else f"{current_min_beds}+ Beds"
                     baths_pill_label = "Any Baths" if current_min_baths <= min_baths_available else f"{current_min_baths}+ Baths"
 
-                    pc1, pc2, pc3, _ = st.columns([1.7, 1.1, 1.1, 2.1])
-                    with pc1:
-                        if price_ceiling > price_floor:
-                            with st.popover(f":material/attach_money: {price_pill_label}", use_container_width=True):
-                                filter_min_price, filter_max_price = st.slider(
-                                    "Price range", min_value=price_floor, max_value=price_ceiling,
-                                    value=(price_floor, price_ceiling), key=price_range_key,
-                                    format="$%d"
-                                )
+                    if price_ceiling > price_floor:
+                        with st.popover(f":material/attach_money: {price_pill_label}", use_container_width=True):
+                            filter_min_price, filter_max_price = st.slider(
+                                "Price range", min_value=price_floor, max_value=price_ceiling,
+                                value=(price_floor, price_ceiling), key=price_range_key,
+                                format="$%d"
+                            )
+                    else:
+                        filter_min_price, filter_max_price = price_floor, price_ceiling
+                    with st.popover(f":material/bed: {beds_pill_label}", use_container_width=True):
+                        if max_beds_available > min_beds_available:
+                            filter_min_beds = st.selectbox(
+                                "Min beds", options=list(range(min_beds_available, max_beds_available + 1)),
+                                index=0, key=min_beds_key,
+                                help=f"Every result already has at least {min_beds_available} bed(s), so that option won't change your results."
+                            )
                         else:
-                            filter_min_price, filter_max_price = price_floor, price_ceiling
-                    with pc2:
-                        with st.popover(f":material/bed: {beds_pill_label}", use_container_width=True):
-                            if max_beds_available > min_beds_available:
-                                filter_min_beds = st.selectbox(
-                                    "Min beds", options=list(range(min_beds_available, max_beds_available + 1)),
-                                    index=0, key=min_beds_key,
-                                    help=f"Every result already has at least {min_beds_available} bed(s), so that option won't change your results."
-                                )
-                            else:
-                                st.caption(f"Every result in this scan has exactly {min_beds_available} bed(s) - nothing to filter.")
-                                filter_min_beds = min_beds_available
-                    with pc3:
-                        with st.popover(f":material/bathtub: {baths_pill_label}", use_container_width=True):
-                            if max_baths_available > min_baths_available:
-                                filter_min_baths = st.selectbox(
-                                    "Min baths", options=list(range(min_baths_available, max_baths_available + 1)),
-                                    index=0, key=min_baths_key,
-                                    help=f"Every result already has at least {min_baths_available} bath(s), so that option won't change your results."
-                                )
-                            else:
-                                st.caption(f"Every result in this scan has exactly {min_baths_available} bath(s) - nothing to filter.")
-                                filter_min_baths = min_baths_available
-
-                    st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+                            st.caption(f"Every result in this scan has exactly {min_beds_available} bed(s) - nothing to filter.")
+                            filter_min_beds = min_beds_available
+                    with st.popover(f":material/bathtub: {baths_pill_label}", use_container_width=True):
+                        if max_baths_available > min_baths_available:
+                            filter_min_baths = st.selectbox(
+                                "Min baths", options=list(range(min_baths_available, max_baths_available + 1)),
+                                index=0, key=min_baths_key,
+                                help=f"Every result already has at least {min_baths_available} bath(s), so that option won't change your results."
+                            )
+                        else:
+                            st.caption(f"Every result in this scan has exactly {min_baths_available} bath(s) - nothing to filter.")
+                            filter_min_baths = min_baths_available
 
                     grade_defs = [
                         ("excellent", "🟢 Outstanding"),
@@ -1052,15 +1085,20 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                     grade_labels = [label for _, label in grade_defs]
                     grade_key_by_label = {label: key for key, label in grade_defs}
 
-                    st.caption("Deal grade - all shown by default, click one to hide it from your results below")
                     picked_grade_labels = st.pills(
                         "Deal grade", grade_labels, selection_mode="multi",
                         default=grade_labels, key=f"{key_prefix}_quick_filter_grades_pills",
-                        label_visibility="collapsed",
+                        label_visibility="collapsed", help="Deal grade - all shown by default, click one to hide it",
                     )
                     filter_grades = [grade_key_by_label[label] for label in (picked_grade_labels or [])]
-        except Exception:
-            pass
+            except Exception:
+                pass
+
+    view_toggle = st.session_state[view_mode_state_key]
+
+    focused_key = f"{key_prefix}_focused_card_index"
+    if focused_key not in st.session_state:
+        st.session_state[focused_key] = None
 
     if view_toggle == ":material/grid_view: Properties Only":
         # Full-width property grid, no map alongside - lets the
