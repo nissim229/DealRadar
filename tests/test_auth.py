@@ -74,6 +74,27 @@ def test_correct_password_on_bcrypt_account_succeeds(temp_db):
     assert result["role"] == "user"
 
 
+def test_register_user_end_to_end(temp_db):
+    """register_user() is the real entry point new accounts go through
+    (unlike the other tests here, which mostly call hash_password()
+    directly) - confirms it produces a bcrypt hash and that the resulting
+    account can actually log in through authenticate_user()."""
+    user_id = db.register_user("brandnew@example.com", "FreshPassword1!", "Jane", "", "Doe")
+    assert user_id is not None
+
+    stored_hash = _get_hash(temp_db, "brandnew@example.com")
+    assert db._is_bcrypt_hash(stored_hash)
+
+    result = db.authenticate_user("brandnew@example.com", "FreshPassword1!")
+    assert result is not None
+    assert result["role"] == "user"
+
+    assert db.authenticate_user("brandnew@example.com", "wrongpassword") is None
+
+    # Duplicate email is rejected (IntegrityError -> None), not a crash.
+    assert db.register_user("brandnew@example.com", "AnotherPassword1!") is None
+
+
 def test_legacy_sha256_hash_migrates_on_login(temp_db):
     legacy_hash = hashlib.sha256("OldPassw0rd!".encode()).hexdigest()
     _insert_user(temp_db, "legacy@example.com", legacy_hash)
