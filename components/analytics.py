@@ -438,6 +438,23 @@ def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_pr
             st.caption("Unable to load the map for this scan.")
 
 
+def _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate,
+                           calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                           filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                           filter_grades):
+    """Full-width map, click a pin to see that property's full details below
+    the map - a thin delegate to _render_clustered_results_map (already its
+    own function). Extracted for consistency with the other 3 view-mode
+    branches split out of _render_scan_results (Section 5 monolith-split
+    plan)."""
+    st.caption("Click any pin to see that property's full details below the map. Nearby properties group into clusters - click a cluster to see what's inside.")
+    _render_clustered_results_map(
+        coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+        calc_down_pct, calc_interest, calc_target_yield,
+        filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades,
+    )
+
+
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
                           calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield,
@@ -533,12 +550,10 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                          calc_target_yield, view_mode, key_prefix, focused_key)
 
     elif view_toggle == ":material/map: Map Only":  # full-width map, click a pin to see that property's details
-        st.caption("Click any pin to see that property's full details below the map. Nearby properties group into clusters - click a cluster to see what's inside.")
-        _render_clustered_results_map(
-            coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-            calc_down_pct, calc_interest, calc_target_yield,
-            filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades,
-        )
+        _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate,
+                               calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                               filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                               filter_grades)
 
     else:  # Table View - every matched property as a sortable/filterable spreadsheet-style grid
         st.caption("Drag a column header to reorder it, click a header to sort, or use the toolbar above the table to search, hide columns, or export to CSV.")
