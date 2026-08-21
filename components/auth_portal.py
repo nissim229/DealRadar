@@ -187,7 +187,7 @@ def handle_google_oauth_callback(code):
 
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        _render_auth_header()
+        _render_auth_topbar()
         with st.container(key="auth_card"):
             if st.session_state.get("google_pending_signup"):
                 # The OAuth `code` is single-use and already spent by the
@@ -361,7 +361,7 @@ def render_reset_password_view(token):
     _inject_card_styles()
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
-        _render_auth_header()
+        _render_auth_topbar()
         with st.container(key="auth_card"):
             if st.session_state.get("password_reset_done"):
                 st.markdown(f"""
