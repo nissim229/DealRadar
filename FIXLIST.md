@@ -112,7 +112,7 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
 
 ## 6. Bug found during review (one-line fix)
 
-- [ ] **`components/property_card.py:486` calls a function that doesn't
+- [x] **`components/property_card.py:486` calls a function that doesn't
       exist.** `_property_detail_dialog()` is called here, but the real
       function is `render_property_detail_dialog()` (defined line 279,
       correctly called elsewhere at line 425 — the table view's "eye" icon
@@ -120,8 +120,9 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
       property card in the grid views (Properties Only / Properties + Map /
       Map Only). Clicking it sets `property_dialog_ctx` then raises
       `NameError` on the next line. Pre-existing since the initial commit
-      (`82d0192`, 2026-08-17) — not caused by any later change. Fix: rename
-      the call at line 486 to `render_property_detail_dialog()`.
+      (`82d0192`, 2026-08-17) — not caused by any later change. Fixed:
+      renamed the call at line 486 to `render_property_detail_dialog()`,
+      verified live in both Properties Only and Properties + Map views.
 
 ---
 
