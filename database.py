@@ -1,11 +1,16 @@
 import sqlite3
 import hashlib
+import hmac
+import base64
 import json
 import os
 import secrets
 import bcrypt
+from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from plan_limits import PLAN_ORDER
+
+load_dotenv()
 
 # Anchor the database file to this script's own directory, not the terminal's
 # current working directory. Using a bare relative filename here meant that
@@ -14,20 +19,62 @@ from plan_limits import PLAN_ORDER
 # like saved data (profiles, theme preference, credits) had been forgotten,
 # when really it was just written to a different file each time.
 DB_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_config.db")
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+BCRYPT_COST = 12
+
+def _load_or_create_password_pepper():
+    """The HMAC key used to pre-hash passwords before bcrypt (see
+    _pre_hash_password()). Keeping it in .env, separate from the database,
+    means a leaked DB dump alone can't be replayed into valid bcrypt inputs
+    for a dictionary/rainbow-table attack - the "shucking" risk of an
+    unkeyed pre-hash, where a cracked legacy SHA-256 digest is itself
+    everything needed to authenticate against the new scheme. Self-
+    provisions on first run, the same way init_db() seeds a first admin
+    account - but unlike that seed, losing this value after real passwords
+    have been hashed with it would lock every user out, so it's written to
+    .env immediately once generated and never silently regenerated after."""
+    pepper = os.getenv("PASSWORD_PEPPER")
+    if pepper:
+        return pepper.encode()
+    pepper = secrets.token_hex(32)
+    with open(_ENV_PATH, "a", encoding="utf-8") as f:
+        f.write(f"\nPASSWORD_PEPPER={pepper}\n")
+    os.environ["PASSWORD_PEPPER"] = pepper
+    print("[Security] Generated a new PASSWORD_PEPPER and saved it to .env - "
+          "back this file up; losing this value invalidates every stored password hash.")
+    return pepper.encode()
+
+PASSWORD_PEPPER = _load_or_create_password_pepper()
+
+def _pre_hash_password(password):
+    """HMAC-SHA256 keyed with PASSWORD_PEPPER, then base64-encoded - the
+    same bcrypt_sha256 pattern passlib uses. This keeps the result under
+    bcrypt's 72-byte input limit regardless of the original password's
+    length, and - because it's keyed with a secret that lives only in
+    .env, never in the database - a leaked DB dump alone can't be used to
+    derive valid bcrypt inputs, unlike an unkeyed SHA-256 pre-hash."""
+    digest = hmac.new(PASSWORD_PEPPER, password.encode(), hashlib.sha256).digest()
+    return base64.b64encode(digest)
+
+def _pre_hash_password_unkeyed(password):
+    """The transitional pre-hash this app briefly used with bcrypt before
+    PASSWORD_PEPPER was introduced (a bare SHA-256 digest, no pepper).
+    Kept only so _check_password() can recognize and upgrade any account
+    migrated during that window - never used to create new hashes."""
+    return hashlib.sha256(password.encode()).digest()
 
 def hash_password(password):
-    """Securely hashes a password using bcrypt. The password is pre-hashed
-    with SHA-256 into a fixed 32-byte digest first, so bcrypt's own 72-byte
-    input limit never silently truncates a long passphrase before it
-    reaches the slow algorithm that actually needs the entropy."""
-    pre_hashed = hashlib.sha256(password.encode()).digest()
-    return bcrypt.hashpw(pre_hashed, bcrypt.gensalt()).decode()
+    """Securely hashes a password: HMAC-SHA256 pre-hash (see
+    _pre_hash_password) then bcrypt at BCRYPT_COST. Always produces the
+    current best format - existing weaker-format hashes are upgraded
+    lazily on login, see authenticate_user()."""
+    return bcrypt.hashpw(_pre_hash_password(password), bcrypt.gensalt(rounds=BCRYPT_COST)).decode()
 
 def _hash_password_legacy(password):
-    """The original unsalted SHA-256 hashing this app used before the
-    bcrypt migration. Kept ONLY so verify_password() can still check a
-    password against an account that hasn't logged in since the migration
-    (its stored hash is still in this old format) - never used to create
+    """The original unsalted, unpeppered SHA-256 hashing this app used
+    before any bcrypt migration. Kept ONLY so _check_password() can still
+    verify an account that hasn't logged in since - never used to create
     new hashes."""
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -36,21 +83,56 @@ def _is_bcrypt_hash(stored_hash):
     a legacy SHA-256 hash is just a 64-char hex digest and never does."""
     return bool(stored_hash) and stored_hash.startswith(("$2a$", "$2b$", "$2y$"))
 
-def verify_password(password, stored_hash):
-    """Checks password against whichever hash format stored_hash is in -
-    bcrypt for accounts already migrated, legacy SHA-256 otherwise. This
-    dual-format check is what lets authenticate_user() migrate a legacy
-    hash to bcrypt transparently on a successful login, instead of forcing
-    every existing user through a password reset."""
+def _bcrypt_cost_of(stored_hash):
+    """Extracts the cost factor bcrypt encoded into stored_hash (the
+    "$2b$12$..." field), so authenticate_user() can opportunistically
+    rehash an old, lower-cost hash up to BCRYPT_COST as that target rises
+    over time, without a separate mass-migration each time it does."""
+    try:
+        return int(stored_hash.split("$")[2])
+    except (IndexError, ValueError, AttributeError):
+        return None
+
+_TIMING_DUMMY_HASH = bcrypt.hashpw(b"dummy-timing-equalizer", bcrypt.gensalt(rounds=BCRYPT_COST))
+
+def _burn_bcrypt_time():
+    """Runs one throwaway bcrypt check at the real cost factor, purely so
+    the legacy-hash and no-such-account paths in _check_password() take
+    roughly as long as a real bcrypt verification - otherwise a network
+    observer could use response latency alone to learn that a given email
+    doesn't exist, or that a given account hasn't been migrated to bcrypt
+    yet, without any database access."""
+    bcrypt.checkpw(b"x", _TIMING_DUMMY_HASH)
+
+def _check_password(password, stored_hash):
+    """Returns (matched, needs_upgrade). needs_upgrade is True when the
+    password matched but stored_hash isn't in the current best format:
+    the original unsalted SHA-256 scheme, the brief transitional
+    bcrypt-over-unkeyed-SHA-256 scheme, or a bcrypt hash whose cost factor
+    is below BCRYPT_COST. authenticate_user() uses this to decide whether
+    to opportunistically rewrite the stored hash on a successful login."""
     if not stored_hash:
-        return False
+        _burn_bcrypt_time()
+        return False, False
     if _is_bcrypt_hash(stored_hash):
-        pre_hashed = hashlib.sha256(password.encode()).digest()
         try:
-            return bcrypt.checkpw(pre_hashed, stored_hash.encode())
+            if bcrypt.checkpw(_pre_hash_password(password), stored_hash.encode()):
+                return True, (_bcrypt_cost_of(stored_hash) or 0) < BCRYPT_COST
+            if bcrypt.checkpw(_pre_hash_password_unkeyed(password), stored_hash.encode()):
+                return True, True
+            return False, False
         except ValueError:
-            return False
-    return _hash_password_legacy(password) == stored_hash
+            return False, False
+    _burn_bcrypt_time()
+    matched = hmac.compare_digest(_hash_password_legacy(password), stored_hash)
+    return matched, matched
+
+def verify_password(password, stored_hash):
+    """Simple matched/not-matched check against whichever hash format
+    stored_hash is in - for callers that don't need the upgrade-on-login
+    bookkeeping (see _check_password(), used by authenticate_user())."""
+    matched, _ = _check_password(password, stored_hash)
+    return matched
 
 
 def _generate_account_id(cursor):
@@ -761,16 +843,29 @@ def authenticate_user(email, password):
             (email,)
         )
         row = cursor.fetchone()
-        if not row or not verify_password(password, row[7]):
+        if not row:
+            # Burn the same CPU time a real check would, so a network
+            # observer can't use response latency alone to learn that this
+            # email doesn't have an account at all.
+            _burn_bcrypt_time()
             return None
-        # A correct password against a still-legacy SHA-256 hash means this
-        # account hasn't logged in since the bcrypt migration - upgrade its
-        # stored hash right here, transparently, instead of requiring a
-        # separate forced reset for every existing user. See hash_password()
-        # and verify_password() for the full migration design.
-        if not _is_bcrypt_hash(row[7]):
-            cursor.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), int(row[0])))
-            conn.commit()
+        matched, needs_upgrade = _check_password(password, row[7])
+        if not matched:
+            return None
+        # A correct password against anything less than the current best
+        # format (legacy SHA-256, the brief unkeyed-bcrypt transitional
+        # scheme, or an outdated cost factor) means this account hasn't
+        # logged in since that format was retired - upgrade its stored hash
+        # right here, transparently, instead of a separate forced reset for
+        # every existing user. See hash_password()/_check_password() for
+        # the full migration design. Never let a failed opportunistic
+        # rewrite block an otherwise-successful login.
+        if needs_upgrade:
+            try:
+                cursor.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), int(row[0])))
+                conn.commit()
+            except sqlite3.Error:
+                pass
         if row[5]:
             return {"suspended": True}
         return {
