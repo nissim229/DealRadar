@@ -1106,7 +1106,7 @@ def render_admin_control_panel():
             rc_fraction = min(rc_used / rc_limit, 1.0) if rc_limit else 0
             if rc_used >= rc_limit:
                 rc_color, rc_status = "var(--radar-danger)", "Limit reached - scans are using simulated data until next month"
-            elif rc_fraction >= 0.8:
+            elif rc_fraction * 100 >= rentcast_config["alert_threshold_pct"]:
                 rc_color, rc_status = "var(--radar-warning)", "Getting close to the monthly limit"
             else:
                 rc_color, rc_status = "var(--radar-success)", "Within budget"
