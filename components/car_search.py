@@ -15,13 +15,27 @@ falls back to its own local simulator.
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import database as db
 import roles
 import car_engine
 from components.car_card import render_car_card
+from components.analytics import build_clustered_map_data
 from icons import icon as svg_icon
 from scan_loading import render_scan_loading_radar
 from guest_mode import guest_action_button, render_guest_banner
+
+
+def _car_price_short(price):
+    """Same idea as analytics.py's _format_price_short, kept as its own
+    tiny copy rather than importing a module-private (leading underscore)
+    name across files - a used car's price never needs the $1M+ tier that
+    function's own branching handles."""
+    try:
+        price = float(price)
+    except (TypeError, ValueError):
+        return ""
+    return f"${price / 1_000:.0f}K" if price >= 1_000 else f"${price:.0f}"
 
 
 def _inject_css():
@@ -328,12 +342,364 @@ def render_car_search_page(is_guest=False):
             </div>
         """, unsafe_allow_html=True)
 
-    for row_start in range(0, len(results), 3):
-        row = results[row_start:row_start + 3]
-        cols = st.columns(3)
-        for slot, listing in enumerate(row):
-            with cols[slot]:
-                render_car_card(row_start + slot, listing, "car_search")
+    _render_car_results_view(results, "car_search")
+
+
+@st.dialog("Vehicle Details", width="large")
+def _render_car_detail_dialog():
+    """Reuses render_car_card as the dialog's whole body - a car listing
+    doesn't have the mortgage-specific "What-If Calculator"/"Notes &
+    Neighborhood" tabs a property does (nothing to negotiate financing
+    terms on, no nearby-schools relevance for a dealer lot), so a single
+    rich view (photo, price/badge, market-value breakdown, vehicle
+    history, outbound links - everything the card already shows) is the
+    right-sized equivalent here, not a truncated copy of the property
+    dialog's tab set."""
+    ctx = st.session_state.get("car_dialog_ctx")
+    if not ctx:
+        st.write("No listing selected.")
+        return
+    render_car_card(ctx["idx"], ctx["listing"], ctx["key_prefix"])
+
+
+def _render_car_view_toolbar(results, key_prefix):
+    """Icon-driven view-mode + quick-filter toolbar for car results -
+    mirrors analytics.py's _render_scan_results toolbar pixel-for-pixel
+    (same CSS classes/pattern, same 3-part flex-row fix documented in
+    [[hero_redesign_compact_results]]/[[hero_redesign_filter_toolbar]]),
+    adapted to cars' own filter dimensions (price/mileage instead of
+    price/beds/baths) and grade labels (Great Deal/Fair Deal/Above Market
+    instead of Outstanding/Average/Negative Cash Flow). Not a literally
+    shared function with analytics.py's version since the two categories'
+    underlying data shapes (a list of car dicts vs. a JSON-encoded
+    property coords blob) differ enough that forcing one shared renderer
+    would need as much branching as this dedicated one - but
+    build_clustered_map_data (used by the Map Only view below) IS
+    genuinely shared, reused as-is rather than reimplemented.
+
+    Returns (view_mode, filtered_results)."""
+    view_options = [
+        (":material/grid_view:", "grid", "Cars Only"),
+        (":material/splitscreen:", "split", "Cars + Map"),
+        (":material/map:", "map", "Map Only"),
+        (":material/table_chart:", "table", "Table View"),
+    ]
+    view_mode_key = f"{key_prefix}_car_view_mode"
+    if view_mode_key not in st.session_state:
+        st.session_state[view_mode_key] = "grid"
+
+    toolbar_key = f"{key_prefix}_car_toolbar"
+    st.markdown(f"""
+        <style>
+        div.st-key-{toolbar_key} {{
+            display: flex !important; flex-direction: row !important;
+            flex-wrap: wrap !important; align-items: center !important; gap: 6px !important;
+            margin-bottom: 14px !important;
+        }}
+        div.st-key-{toolbar_key} > div {{
+            flex: none !important; width: fit-content !important;
+        }}
+        div.st-key-{toolbar_key} [data-testid="stPopoverButton"] {{
+            border-radius: var(--radar-radius-pill) !important;
+            border: 1.5px solid var(--radar-border) !important;
+            background: var(--radar-surface) !important;
+            font-weight: 600 !important; font-size: 13px !important;
+            padding: 6px 14px !important; min-height: 34px !important;
+            color: var(--radar-navy) !important; box-shadow: var(--radar-shadow-sm);
+            white-space: nowrap !important;
+        }}
+        div.st-key-{toolbar_key} [data-testid="stPopoverButton"]:hover {{
+            border-color: var(--radar-primary) !important; color: var(--radar-primary) !important;
+        }}
+        div[class*="st-key-{toolbar_key}_viewbtn_"] button {{
+            width: 34px !important; height: 34px !important; min-height: 0 !important;
+            border-radius: 50% !important; padding: 0 !important;
+            border: 1.5px solid var(--radar-border) !important; background: var(--radar-surface) !important;
+        }}
+        div[class*="st-key-{toolbar_key}_viewbtn_"] button[kind="primary"] {{
+            background: var(--radar-primary) !important; border-color: var(--radar-primary) !important;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    filter_min_price = filter_max_price = filter_min_mileage = filter_max_mileage = None
+    filter_grades = ["excellent", "average", "critical"]
+
+    with st.container(key=toolbar_key):
+        for i, (icon, mode_val, label) in enumerate(view_options):
+            with st.container(key=f"{toolbar_key}_viewbtn_{i}"):
+                is_active = st.session_state[view_mode_key] == mode_val
+                if st.button(icon, key=f"{toolbar_key}_viewbtn_btn_{i}", help=label,
+                             type="primary" if is_active else "secondary"):
+                    st.session_state[view_mode_key] = mode_val
+                    st.rerun()
+
+        if results:
+            prices = [r["price"] for r in results]
+            mileages = [r["mileage"] for r in results]
+            price_floor, price_ceiling = int(min(prices)), int(max(prices))
+            mileage_floor, mileage_ceiling = int(min(mileages)), int(max(mileages))
+            filter_min_price, filter_max_price = price_floor, price_ceiling
+            filter_min_mileage, filter_max_mileage = mileage_floor, mileage_ceiling
+
+            price_range_key = f"{key_prefix}_car_filter_price"
+            current_price_range = st.session_state.get(price_range_key, (price_floor, price_ceiling))
+            price_label = ("Any Price" if current_price_range == (price_floor, price_ceiling)
+                            else f"${current_price_range[0]:,} - ${current_price_range[1]:,}")
+            if price_ceiling > price_floor:
+                with st.popover(f":material/attach_money: {price_label}", use_container_width=True):
+                    filter_min_price, filter_max_price = st.slider(
+                        "Price range", min_value=price_floor, max_value=price_ceiling,
+                        value=(price_floor, price_ceiling), key=price_range_key, format="$%d"
+                    )
+
+            mileage_range_key = f"{key_prefix}_car_filter_mileage"
+            current_mileage_range = st.session_state.get(mileage_range_key, (mileage_floor, mileage_ceiling))
+            mileage_label = ("Any Mileage" if current_mileage_range == (mileage_floor, mileage_ceiling)
+                              else f"{current_mileage_range[0]:,} - {current_mileage_range[1]:,} mi")
+            if mileage_ceiling > mileage_floor:
+                with st.popover(f":material/speed: {mileage_label}", use_container_width=True):
+                    filter_min_mileage, filter_max_mileage = st.slider(
+                        "Mileage range", min_value=mileage_floor, max_value=mileage_ceiling,
+                        value=(mileage_floor, mileage_ceiling), key=mileage_range_key, format="%d mi"
+                    )
+
+            grade_defs = [("excellent", "🟢 Great Deal"), ("average", "🟡 Fair Deal"), ("critical", "🔴 Above Market")]
+            grade_labels = [label for _, label in grade_defs]
+            grade_key_by_label = {label: key for key, label in grade_defs}
+            picked_grade_labels = st.pills(
+                "Deal grade", grade_labels, selection_mode="multi", default=grade_labels,
+                key=f"{key_prefix}_car_filter_grades", label_visibility="collapsed",
+                help="Deal grade - all shown by default, click one to hide it",
+            )
+            filter_grades = [grade_key_by_label[label] for label in (picked_grade_labels or [])]
+
+    if not results:
+        return st.session_state[view_mode_key], []
+
+    def _passes_grade_filter(listing):
+        # A listing with no reliable grade (too few comps) never claimed
+        # to be any grade in the first place - excluding it based on a
+        # grade filter would be arbitrary, so it always passes here and
+        # is only ever filtered by price/mileage like everything else.
+        if len(filter_grades) == 3 or not listing.get("has_reliable_grade"):
+            return True
+        return listing.get("grade") in filter_grades
+
+    filtered = [
+        r for r in results
+        if filter_min_price <= r["price"] <= filter_max_price
+        and filter_min_mileage <= r["mileage"] <= filter_max_mileage
+        and _passes_grade_filter(r)
+    ]
+    return st.session_state[view_mode_key], filtered
+
+
+def _render_car_split_view(filtered, key_prefix):
+    """Cards in a scrollable left box + a results map on the right,
+    clicking a card's title zooms the map to that listing's dealer -
+    mirrors analytics.py's Properties + Map view/[[hero_redesign_unified_map]]'s
+    "one map, reused" principle applied to cars' own results."""
+    cards_col, map_col = st.columns([0.85, 1.3])
+    with_coords = [r for r in filtered if r.get("latitude") is not None]
+    focused_key = f"{key_prefix}_car_focused_idx"
+    if focused_key not in st.session_state:
+        st.session_state[focused_key] = None
+
+    with cards_col:
+        st.caption("Click a listing's title to focus the map on its dealer. Scroll to see more.")
+        scroll_box_key = f"{key_prefix}_car_cards_scroll_box"
+        st.markdown(f"""
+            <style>
+            div.st-key-{scroll_box_key} {{ max-height: 800px; overflow-y: auto; padding-right: 12px; }}
+            </style>
+        """, unsafe_allow_html=True)
+        with st.container(key=scroll_box_key):
+            for idx, listing in enumerate(filtered):
+                is_focused = st.session_state[focused_key] == idx
+                if render_car_card(idx, listing, f"{key_prefix}_split", is_focused=is_focused, focusable=True):
+                    st.session_state[focused_key] = None if is_focused else idx
+                    st.rerun()
+
+    with map_col:
+        st.markdown("##### :material/map: Map")
+        if not with_coords:
+            st.caption("No dealer locations available to map for these results.")
+            return
+
+        focused_idx = st.session_state[focused_key]
+        if focused_idx is not None and focused_idx < len(filtered) and filtered[focused_idx].get("latitude") is not None:
+            map_points = [filtered[focused_idx]]
+            zoom_level = 12
+        else:
+            map_points = with_coords
+            zoom_level = 9
+
+        map_df = pd.DataFrame(map_points)
+        map_df["_price_label"] = map_df["price"].apply(_car_price_short)
+        fig = px.scatter_mapbox(
+            map_df, lat="latitude", lon="longitude", hover_name="dealer_name",
+            hover_data={"price": True, "latitude": False, "longitude": False},
+            zoom=zoom_level, center={"lat": map_df["latitude"].mean(), "lon": map_df["longitude"].mean()},
+            text="_price_label",
+        )
+        fig.update_traces(
+            marker=dict(size=15, color="#2563eb"),
+            textposition="top center", textfont=dict(color="#0f172a", size=12, family="Arial Black"),
+        )
+        fig.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
+        st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_car_split_map", config={"displayModeBar": True, "scrollZoom": True})
+
+
+def _render_car_clustered_map(filtered, key_prefix, height=650):
+    """Full-width, grade-colored, clustered map - click a pin (or a
+    cluster) for detail. Reuses build_clustered_map_data verbatim from
+    analytics.py (it's generic over any lat/longitude/price/_grade/title/
+    address dataframe, not property-specific) instead of reimplementing
+    the same grid-bucketing logic a second time."""
+    with_coords = [r for r in filtered if r.get("latitude") is not None]
+    if not with_coords:
+        st.info("No dealer locations available to map for these results.")
+        return
+
+    df = pd.DataFrame(with_coords).reset_index(drop=True)
+    df["title"] = df.apply(lambda r: f"{r['year']} {r['make']} {r['model']}", axis=1)
+    df["address"] = df.apply(lambda r: f"{r['dealer_name']} · {r['city']}, {r['state']}" if r.get("city") else r["dealer_name"], axis=1)
+    # Map coloring only - an ungraded listing (has_reliable_grade=False)
+    # has no real grade value at all, bucketed as "average" (amber) here
+    # purely so it still renders a pin color, same neutral treatment the
+    # card gives it elsewhere (a plain "Not enough data" chip, not a real
+    # grade claim).
+    df["_grade"] = df["grade"].fillna("average")
+
+    grade_colors = {"excellent": "#10b981", "average": "#f59e0b", "critical": "#ef4444"}
+    cluster_df = build_clustered_map_data(df)
+    cluster_df["_marker_size"] = cluster_df["count"].apply(lambda c: 30 if c == 1 else min(24 + c * 3, 46))
+    cluster_df["_marker_text"] = cluster_df.apply(
+        lambda row: str(row["count"]) if row["is_cluster"] else _car_price_short(row["price"]), axis=1
+    )
+
+    fig = px.scatter_mapbox(
+        cluster_df, lat="latitude", lon="longitude", hover_name="title",
+        hover_data={"address": True, "price": True, "count": True, "latitude": False, "longitude": False},
+        color="grade", color_discrete_map=grade_colors,
+        size="_marker_size", size_max=46, text="_marker_text",
+        zoom=9, center={"lat": df["latitude"].mean(), "lon": df["longitude"].mean()},
+    )
+    fig.update_traces(textfont=dict(color="white", size=11, family="Arial Black"), textposition="middle center")
+    fig.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=height, showlegend=False)
+
+    map_event = st.plotly_chart(
+        fig, use_container_width=True, key=f"{key_prefix}_car_full_map",
+        on_select="rerun", selection_mode="points", config={"displayModeBar": True, "scrollZoom": True},
+    )
+    selected_points = map_event.get("selection", {}).get("points", []) if map_event else []
+    if selected_points:
+        point_index = selected_points[0].get("point_index")
+        if point_index is not None and point_index < len(cluster_df):
+            clicked = cluster_df.iloc[point_index]
+            st.markdown("---")
+            if clicked["is_cluster"]:
+                st.markdown(f"#### :material/location_on: {clicked['count']} listings in this area")
+                st.caption("Zoom in on the map or narrow your filters above to click an individual listing.")
+                member_rows = df.iloc[clicked["member_indices"]]
+                summary_df = member_rows[["title", "dealer_name", "price"]].copy()
+                summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
+                st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
+            else:
+                st.markdown("#### :material/location_on: Selected Listing")
+                sel_idx = clicked["member_indices"][0]
+                render_car_card(sel_idx, df.iloc[sel_idx].to_dict(), f"{key_prefix}_map_view_card")
+    else:
+        st.info("Click a pin above to see that listing's price, deal grade, and full details.", icon=":material/lightbulb:")
+
+
+def _render_car_table_view(filtered, key_prefix):
+    if not filtered:
+        st.info("No listings match your current filters.")
+        return
+
+    table_page_size = st.selectbox("Rows per page", [10, 25, 50], index=1, key=f"{key_prefix}_car_table_page_size")
+    total_rows = len(filtered)
+    total_pages = max(1, (total_rows + table_page_size - 1) // table_page_size)
+    page_key = f"{key_prefix}_car_table_page"
+    current_page = min(st.session_state.get(page_key, 1), total_pages)
+
+    nav1, nav2, nav3 = st.columns([1, 2, 1])
+    with nav1:
+        if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key=f"{key_prefix}_car_table_prev"):
+            st.session_state[page_key] = current_page - 1
+            st.rerun()
+    with nav2:
+        st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total listings</div>", unsafe_allow_html=True)
+    with nav3:
+        if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key=f"{key_prefix}_car_table_next"):
+            st.session_state[page_key] = current_page + 1
+            st.rerun()
+
+    page_slice = filtered[(current_page - 1) * table_page_size: current_page * table_page_size]
+    rows = []
+    for listing in page_slice:
+        grade = listing.get("grade")
+        trim = f" {listing['trim']}" if listing.get("trim") else ""
+        rows.append({
+            "Vehicle": f"{listing['year']} {listing['make']} {listing['model']}{trim}",
+            "Price": float(listing["price"]),
+            "Mileage": listing["mileage"],
+            "Dealer": listing["dealer_name"],
+            # Same emoji-prefixed labels used everywhere else for cars
+            # (cards, filter pills) - not the raw internal grade key
+            # title-cased, which would show generic "Critical"/"Average"/
+            # "Excellent" instead of car-appropriate "Above Market"/"Fair
+            # Deal"/"Great Deal".
+            "Grade": car_engine.CAR_GRADE_STYLES[grade]["label"] if listing.get("has_reliable_grade") and grade else "Not graded",
+            "vs. Market %": round(listing["pct_below_market"], 1) if listing.get("has_reliable_grade") else None,
+            "View": ":material/visibility:",
+        })
+    table_df = pd.DataFrame(rows)
+    st.dataframe(
+        table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
+        key=f"{key_prefix}_car_table_grid",
+        column_config={
+            "Price": st.column_config.NumberColumn(format="$%d"),
+            "vs. Market %": st.column_config.NumberColumn(format="%.1f%%"),
+            "View": st.column_config.ButtonColumn("", width="small", type="tertiary", key=f"{key_prefix}_car_table_view_click"),
+        },
+    )
+
+    view_click = st.session_state.get(f"{key_prefix}_car_table_view_click")
+    if view_click and view_click.get("row") is not None:
+        idx = view_click["row"]
+        if idx < len(page_slice):
+            st.session_state.car_dialog_ctx = {"idx": idx, "listing": page_slice[idx], "key_prefix": f"{key_prefix}_table_dialog"}
+            _render_car_detail_dialog()
+
+
+def _render_car_results_view(results, key_prefix):
+    """The car-category counterpart to analytics.py's view-mode dispatch
+    inside _render_scan_results - same 4 view options, same toolbar shape,
+    car-appropriate filters/grading. Shared by every caller of
+    render_car_search_page (guest and authenticated alike, since both
+    already go through that one function), so this parity applies to both
+    automatically rather than needing to be built twice."""
+    view_mode, filtered = _render_car_view_toolbar(results, key_prefix)
+    if not filtered:
+        st.info("No listings match your current filters. Try widening the price or mileage range, or including more deal grades.", icon=":material/search_off:")
+        return
+
+    if view_mode == "grid":
+        for row_start in range(0, len(filtered), 3):
+            row = filtered[row_start:row_start + 3]
+            cols = st.columns(3)
+            for slot, listing in enumerate(row):
+                with cols[slot]:
+                    render_car_card(row_start + slot, listing, key_prefix)
+    elif view_mode == "split":
+        _render_car_split_view(filtered, key_prefix)
+    elif view_mode == "map":
+        _render_car_clustered_map(filtered, key_prefix)
+    else:
+        _render_car_table_view(filtered, key_prefix)
 
 
 def _clear_car_saved_delete_target():

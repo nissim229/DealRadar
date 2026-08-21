@@ -21,16 +21,24 @@ _GRADE_ACCENT = {
 }
 
 
-def render_car_card(idx, listing, key_prefix):
+def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False):
     """One car listing (real or mock) rendered as a card. Grade, market
     value, and grade_adjustments are precomputed on the listing itself by
     car_engine.py (compute_car_deal_metrics for mock, _grade_real_listings
     for real) rather than passed in separately, so every listing dict -
-    whichever source it came from - already carries the same fields."""
+    whichever source it came from - already carries the same fields.
+
+    focusable=True (used by the Cars + Map split view) makes the make/
+    model/trim heading a real clickable "focus this on the map" control,
+    same as render_property_card's address button and icon - the two
+    views' original Cars Only grid still calls this with the default
+    focusable=False and sees no behavior change. Returns True the run a
+    focus click happened, so the caller can toggle is_focused for it."""
     card_key = f"{key_prefix}_car_card_{idx}"
     has_reliable_grade = listing.get("has_reliable_grade", True)
     grade = listing.get("grade")
     photo_url = listing.get("primary_image")
+    focus_clicked = False
 
     with st.container(border=True, key=card_key):
         if photo_url:
@@ -70,7 +78,26 @@ def render_car_card(idx, listing, key_prefix):
         """, unsafe_allow_html=True)
 
         trim = f" {listing['trim']}" if listing.get("trim") else ""
-        st.markdown(f"**{listing['year']} {listing['make']} {listing['model']}{trim}**")
+        heading = f"{listing['year']} {listing['make']} {listing['model']}{trim}"
+        if focusable and listing.get("latitude") is not None:
+            st.markdown(f"""
+                <style>
+                div.st-key-{card_key}_focusbtn button {{
+                    background: {'var(--radar-surface-alt)' if is_focused else 'transparent'} !important;
+                    border: none !important; padding: 0 !important; text-align: left !important;
+                    font-weight: 700 !important; box-shadow: none !important; width: 100% !important;
+                    justify-content: flex-start !important; min-height: 0 !important;
+                }}
+                div.st-key-{card_key}_focusbtn button:hover {{ color: var(--radar-primary) !important; }}
+                div.st-key-{card_key}_focusbtn button span[role="img"] {{ color: var(--radar-primary) !important; font-size: 15px !important; }}
+                </style>
+            """, unsafe_allow_html=True)
+            with st.container(key=f"{card_key}_focusbtn"):
+                if st.button(f":material/center_focus_strong: {heading}", key=f"{key_prefix}_focus_{idx}",
+                             use_container_width=True, help="Focus this listing's dealer on the map"):
+                    focus_clicked = True
+        else:
+            st.markdown(f"**{heading}**")
         location_bit = f"{listing['city']}, {listing['state']}" if listing.get("city") else f"ZIP {listing['zip_code']}"
         st.caption(f"{listing['mileage']:,} mi · {listing['dealer_name']} · {location_bit}")
 
@@ -127,3 +154,5 @@ def render_car_card(idx, listing, key_prefix):
                     build_carsdotcom_search_url(listing["year"], listing["make"], listing["model"]),
                     use_container_width=True,
                 )
+
+    return focus_clicked
