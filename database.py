@@ -396,6 +396,21 @@ def init_db():
             )
         """)
 
+        # Cache-aside store for real RentCast listings, keyed by AREA (rounded
+        # lat/lon + property_type + radius), not by any one user's exact
+        # price/beds filter - so two different users searching the same city
+        # share one RentCast call instead of each spending their own. See
+        # [[deferred_rentcast_caching_plan]] for why a 24h TTL loses nothing
+        # (RentCast itself only refreshes listings at least once/day).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS rentcast_area_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cache_key TEXT UNIQUE NOT NULL,
+                listings_json TEXT NOT NULL,
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # 3. UPDATED: Historical Output Log Table with map tracking structures
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS history_logs (
@@ -1934,6 +1949,40 @@ def get_cached_city_coords(city, state):
         cursor.execute("SELECT lat, lon FROM city_coords_cache WHERE city=? AND state=?", (city, state))
         row = cursor.fetchone()
         return (row[0], row[1]) if row else None
+    finally:
+        conn.close()
+
+def get_cached_rentcast_area(cache_key, max_age_hours=24):
+    """Returns the cached raw (unfiltered) RentCast listings for this area
+    key if they were fetched within max_age_hours, else None on a cache
+    miss or a stale entry - the caller falls back to a real API call either
+    way, exactly like get_cached_city_coords above."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT listings_json FROM rentcast_area_cache WHERE cache_key=? "
+            "AND fetched_at > datetime('now', ?)",
+            (cache_key, f"-{int(max_age_hours)} hours")
+        )
+        row = cursor.fetchone()
+        return json.loads(row[0]) if row else None
+    finally:
+        conn.close()
+
+def save_rentcast_area_cache(cache_key, listings):
+    """Upserts this area's raw listings + a fresh fetched_at timestamp -
+    the next same-area request within the TTL reads this instead of
+    spending another real RentCast call."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO rentcast_area_cache (cache_key, listings_json, fetched_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(cache_key) DO UPDATE SET listings_json=excluded.listings_json, fetched_at=excluded.fetched_at",
+            (cache_key, json.dumps(listings))
+        )
+        conn.commit()
     finally:
         conn.close()
 

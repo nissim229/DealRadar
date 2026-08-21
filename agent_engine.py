@@ -187,7 +187,20 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
 
     Note: RentCast doesn't return listing photos in this response - so
     property cards for real listings still fall back to Street View
-    exterior imagery, exactly like they already do for simulated ones."""
+    exterior imagery, exactly like they already do for simulated ones.
+
+    Cache-aside by AREA first (rounded lat/lon + property_type + radius,
+    NOT price/beds - those are applied as a filter on whatever this
+    returns, same as the client-side price/beds re-check below), so two
+    different users' searches against the same city share one real
+    RentCast call instead of each spending their own. A 24h TTL costs
+    nothing real - RentCast itself only refreshes listings at least once a
+    day. See [[deferred_rentcast_caching_plan]] for the full reasoning."""
+    cache_key = f"{round(center_lat, 2)},{round(center_lon, 2)},{property_type},{radius}"
+    cached_listings = db.get_cached_rentcast_area(cache_key)
+    if cached_listings is not None:
+        return [l for l in cached_listings if l["price"] <= max_p and l["beds"] >= min_b]
+
     usage_this_month = db.get_rentcast_usage_this_month()
     monthly_limit = db.get_rentcast_config().get("monthly_limit", RENTCAST_MONTHLY_LIMIT)
     if usage_this_month >= monthly_limit:
@@ -202,7 +215,12 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
             "longitude": center_lon,
             "radius": radius,
             "status": "Active",
-            "limit": 50,
+            # RentCast bills per request, not per result - up to 500 listings
+            # cost exactly the same one call as up to 50 did, and now that a
+            # single area fetch is shared/cached across every search that
+            # lands in it (see cache_key above), a wider haul per call
+            # matters even more than before.
+            "limit": 500,
         }
         rc_property_type = RENTCAST_PROPERTY_TYPE_MAP.get(property_type)
         if rc_property_type:
@@ -230,8 +248,6 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
             lat = item.get("latitude")
             lon = item.get("longitude")
             if price is None or beds is None or lat is None or lon is None:
-                continue
-            if price > max_p or beds < min_b:
                 continue
             listing_agent = item.get("listingAgent") or {}
             listing_office = item.get("listingOffice") or {}
@@ -292,7 +308,8 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
                 "rentcast_raw": item,
             })
         _log_rentcast_call_and_maybe_alert(success=True, user_id=user_id)
-        return listings
+        db.save_rentcast_area_cache(cache_key, listings)
+        return [l for l in listings if l["price"] <= max_p and l["beds"] >= min_b]
     except Exception as e:
         # An exception here (timeout, connection error, JSON parse failure)
         # means we can't be sure RentCast's server actually processed the
