@@ -38,8 +38,17 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     insurance = price * (calc_ins_rate / 100)
     hoa_annual = (hoa_monthly or 0) * 12
     expenses = taxes + insurance + hoa_annual
-    noi = max(0.0, eff_gross - expenses)
-    cap_rate = (noi / price) * 100 if price > 0 else 0.0
+    # NOI itself must stay unclamped - cashflow/CoC/grade all derive from it,
+    # and flooring it at 0 was hiding real losses on all-cash (or near
+    # free-and-clear) deals: with no debt service, cashflow = noi, so a
+    # clamped $0 noi produced a $0 cashflow instead of the true negative
+    # figure, misgrading a money-losing all-cash property "average"
+    # instead of "critical" (a mortgaged deal never hit this - debt service
+    # alone pushes cashflow negative regardless of the NOI clamp). Only the
+    # cap-rate *display* value is floored, so a loss reads as "0% cap rate"
+    # rather than a possibly-confusing negative percentage.
+    noi = eff_gross - expenses
+    cap_rate = (max(0.0, noi) / price) * 100 if price > 0 else 0.0
 
     down_amt = price * (calc_down_pct / 100)
     loan_amt = price - down_amt

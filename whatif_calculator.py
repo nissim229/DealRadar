@@ -294,8 +294,12 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             const maintenance = effGross*(maintPct/100);
             const hoaAnnual = hoa*12;
             const totalExpenses = taxes+insurance+mgmtFee+maintenance+hoaAnnual;
-            const noi = Math.max(0, effGross-totalExpenses);
-            const capRate = price>0 ? (noi/price)*100 : 0;
+            // NOI stays unclamped - see underwriting.py's compute_deal_metrics
+            // for why (an all-cash loss must show as negative cashflow/
+            // "critical", not get floored to $0/"average"). Only cap-rate
+            // display is floored.
+            const noi = effGross-totalExpenses;
+            const capRate = price>0 ? (Math.max(0, noi)/price)*100 : 0;
 
             const downAmt = price*(downPct/100);
             const loanAmt = price-downAmt;
