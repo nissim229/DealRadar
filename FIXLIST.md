@@ -58,7 +58,11 @@
       and `PASSWORD_PEPPER` resolves to the value already in `.env`.
 - [x] Run `pytest` before every commit from here on.
 
-## 3. Silent exception audit (17 broad handlers)
+## 3. Silent exception audit (17 broad handlers) [x]
+
+Done in commit `9d493b9` - see REVIEW_LOG.md Entry 3. Actual current count
+was 24 sites across 6 files (this list was approximate/stale, as noted
+below); audited the full current set, not just what's listed here.
 
 These swallow errors invisibly. For each one, make a deliberate choice:
 log it (`logging` module or `st.error` where user-facing), re-raise, or add a
@@ -72,7 +76,13 @@ comment explicitly justifying the silence. Approximate locations:
 (Line numbers approximate — locate by surrounding code, they predate recent
 commits.)
 
-## 4. sqlite connection hygiene
+## 4. sqlite connection hygiene [x - no code change needed]
+
+Checked in the round covered by commit `9d493b9`/REVIEW_LOG.md Entry 3 -
+verified all 109/109 `sqlite3.connect()` sites in `database.py` already
+have a matching `try:`/`finally: conn.close()` pair. The leak risk this
+item describes doesn't currently exist; a `closing()` refactor would be
+purely cosmetic. Deliberately not done - see Entry 3's own reasoning.
 
 `database.py` opens `sqlite3.connect(...)` ~108 times with manual
 `conn.close()`. Any exception path without try/finally leaks the connection.

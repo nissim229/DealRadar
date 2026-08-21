@@ -226,3 +226,96 @@ Full suite: **13 passed** (was 12; +1 from item 2 above).
 - Was leaving the other `strategy_config.py` references (outside what was
   explicitly flagged) alone the right call, or should those be swept up
   too in a future entry?
+
+---
+
+## Entry 3 — strategy_config sweep, FIXLIST Sections 3–4, register_user test (2026-08-21)
+
+**Status**: Pending review
+
+Commits (all pushed to `master`):
+- `ed015be` — full 8-site strategy_config.py comment sweep
+- `9d493b9` — Section 3 (silent exception audit)
+- `6d72d14` — register_user() end-to-end test
+
+### strategy_config.py sweep (commit `ed015be`)
+
+Used `REVIEWER_FEEDBACK.md`'s complete 8-site inventory
+(`location_data.py:4`, `location_picker.py:5`, `analytics.py:1448`,
+`car_search.py:6`, `car_search.py:787`, `pricing.py:5`,
+`DESIGN_STANDARDS.md:73`, `DESIGN_STANDARDS.md:143`). 7 fixed (repointed at
+the real current file/pattern, verified each new reference via grep - e.g.
+`pricing.py`'s "used from three places" list was checked against actual
+current importers, not just had the dead name swapped out); 1
+(`location_picker.py:5`) needed no change, already correctly described the
+module as removed.
+
+### Section 3: silent exception audit (commit `9d493b9`)
+
+FIXLIST.md named ~15 approximate sites (title claimed 17) across 3 files
+and said its line numbers predate recent commits. A full repo-wide grep
+found the real current total: **24** `except Exception:` sites across 6
+files - including 4 in `agent_engine.py` beyond the 2 named, and
+`google_oauth.py`/`email_utils.py`/`car_engine.py` not mentioned at all.
+Audited the complete current set, not just the stale named subset.
+
+17 of 24 were already fine on inspection (already print a diagnostic or
+have deliberate error-type-branching logic) - left untouched. Fixed the 7
+genuinely silent ones: 5 in `analytics.py` got a `print(f"[Analytics] ...: {e}")`
+diagnostic (mini results strip parse, live-scan execution failure,
+split-view map, results header count, best-deal computation, quick-filter
+toolbar, properties-only grid, map-only view, table view, history-row
+summary, hero stat cards - one print per distinct failure site, named
+individually); 1 in `agent_engine.py` (Street View metadata check) got a
+log; 2 (`agent_engine.py`'s geodesic distance calc, `settings.py`'s
+timezone fallback) got comment-only justification instead of logging,
+since both are high-frequency/expected-fallback paths where a print would
+be noise, not signal. All prints follow the codebase's existing
+`print(f"[Tag] message")` convention rather than introducing the stdlib
+`logging` module fresh.
+
+### Section 4: sqlite connection hygiene — **no code change made**
+
+Verified precisely before acting: **all 109 of 109** `sqlite3.connect()`
+call sites in `database.py` already have a matching `try:`/`finally:
+conn.close()` pair (checked programmatically, not just a count match -
+confirmed the `finally:` actually appears within each function, not
+coincidentally elsewhere in the file). This means the specific risk
+FIXLIST describes - a connection leaking because an exception path skips
+the close - **does not currently exist anywhere in this codebase**;
+`finally:` already guarantees the close exactly as `contextlib.closing()`
+would. A 109-site mechanical refactor to `closing()` would be purely
+cosmetic with zero reliability benefit, and touching that many call sites
+for no functional gain carries real risk of introducing an actual mistake
+in the process - so it was deliberately not done. Flagging this explicitly
+rather than silently skipping the section.
+
+### Extra: register_user() end-to-end test (commit `6d72d14`)
+
+Requested alongside Sections 3-4. Every prior auth test called
+`hash_password()` directly; this one goes through the real account-
+creation entry point, confirming it produces a bcrypt hash, the account
+can log in, wrong password is rejected, and a duplicate email returns
+`None` (not a crash). **Sanity-checked**: temporarily made
+`register_user()` call `_hash_password_legacy()` instead, confirmed this
+exact test fails, restored, confirmed all 14 tests pass (`git diff` on
+`database.py` empty afterward).
+
+Full suite: **14 passed** (was 13; +1 from the register_user test).
+
+### What to check (Entry 3)
+
+- Are the 7 strategy_config.py reference fixes accurate against the
+  current codebase (correct new file/function pointed at in each case)?
+- Is the 24-site (vs. FIXLIST's named ~15) exception audit scope
+  appropriate, or should the 17 already-compliant sites have gotten a
+  second look too?
+- Are the print-vs-comment-only judgment calls reasonable, especially the
+  2 comment-only ones (geodesic distance, timezone fallback) - any of
+  these actually warrant logging after all?
+- **Most important**: is the Section 4 "no code change - already safe"
+  conclusion correct? Please independently verify the 109/109 try/finally
+  claim rather than taking it at face value, since this is the one item
+  in this entry where doing nothing was the deliberate choice.
+- Is the register_user() test's coverage sufficient, or is there a gap in
+  how it exercises the real entry point?
