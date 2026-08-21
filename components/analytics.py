@@ -327,6 +327,117 @@ def _render_properties_only_view(coords_json, filter_min_price, filter_max_price
             st.caption("Unable to load property listings for this scan.")
 
 
+def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                      filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                      calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                      calc_target_yield, view_mode, key_prefix, focused_key):
+    """Cards in a fixed-height scrollable left column (position:sticky was
+    tested and failed in this Streamlit layout, so a scroll box is used
+    instead) beside a map that re-centers/zooms on whichever card was
+    Focused. Extracted out of _render_scan_results as part of splitting its
+    4 view-mode branches into named functions (Section 5 monolith-split
+    plan) - each branch takes every parent-scope local it references as an
+    explicit parameter, no implicit closures."""
+    # Give the cards their own fixed-height scrollable box (like
+    # Zillow's left panel) instead of trying to make the map
+    # "stick" while the whole page scrolls. This is more reliable
+    # than position:sticky, which was tested and failed in this
+    # Streamlit layout - the map simply isn't part of the
+    # scrolling region at all, so it can't move regardless.
+    scroll_box_key = f"{key_prefix}_cards_scroll_box"
+    st.markdown(f"""
+        <style>
+        div.st-key-{scroll_box_key} {{
+            max-height: 800px;
+            overflow-y: auto;
+            padding-right: 12px;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    cards_col, map_col = st.columns([0.85, 1.3])
+
+    if coords_json:
+        try:
+            parsed_points = json.loads(coords_json)
+            df_listings_grid = pd.DataFrame(parsed_points)
+            if filter_min_price is not None:
+                df_listings_grid = df_listings_grid[
+                    (df_listings_grid["price"] >= filter_min_price) &
+                    (df_listings_grid["price"] <= filter_max_price) &
+                    (df_listings_grid["beds"] >= filter_min_beds) &
+                    (df_listings_grid["baths"] >= filter_min_baths)
+                ].reset_index(drop=True)
+            if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
+                grade_mask = []
+                for _, r in df_listings_grid.iterrows():
+                    m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                              calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                              hoa_monthly=_safe_hoa(r))
+                    grade_mask.append(m["grade"] in filter_grades)
+                df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
+
+            with cards_col:
+                if df_listings_grid.empty:
+                    st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
+                st.caption("Click **Focus** on any card to zoom the map to that property. Scroll within the list below to see more.")
+                with st.container(key=scroll_box_key):
+                    row_indices = list(df_listings_grid.index)
+                    for pair_start in range(0, len(row_indices), 2):
+                        pair_indices = row_indices[pair_start:pair_start + 2]
+                        grid_cols = st.columns(2)
+                        for slot, idx in enumerate(pair_indices):
+                            row_item = df_listings_grid.loc[idx]
+                            with grid_cols[slot]:
+                                metrics = compute_deal_metrics(
+                                    float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                    hoa_monthly=_safe_hoa(row_item)
+                                )
+                                is_focused = st.session_state[focused_key] == idx
+                                if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_split_card_focus", is_focused,
+                                                         st.session_state.user_id, st.session_state.get("distance_reference_point"),
+                                                         calc_target_yield,
+                                                         {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                                          "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
+                                    st.session_state[focused_key] = None if is_focused else idx
+                                    st.rerun()
+
+            with map_col:
+                st.markdown("##### :material/map: Map")
+                map_zoom_level = 12
+                df_map_filtered = df_listings_grid.copy()
+
+                if st.session_state[focused_key] is not None:
+                    target_row_idx = st.session_state[focused_key]
+                    focus_lat = df_listings_grid.iloc[target_row_idx]["latitude"]
+                    focus_lon = df_listings_grid.iloc[target_row_idx]["longitude"]
+                    df_map_filtered = df_listings_grid.iloc[[target_row_idx]]
+                    map_zoom_level = 15
+                else:
+                    focus_lat = df_listings_grid["latitude"].mean()
+                    focus_lon = df_listings_grid["longitude"].mean()
+
+                df_map_filtered = df_map_filtered.copy()
+                df_map_filtered["_price_label"] = df_map_filtered["price"].apply(_format_price_short)
+
+                fig_map = px.scatter_mapbox(
+                    df_map_filtered, lat="latitude", lon="longitude", hover_name="title",
+                    hover_data={"address": True, "price": True, "latitude": False, "longitude": False},
+                    zoom=map_zoom_level, center={"lat": focus_lat, "lon": focus_lon},
+                    text="_price_label",
+                )
+                fig_map.update_traces(
+                    marker=dict(size=15, color="#ef4444"),
+                    textposition="top center", textfont=dict(color="#0f172a", size=12, family="Arial Black"),
+                )
+                fig_map.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
+                st.plotly_chart(fig_map, use_container_width=True, key=f"{key_prefix}_scatter_map", config={"displayModeBar": True, "scrollZoom": True})
+        except Exception as e:
+            print(f"[Analytics] Map Only view render failed: {e}")
+            st.caption("Unable to load the map for this scan.")
+
+
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
                           calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield,
@@ -416,104 +527,10 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
                                       calc_target_yield, view_mode, key_prefix, focused_key)
 
     elif view_toggle == ":material/splitscreen: Properties + Map":
-        # Give the cards their own fixed-height scrollable box (like
-        # Zillow's left panel) instead of trying to make the map
-        # "stick" while the whole page scrolls. This is more reliable
-        # than position:sticky, which was tested and failed in this
-        # Streamlit layout - the map simply isn't part of the
-        # scrolling region at all, so it can't move regardless.
-        scroll_box_key = f"{key_prefix}_cards_scroll_box"
-        st.markdown(f"""
-            <style>
-            div.st-key-{scroll_box_key} {{
-                max-height: 800px;
-                overflow-y: auto;
-                padding-right: 12px;
-            }}
-            </style>
-        """, unsafe_allow_html=True)
-
-        cards_col, map_col = st.columns([0.85, 1.3])
-
-        if coords_json:
-            try:
-                parsed_points = json.loads(coords_json)
-                df_listings_grid = pd.DataFrame(parsed_points)
-                if filter_min_price is not None:
-                    df_listings_grid = df_listings_grid[
-                        (df_listings_grid["price"] >= filter_min_price) &
-                        (df_listings_grid["price"] <= filter_max_price) &
-                        (df_listings_grid["beds"] >= filter_min_beds) &
-                        (df_listings_grid["baths"] >= filter_min_baths)
-                    ].reset_index(drop=True)
-                if filter_grades and len(filter_grades) < 3 and not df_listings_grid.empty:
-                    grade_mask = []
-                    for _, r in df_listings_grid.iterrows():
-                        m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                  hoa_monthly=_safe_hoa(r))
-                        grade_mask.append(m["grade"] in filter_grades)
-                    df_listings_grid = df_listings_grid[grade_mask].reset_index(drop=True)
-
-                with cards_col:
-                    if df_listings_grid.empty:
-                        st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
-                    st.caption("Click **Focus** on any card to zoom the map to that property. Scroll within the list below to see more.")
-                    with st.container(key=scroll_box_key):
-                        row_indices = list(df_listings_grid.index)
-                        for pair_start in range(0, len(row_indices), 2):
-                            pair_indices = row_indices[pair_start:pair_start + 2]
-                            grid_cols = st.columns(2)
-                            for slot, idx in enumerate(pair_indices):
-                                row_item = df_listings_grid.loc[idx]
-                                with grid_cols[slot]:
-                                    metrics = compute_deal_metrics(
-                                        float(row_item["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                        hoa_monthly=_safe_hoa(row_item)
-                                    )
-                                    is_focused = st.session_state[focused_key] == idx
-                                    if render_property_card(idx, row_item, metrics, view_mode, f"{key_prefix}_split_card_focus", is_focused,
-                                                             st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                                             calc_target_yield,
-                                                             {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                              "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
-                                        st.session_state[focused_key] = None if is_focused else idx
-                                        st.rerun()
-
-                with map_col:
-                    st.markdown("##### :material/map: Map")
-                    map_zoom_level = 12
-                    df_map_filtered = df_listings_grid.copy()
-
-                    if st.session_state[focused_key] is not None:
-                        target_row_idx = st.session_state[focused_key]
-                        focus_lat = df_listings_grid.iloc[target_row_idx]["latitude"]
-                        focus_lon = df_listings_grid.iloc[target_row_idx]["longitude"]
-                        df_map_filtered = df_listings_grid.iloc[[target_row_idx]]
-                        map_zoom_level = 15
-                    else:
-                        focus_lat = df_listings_grid["latitude"].mean()
-                        focus_lon = df_listings_grid["longitude"].mean()
-
-                    df_map_filtered = df_map_filtered.copy()
-                    df_map_filtered["_price_label"] = df_map_filtered["price"].apply(_format_price_short)
-
-                    fig_map = px.scatter_mapbox(
-                        df_map_filtered, lat="latitude", lon="longitude", hover_name="title",
-                        hover_data={"address": True, "price": True, "latitude": False, "longitude": False},
-                        zoom=map_zoom_level, center={"lat": focus_lat, "lon": focus_lon},
-                        text="_price_label",
-                    )
-                    fig_map.update_traces(
-                        marker=dict(size=15, color="#ef4444"),
-                        textposition="top center", textfont=dict(color="#0f172a", size=12, family="Arial Black"),
-                    )
-                    fig_map.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
-                    st.plotly_chart(fig_map, use_container_width=True, key=f"{key_prefix}_scatter_map", config={"displayModeBar": True, "scrollZoom": True})
-            except Exception as e:
-                print(f"[Analytics] Map Only view render failed: {e}")
-                st.caption("Unable to load the map for this scan.")
+        _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                         filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                         calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                         calc_target_yield, view_mode, key_prefix, focused_key)
 
     elif view_toggle == ":material/map: Map Only":  # full-width map, click a pin to see that property's details
         st.caption("Click any pin to see that property's full details below the map. Nearby properties group into clusters - click a cluster to see what's inside.")
