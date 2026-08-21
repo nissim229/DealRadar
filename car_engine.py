@@ -54,6 +54,14 @@ CAR_CATALOG = {
 
 CAR_MAKES = sorted(CAR_CATALOG.keys())
 
+# Mock listings have no real per-trim powertrain data (see CAR_CATALOG's
+# own docstring - it's deliberately a short, non-real-time catalog), so
+# fuel type is just a flat, honest fact about each catalog model rather
+# than fabricated hybrid/plug-in variants that don't exist in this small
+# system - only Tesla's two models are actually electric in reality,
+# everything else in this catalog is a conventional gas vehicle.
+_MOCK_EV_MODELS = {("Tesla", "Model 3"), ("Tesla", "Model Y")}
+
 DEALER_NAMES = [
     "Metro Auto Group", "Sunrise Motors", "Valley Preowned", "Highline Auto Sales",
     "Crossroads Motors", "Summit Auto Outlet", "Riverside Car Co.", "Trailhead Motors",
@@ -149,6 +157,39 @@ def get_available_models(make, user_id=None):
         return _facet_labels_to_list(facets["models"]) if facets and facets.get("models") else None
 
     return _cached_facets(f"models:{make.lower()}", _fetch) or models_for_make(make)
+
+
+FUEL_TYPE_DISPLAY = {
+    "ev": ("⚡", "Electric", "#0891b2"),
+    "phev": ("🔌", "Plug-in Hybrid", "#7c3aed"),
+    "hybrid": ("🌿", "Hybrid", "#059669"),
+    "gas": ("⛽", "Gas", "#64748b"),
+}
+
+
+def classify_fuel_type(fuel_raw, engine_raw=None):
+    """Buckets Auto.dev's own 'fuel' facet (Electric/Plug-in Hybrid/
+    Gasoline/Diesel/...) plus the free-text 'engine' description into the
+     4 categories a shopper actually thinks in: ev/phev/hybrid/gas.
+    Confirmed live against the real API that Auto.dev's own 'fuel' value
+    does NOT distinguish a regular hybrid from a pure-gas car - a hybrid
+    Prius still comes back fuel='Gasoline', with 'Hybrid' only appearing
+    in the engine text (e.g. '1.8L Hybrid I4 134hp') - so 'fuel' alone
+    isn't enough; regular hybrids have to be sniffed out of engine text.
+    Returns None when there's no fuel data at all (rather than guessing
+    "gas"), so a listing with genuinely unknown fuel type doesn't display
+    a possibly-wrong chip."""
+    fuel = (fuel_raw or "").lower()
+    engine = (engine_raw or "").lower()
+    if "plug-in" in fuel or "phev" in fuel:
+        return "phev"
+    if "electric" in fuel:
+        return "ev"
+    if "hybrid" in fuel or "hybrid" in engine:
+        return "hybrid"
+    if fuel:
+        return "gas"
+    return None
 
 
 def get_available_trims(make, model, user_id=None):
@@ -253,6 +294,7 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
             # onto every result so the card displays what was searched for,
             # rather than silently dropping the filter's own label.
             "trim": trim if trim and trim != "Any trim" else None,
+            "fuel_type": "ev" if (pick_make, pick_model) in _MOCK_EV_MODELS else "gas",
             "zip_code": zip_code or "80301",
             "latitude": center_lat + random.uniform(-0.15, 0.15),
             "longitude": center_lon + random.uniform(-0.15, 0.15),
@@ -573,6 +615,7 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
                 "make": vehicle.get("make", make),
                 "model": vehicle.get("model", model),
                 "trim": vehicle.get("trim"),
+                "fuel_type": classify_fuel_type(vehicle.get("fuel"), vehicle.get("engine")),
                 "year": int(year),
                 "mileage": int(mileage),
                 "price": int(price),

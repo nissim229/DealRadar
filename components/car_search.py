@@ -642,8 +642,11 @@ def _render_car_table_view(filtered, key_prefix):
     for listing in page_slice:
         grade = listing.get("grade")
         trim = f" {listing['trim']}" if listing.get("trim") else ""
+        fuel_type = listing.get("fuel_type")
+        fuel_label = f"{car_engine.FUEL_TYPE_DISPLAY[fuel_type][0]} {car_engine.FUEL_TYPE_DISPLAY[fuel_type][1]}" if fuel_type in car_engine.FUEL_TYPE_DISPLAY else "—"
         rows.append({
             "Vehicle": f"{listing['year']} {listing['make']} {listing['model']}{trim}",
+            "Fuel": fuel_label,
             "Price": float(listing["price"]),
             "Mileage": listing["mileage"],
             "Dealer": listing["dealer_name"],

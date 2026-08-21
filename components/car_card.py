@@ -12,7 +12,7 @@ search links wherever a real listing's own fields aren't present.
 
 import streamlit as st
 from icons import icon as svg_icon
-from car_engine import build_autotrader_search_url, build_carsdotcom_search_url, render_car_deal_badge
+from car_engine import build_autotrader_search_url, build_carsdotcom_search_url, render_car_deal_badge, FUEL_TYPE_DISPLAY
 
 _GRADE_ACCENT = {
     "excellent": "var(--radar-success)",
@@ -63,6 +63,26 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False)
             "border-radius:6px; font-weight:700; font-size:12px; border:1px solid #e2e8f0; "
             "white-space:nowrap;'>Not enough data to grade</span>"
         )
+        # Bottom-left corner of the photo, same overlay-chip treatment as
+        # price (top-left) and grade (top-right) - omitted entirely rather
+        # than showing a guessed/default fuel type when Auto.dev's own
+        # response has none (see car_engine.classify_fuel_type).
+        fuel_type = listing.get("fuel_type")
+        fuel_chip_html = ""
+        if fuel_type and fuel_type in FUEL_TYPE_DISPLAY:
+            fuel_emoji, fuel_label, fuel_color = FUEL_TYPE_DISPLAY[fuel_type]
+            # Single line, deliberately - a multi-line f-string here (each
+            # continuation line starting well past 4 spaces once spliced
+            # into the outer block below) tripped Markdown's own "4+
+            # leading spaces = code block" rule, so part of this chip
+            # rendered as literal visible text instead of HTML. Confirmed
+            # live: the div's raw style text leaked onto the page next to
+            # a chip that (inconsistently) still rendered.
+            fuel_chip_html = (
+                f"<div style='position:absolute; bottom:10px; left:10px; background:{fuel_color}; color:white; "
+                f"padding:3px 9px; border-radius:var(--radar-radius-pill); font-weight:700; font-size:11px; "
+                f"display:flex; align-items:center; gap:4px;'>{fuel_emoji} {fuel_label}</div>"
+            )
         st.markdown(f"""
             <div style='position:relative; height:150px; border-radius:var(--radar-radius-md);
                         {photo_html}
@@ -74,6 +94,7 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False)
                 <div style='position:absolute; top:10px; right:10px;'>
                     {badge_html}
                 </div>
+                {fuel_chip_html}
             </div>
         """, unsafe_allow_html=True)
 
