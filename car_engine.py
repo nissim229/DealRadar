@@ -22,12 +22,9 @@ load_dotenv()
 
 autodev_api_key = os.getenv("AUTODEV_API_KEY")
 
-# Auto.dev's free tier is a flat 1,000 calls/month, no admin-editable plan
-# config yet (unlike RentCast's db.get_rentcast_config()) - this is a
-# straightforward port of that same monthly-cap pattern for one vendor;
-# promoting it to an admin-editable setting is natural follow-up work, not
-# done here since only one plan tier exists to configure yet.
-AUTODEV_MONTHLY_LIMIT = 1000
+# Admin-editable via db.get_autodev_config()/update_autodev_config(), same
+# app_settings-backed pattern as db.get_rentcast_config() - was a flat
+# AUTODEV_MONTHLY_LIMIT=1000 constant until this became a real setting.
 
 
 def is_autodev_configured():
@@ -98,7 +95,7 @@ def _fetch_autodev_facets(extra_params, user_id=None):
     if not autodev_api_key:
         return None
     usage_this_month = db.get_autodev_usage_this_month()
-    if usage_this_month >= AUTODEV_MONTHLY_LIMIT:
+    if usage_this_month >= db.get_autodev_config()["monthly_limit"]:
         return None
     try:
         import requests
@@ -552,8 +549,9 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
         return None
 
     usage_this_month = db.get_autodev_usage_this_month()
-    if usage_this_month >= AUTODEV_MONTHLY_LIMIT:
-        print(f"[CarEngine] Auto.dev monthly limit reached ({usage_this_month}/{AUTODEV_MONTHLY_LIMIT}) - skipping the real API call and using the local simulator instead.")
+    autodev_limit = db.get_autodev_config()["monthly_limit"]
+    if usage_this_month >= autodev_limit:
+        print(f"[CarEngine] Auto.dev monthly limit reached ({usage_this_month}/{autodev_limit}) - skipping the real API call and using the local simulator instead.")
         return None
 
     try:

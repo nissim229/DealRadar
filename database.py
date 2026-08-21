@@ -1774,6 +1774,34 @@ def update_openai_config(monthly_limit):
     finally:
         conn.close()
 
+def get_autodev_config():
+    """Admin-editable monthly cap on Auto.dev calls - previously a flat
+    AUTODEV_MONTHLY_LIMIT=1000 constant in car_engine.py (that module's own
+    comment already flagged promoting it to admin-editable, mirroring
+    get_rentcast_config(), as intended follow-up work). Default of 1000
+    matches Auto.dev's free-tier limit, the old hardcoded value."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='autodev_monthly_limit'")
+        row = cursor.fetchone()
+        return {"monthly_limit": int(row[0]) if row else 1000}
+    finally:
+        conn.close()
+
+def update_autodev_config(monthly_limit):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('autodev_monthly_limit', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(int(monthly_limit)),)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 def log_openai_call(user_id=None):
     conn = sqlite3.connect(DB_NAME)
     try:

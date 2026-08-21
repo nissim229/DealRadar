@@ -412,6 +412,18 @@ def _render_pricing_tab():
             st.rerun()
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    ad_conf = db.get_autodev_config()
+    ad_used_conf = db.get_autodev_usage_this_month()
+    with st.form("admin_autodev_config_form"):
+        st.markdown("**Auto.dev (car listings)**")
+        st.caption(f"{ad_used_conf} / {ad_conf['monthly_limit']} calls used this month - once this cap is hit, Cars searches fall back to simulated listing data instead of calling Auto.dev.")
+        ad_limit_input = st.number_input("Monthly call limit", min_value=1, value=int(ad_conf["monthly_limit"]))
+        if st.form_submit_button(":material/save: Save Auto.dev Limit", type="primary", use_container_width=True):
+            db.update_autodev_config(ad_limit_input)
+            st.toast("Auto.dev monthly limit updated.")
+            st.rerun()
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     oa_conf = db.get_openai_config()
     oa_used = db.get_openai_usage_this_month()
     with st.form("admin_openai_config_form"):
@@ -1147,13 +1159,12 @@ def render_admin_control_panel():
             st.info("RentCast isn't configured yet - scans are using simulated listing data. Add RENTCAST_API_KEY to .env to switch on real listings.", icon=":material/info:")
 
     def _render_autodev_card():
-        # Cars' equivalent of the RentCast card above - no admin-editable
-        # plan config yet (car_engine.AUTODEV_MONTHLY_LIMIT is a flat
-        # constant, not a db-backed one like get_rentcast_config()), since
-        # only one Auto.dev plan tier exists to configure so far.
+        # Cars' equivalent of the RentCast card above - now admin-editable
+        # via db.get_autodev_config(), the same app_settings-backed pattern
+        # as get_rentcast_config()/get_places_config()/get_openai_config().
         if car_engine.is_autodev_configured():
             ad_used = db.get_autodev_usage_this_month()
-            ad_limit = car_engine.AUTODEV_MONTHLY_LIMIT
+            ad_limit = db.get_autodev_config()["monthly_limit"]
             ad_fraction = min(ad_used / ad_limit, 1.0) if ad_limit else 0
             if ad_used >= ad_limit:
                 ad_color, ad_status = "var(--radar-danger)", "Limit reached - car searches are using simulated data until next month"
@@ -1177,7 +1188,7 @@ def render_admin_control_panel():
                     </div>
                 """, unsafe_allow_html=True)
                 st.progress(ad_fraction)
-                st.caption(f"{ad_status} · Free plan (1,000 calls/mo, $0) - powers Cars category search")
+                st.caption(f"{ad_status} · {ad_limit:,} calls/mo plan - powers Cars category search - edit in the Pricing tab")
         else:
             st.info("Auto.dev isn't configured yet - Cars searches are using simulated listing data. Add AUTODEV_API_KEY to .env to switch on real listings.", icon=":material/info:")
 

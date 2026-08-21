@@ -617,13 +617,14 @@ def render_main_topbar(is_guest=False):
                             "line2": f"Alerts fire at {rc_conf['alert_threshold_pct']}% - adjust in Admin Controls > Pricing.",
                         })
 
-                    ad_text, ad_color = _usage_badge(db.get_autodev_usage_this_month(), car_engine.AUTODEV_MONTHLY_LIMIT)
+                    autodev_conf = db.get_autodev_config()
+                    ad_text, ad_color = _usage_badge(db.get_autodev_usage_this_month(), autodev_conf["monthly_limit"])
                     if ad_text:
                         usage_badges.append({
                             "source": "autodev", "text": ad_text, "color": ad_color,
                             "help": "Auto.dev usage this month · powers Cars listings",
                             "line1": f"**{ad_text}** Auto.dev calls used this month.",
-                            "line2": f"Fixed {car_engine.AUTODEV_MONTHLY_LIMIT:,}/month plan - powers real car listings.",
+                            "line2": f"{autodev_conf['monthly_limit']:,}/month plan - powers real car listings. Adjust in Admin Controls > Pricing.",
                         })
 
                     places_conf = db.get_places_config()
