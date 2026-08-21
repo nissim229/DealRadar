@@ -17,3 +17,8 @@ portfolio_uploads/
 
 # Editor/IDE
 .vs/
+
+# Auto-generated symlinks into venv/'s bundled Streamlit skill docs - not
+# real project content, and dangling until the exact same venv path exists
+.agents/
+.claude/skills/
