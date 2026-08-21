@@ -100,14 +100,14 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
 
 ## 5. Later / cosmetic (fine to defer)
 
-- [ ] Split monoliths: `components/analytics.py` (~2,000 lines),
+- [x] Split monoliths: `components/analytics.py` (~2,000 lines),
       `database.py` (~2,750 lines), `topbar.py` (~48 KB).
-- [ ] Generalize the hardcoded mock-city directory in `agent_engine.py`
+- [x] Generalize the hardcoded mock-city directory in `agent_engine.py`
       (currently Denver/Boulder only) used by the offline fallback generator.
-- [ ] Make Auto.dev monthly limit admin-editable, mirroring
+- [x] Make Auto.dev monthly limit admin-editable, mirroring
       `db.get_rentcast_config()` (a code comment in car_engine.py already
       flags this as intended follow-up).
-- [ ] Decide fate of untracked files: `.agents/`, `.claude/settings.local.json`,
+- [x] Decide fate of untracked files: `.agents/`, `.claude/settings.local.json`,
       `.claude/skills/` — commit intentionally or add to .gitignore.
 
 ## 6. Bug found during review (one-line fix)
@@ -123,6 +123,23 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
       (`82d0192`, 2026-08-17) — not caused by any later change. Fixed:
       renamed the call at line 486 to `render_property_detail_dialog()`,
       verified live in both Properties Only and Properties + Map views.
+
+## 7. Two more NameErrors from the same missed-rename bug class
+
+- [x] **`components/auth_portal.py:190` and `:364` call a function that
+      doesn't exist.** Commit `d41643c` (2026-08-19, "Give the login/
+      register page a real navbar...") renamed `_render_auth_header()` to
+      `_render_auth_topbar()` but updated only one of the three call sites
+      (line 236). Line 190 (inside `handle_google_oauth_callback()` — fires
+      on every Google OAuth sign-in callback) and line 364 (inside
+      `render_reset_password_view(token)` — fires the moment anyone opens a
+      password-reset email link) still called the removed name. Found by
+      the reviewer's proactive AST-based undefined-name sweep after Entry 6.
+      Fixed: renamed both calls to `_render_auth_topbar()`, verified live
+      via direct `?reset_token=` and `?code=` query-string navigation
+      (both crash sites fire before any external API call, so a fake
+      token/code was enough to exercise them without a real OAuth/email
+      round-trip).
 
 ---
 

@@ -683,3 +683,74 @@ full suite rerun independently: 14 passed.
 
 The reviewer's one procedural note - that this entry didn't exist yet
 when they checked - is what prompted writing it; no other gaps found.
+
+---
+
+## Entry 7 — FIXLIST.md Section 7, two more NameErrors from the same missed-rename (2026-08-21)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commit: `bcb54eb`.
+
+### The bugs
+
+Found by the reviewer's own proactive follow-up sweep after Entry 6 - an
+AST-based undefined-name scan across every project `.py` file (the same
+bug class as Section 6's `_property_detail_dialog`), not something this
+log flagged first. Commit `d41643c` (2026-08-19, "Give the login/register
+page a real navbar...") renamed `_render_auth_header()` to
+`_render_auth_topbar()` and updated only one of its three call sites
+(line 236, inside `render_auth_portal()`). Two more remained on the old
+name:
+
+1. `components/auth_portal.py:190` - inside `handle_google_oauth_callback()`
+   (fires on every Google OAuth sign-in callback).
+2. `components/auth_portal.py:364` - inside `render_reset_password_view(token)`
+   (fires the moment anyone opens a password-reset email link).
+
+Verified before fixing: `git show d41643c -- components/auth_portal.py`
+confirms the rename happened at the function definition and at line 236
+only; `git blame` on lines 190/364 shows `82d0192` (initial commit)
+because those specific lines' *content* was never touched by `d41643c` -
+only the function they call was renamed out from under them, which is
+exactly why `git blame` alone doesn't surface this bug class and a static
+undefined-name sweep is needed instead.
+
+### The fix (`bcb54eb`)
+
+Two-line change: both `_render_auth_header()` calls -> `_render_auth_topbar()`.
+Line 17's docstring mention of `_render_auth_header` ("see the removed
+`_render_auth_header`") is deliberately left as historical text, not a bug.
+
+### Verification
+
+`py_compile` clean, all 14 tests in `tests/test_auth.py` pass. Live
+browser check via direct query-string navigation - neither path needs a
+real OAuth/email round-trip since the crash was on each function's very
+first line, before any external call: `?reset_token=<fake>` now renders
+the dark navbar and a graceful "This Link Has Expired" message;
+`?code=<fake>` now renders the same navbar and a graceful "Your Google
+sign-in link expired" message. (Hit the same stale-dev-server-module-
+cache false-negative as Entry 6's first attempt - a clean server restart
+resolved it before either check was trusted.)
+
+Also ticked FIXLIST.md Section 5's four checkboxes in the same pass
+(monolith split, mock-city generalization, Auto.dev limit, untracked-file
+decision) - all genuinely completed per Entries 4-5, just left unticked.
+
+### What to check
+
+- Does the two-line diff correctly resolve both call sites, and does
+  anything else in the repo still reference the removed
+  `_render_auth_header` name outside the intentional docstring mention?
+- Is there a fourth call site anywhere this sweep might have missed?
+
+### Reviewer Feedback (Entry 7)
+
+**Verdict: approved.** Independently re-verified before folding in: the
+`.env` gitignore claim (`git check-ignore -v .env` confirms it's ignored)
+and that `GMAIL_APP_PASSWORD` in `.env` does contain an email-address-
+shaped value rather than an app password - this is an owner-side config
+gap flagged for the owner directly, not something for me to change.
+No new feedback file was required for this fold-in; recorded directly
+from the reviewer's sweep content already on file.
