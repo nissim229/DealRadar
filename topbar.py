@@ -545,11 +545,27 @@ def render_main_topbar(is_guest=False):
                     last_read = db.get_last_notifications_read_at(st.session_state.user_id)
                     low_credits = st.session_state.user_credits <= 3
 
+                    # Admin-only: the shared RentCast quota is an
+                    # operational concern, not a per-user one, so it's
+                    # surfaced here rather than gated behind Settings like
+                    # the per-user alerts above - same idea as low_credits,
+                    # just for staff instead of every user.
+                    rentcast_quota_warning = None
+                    if roles.is_admin_or_above(st.session_state.user_role):
+                        rc_conf = db.get_rentcast_config()
+                        if rc_conf["monthly_limit"] > 0:
+                            rc_used = db.get_rentcast_usage_this_month()
+                            rc_pct = (rc_used / rc_conf["monthly_limit"]) * 100
+                            if rc_pct >= rc_conf["alert_threshold_pct"]:
+                                rentcast_quota_warning = f"RentCast usage at {rc_pct:.0f}% this month ({rc_used}/{rc_conf['monthly_limit']} calls)."
+
                     unread_count = sum(
                         1 for _, _, generated_at in recent_activity
                         if last_read is None or (generated_at and generated_at > last_read)
                     )
                     if alerts_broadcast and (last_read is None or (alerts_broadcast_at and alerts_broadcast_at > last_read)):
+                        unread_count += 1
+                    if rentcast_quota_warning:
                         unread_count += 1
 
                 with st.container(key="topbar_alerts_popover_wrap"):
@@ -560,6 +576,8 @@ def render_main_topbar(is_guest=False):
                         else:
                             if low_credits:
                                 st.warning(f"Running low on credits ({st.session_state.user_credits} left).", icon=":material/bolt:")
+                            if rentcast_quota_warning:
+                                st.warning(rentcast_quota_warning, icon=":material/data_usage:")
                             if alerts_broadcast:
                                 st.info(alerts_broadcast, icon=":material/campaign:")
                             if recent_activity:

@@ -3,6 +3,7 @@ import random
 import sqlite3
 import urllib.parse
 import database as db
+import email_utils
 from dotenv import load_dotenv
 from openai import OpenAI
 from firecrawl import FirecrawlApp
@@ -143,6 +144,37 @@ def build_redfin_search_url(address, mls_number=None):
     return f"https://www.google.com/search?q={urllib.parse.quote(search_text)}"
 
 
+def _log_rentcast_call_and_maybe_alert(success, user_id=None):
+    """Wraps db.log_rentcast_call with the quota-threshold check, so every
+    real RentCast call - success or failed-but-billed, both count against
+    the quota - is checked against the admin-configured alert threshold in
+    one place instead of duplicating the check at each of this module's
+    call sites."""
+    db.log_rentcast_call(success=success, user_id=user_id)
+    _maybe_send_rentcast_quota_alert()
+
+
+def _maybe_send_rentcast_quota_alert():
+    """Emails every admin/super_admin once per calendar month, the moment
+    RentCast usage this month first reaches the admin-configured alert
+    threshold (default 85%) - so quota exhaustion, which silently degrades
+    every scan to simulated data, is something staff actually get told
+    about instead of only being visible if someone happens to open Admin
+    Controls and check the usage card."""
+    if db.was_rentcast_alert_sent_this_month():
+        return
+    config = db.get_rentcast_config()
+    limit = config["monthly_limit"]
+    if limit <= 0:
+        return
+    used = db.get_rentcast_usage_this_month()
+    if (used / limit) * 100 < config["alert_threshold_pct"]:
+        return
+    db.mark_rentcast_alert_sent()
+    for staff_email in db.get_admin_staff_emails():
+        email_utils.send_rentcast_quota_alert_email(staff_email, used, limit, config["alert_threshold_pct"])
+
+
 def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b, radius=25, user_id=None):
     """Calls RentCast's real active-listings API (v1/listings/sale) and maps
     the response into this app's internal listing shape. Returns None on
@@ -182,13 +214,13 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
         # sent, not per useful result) - log it now, before any further
         # parsing that could itself raise and skip the log call below.
         if response.status_code != 200:
-            db.log_rentcast_call(success=False, user_id=user_id)
+            _log_rentcast_call_and_maybe_alert(success=False, user_id=user_id)
             print(f"[Agent] RentCast API returned status {response.status_code}.")
             return None
 
         raw_results = response.json()
         if not isinstance(raw_results, list):
-            db.log_rentcast_call(success=False, user_id=user_id)
+            _log_rentcast_call_and_maybe_alert(success=False, user_id=user_id)
             return None
 
         listings = []
@@ -259,7 +291,7 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
                 # still real data the user paid quota for).
                 "rentcast_raw": item,
             })
-        db.log_rentcast_call(success=True, user_id=user_id)
+        _log_rentcast_call_and_maybe_alert(success=True, user_id=user_id)
         return listings
     except Exception as e:
         # An exception here (timeout, connection error, JSON parse failure)

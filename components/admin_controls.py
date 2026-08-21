@@ -384,10 +384,14 @@ def _render_pricing_tab():
         rc_name_input = st.text_input("Plan name", value=rc_conf["plan_name"])
         rc_cost_input = st.number_input("Monthly cost ($)", min_value=0.0, value=float(rc_conf["monthly_cost"]), step=1.0)
         rc_limit_input = st.number_input("Calls included per month", min_value=1, value=int(rc_conf["monthly_limit"]))
+        rc_threshold_input = st.number_input(
+            "Alert threshold (%)", min_value=1, max_value=100, value=int(rc_conf["alert_threshold_pct"]),
+            help="Every admin/super_admin gets a one-time email + an in-app alert (bell icon) the moment usage this month first crosses this percentage of the limit above."
+        )
         verified_note = f"Last verified {rc_conf['verified_at']}" if rc_conf["verified_at"] else "Never verified - RentCast has no price-change API, so re-check their pricing page periodically and re-save here."
         st.caption(verified_note)
         if st.form_submit_button(":material/save: Save RentCast Plan", type="primary", use_container_width=True):
-            db.update_rentcast_config(rc_limit_input, rc_name_input, rc_cost_input)
+            db.update_rentcast_config(rc_limit_input, rc_name_input, rc_cost_input, rc_threshold_input)
             st.toast("RentCast plan updated.")
             st.rerun()
 

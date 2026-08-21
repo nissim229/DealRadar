@@ -1362,23 +1362,29 @@ def get_rentcast_config():
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT key, value FROM app_settings WHERE key IN "
-                        "('rentcast_monthly_limit', 'rentcast_plan_name', 'rentcast_monthly_cost', 'rentcast_verified_at')")
+                        "('rentcast_monthly_limit', 'rentcast_plan_name', 'rentcast_monthly_cost', "
+                        "'rentcast_verified_at', 'rentcast_alert_threshold_pct')")
         settings = dict(cursor.fetchall())
         return {
             "monthly_limit": int(settings.get("rentcast_monthly_limit", 50)),
             "plan_name": settings.get("rentcast_plan_name", "Developer (Free)"),
             "monthly_cost": float(settings.get("rentcast_monthly_cost", 0)),
             "verified_at": settings.get("rentcast_verified_at"),
+            "alert_threshold_pct": int(settings.get("rentcast_alert_threshold_pct", 85)),
         }
     finally:
         conn.close()
 
-def update_rentcast_config(monthly_limit, plan_name, monthly_cost):
+def update_rentcast_config(monthly_limit, plan_name, monthly_cost, alert_threshold_pct=85):
     """Saves the admin's real RentCast plan details and stamps 'verified_at'
     to now - the honest substitute for an automated price-change alert
     (RentCast has no webhook/API for its own pricing changes), so the admin
     panel can show "verified N days ago, please re-check" instead of
-    silently trusting a number that might be stale."""
+    silently trusting a number that might be stale.
+
+    alert_threshold_pct drives a *different* alert - see
+    maybe_send_rentcast_quota_alert() - that emails staff once usage this
+    calendar month reaches this percentage of monthly_limit."""
     conn = sqlite3.connect(DB_NAME)
     try:
         cursor = conn.cursor()
@@ -1387,11 +1393,50 @@ def update_rentcast_config(monthly_limit, plan_name, monthly_cost):
             ("rentcast_plan_name", plan_name),
             ("rentcast_monthly_cost", str(float(monthly_cost))),
             ("rentcast_verified_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+            ("rentcast_alert_threshold_pct", str(int(alert_threshold_pct))),
         ]:
             cursor.execute(
                 "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (key, value)
             )
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_admin_staff_emails():
+    """Every admin/super_admin's email - the recipient list for the RentCast
+    quota-threshold alert (an operational/billing concern, not something a
+    'support'-tier staff account needs to act on)."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM users WHERE role IN ('admin', 'super_admin')")
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+def was_rentcast_alert_sent_this_month():
+    """True once maybe_send_rentcast_quota_alert() has already fired this
+    calendar month - a plain 'YYYY-MM' string comparison naturally resets
+    itself every month with no cleanup job needed."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='rentcast_alert_sent_month'")
+        row = cursor.fetchone()
+        return bool(row) and row[0] == datetime.now().strftime("%Y-%m")
+    finally:
+        conn.close()
+
+def mark_rentcast_alert_sent():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('rentcast_alert_sent_month', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (datetime.now().strftime("%Y-%m"),)
+        )
         conn.commit()
     finally:
         conn.close()

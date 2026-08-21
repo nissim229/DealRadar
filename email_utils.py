@@ -109,6 +109,23 @@ def send_low_credits_email(to_email):
     return _send_plain(to_email, "DealRadar: you're out of credits", body)
 
 
+def send_rentcast_quota_alert_email(to_email, used, limit, threshold_pct):
+    """Sent once per calendar month, the moment RentCast usage first
+    crosses the admin-configured alert threshold - to every admin/
+    super_admin, not opt-in via Settings like the user-facing alerts above,
+    since this is a shared app-wide quota rather than a per-user one."""
+    remaining = max(0, limit - used)
+    body = (
+        f"DealRadar's RentCast usage just crossed {threshold_pct}% of this month's quota: "
+        f"{used} of {limit} calls used ({remaining} left).\n\n"
+        f"Once the limit is reached, scans automatically fall back to simulated data instead of "
+        f"real listings until next month - log in to Admin Controls > Pricing & API to review or "
+        f"raise the plan's monthly limit.\n\n"
+        f"You're getting this because you're an admin on DealRadar."
+    )
+    return _send_plain(to_email, f"DealRadar: RentCast usage at {threshold_pct}% ({used}/{limit})", body)
+
+
 def send_password_changed_email(to_email):
     """Sent after a successful password change (self-service or
     admin-assisted), if opted in via Settings - a standard security
