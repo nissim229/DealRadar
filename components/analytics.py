@@ -236,9 +236,11 @@ def _render_scan_search_form(is_guest=False):
     identically for both a real session and a guest preview - the same
     rich location picker either way, matching the "almost identical to
     the real page" parity guest mode is built around; only what happens
-    after Run Live Scan differs (see the caller). Returns
-    (criteria, run_clicked, test_clicked) - criteria always has usable
-    defaults even before a scan runs."""
+    after Run Live Scan differs (see the caller). Returns criteria only -
+    the Run Live Scan/Test Scan/Buy Credits buttons live in
+    _render_scan_action_buttons instead, called separately alongside the
+    compact results strip rather than as part of the form itself (see
+    [[hero_redesign_compact_results]])."""
     selected_state, selected_cities, zip_code = render_compact_location_fields("scan_form")
 
     prop_col, price_col, beds_col = st.columns(3)
@@ -250,7 +252,18 @@ def _render_scan_search_form(is_guest=False):
     with beds_col:
         min_beds = st.number_input("Minimum Bedrooms", min_value=0, value=3, step=1, key="scan_form_min_beds")
 
-    st.markdown("<div style='height:6px;'></div>", unsafe_allow_html=True)
+    return {
+        "location": location_display_label(selected_state, selected_cities, zip_code),
+        "property_type": property_type, "max_price": max_price, "min_beds": min_beds,
+        "state": selected_state, "selected_cities": selected_cities, "zip_code": zip_code,
+    }
+
+
+def _render_scan_action_buttons(is_guest=False):
+    """The Run Live Scan / Run Test Scan / Buy Credits buttons - split out
+    of the search form so they can sit beside the compact results strip
+    (small property chips + Quick Access) in one row instead of the form
+    fields' own full-width row. Returns (run_clicked, test_clicked)."""
     # Final "Secure Sector" treatment (user-approved after prototyping
     # separately as a standalone artifact) - dark bg, faint border at
     # rest, and on hover: border/glow brighten, an 8px grid overlay
@@ -325,36 +338,30 @@ def _render_scan_search_form(is_guest=False):
         </style>
     """, unsafe_allow_html=True)
 
-    btn_col1, btn_col2, btn_col3 = st.columns(3)
-    with btn_col1:
-        # Scanning itself is never blocked - a user out of credits still
-        # gets a full, useful preview scan (sample data), so they can see
-        # what the tool does before ever paying. Credits only decide
-        # whether THIS scan pulls real market data instead of a preview.
-        with st.container(key="run_scan_btn_glow"):
-            run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
+    # Scanning itself is never blocked - a user out of credits still
+    # gets a full, useful preview scan (sample data), so they can see
+    # what the tool does before ever paying. Credits only decide
+    # whether THIS scan pulls real market data instead of a preview.
+    # Stacked vertically, not 3 side-by-side columns, since this now
+    # shares its row with the compact results strip instead of getting
+    # the form's own full width.
+    with st.container(key="run_scan_btn_glow"):
+        run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
     test_clicked = False
-    with btn_col2:
-        # Staff-only (any of the 3 tiers - see roles.py): forces mock/sample
-        # data regardless of role or credits, so staff can exercise the UI
-        # (new views, filters, pagination...) without burning real RentCast
-        # quota - previously the only way to get preview data as staff was
-        # to hand-edit a test account's credits to 0, since being staff
-        # always granted allow_live=True.
-        if roles.is_staff(st.session_state.user_role):
-            test_clicked = st.button(":material/science: Run Test Scan", use_container_width=True, key="run_test_scan_btn",
-                                      help="Uses mock/sample data - doesn't spend real RentCast quota.")
-    with btn_col3:
-        if not is_guest and st.session_state.user_credits <= 0 and not roles.is_admin_or_above(st.session_state.user_role):
-            if st.button(":material/add_card: Buy Credits for real data", use_container_width=True, key="buy_credits_trigger_btn"):
-                pricing.render_pricing_dialog()
+    # Staff-only (any of the 3 tiers - see roles.py): forces mock/sample
+    # data regardless of role or credits, so staff can exercise the UI
+    # (new views, filters, pagination...) without burning real RentCast
+    # quota - previously the only way to get preview data as staff was
+    # to hand-edit a test account's credits to 0, since being staff
+    # always granted allow_live=True.
+    if roles.is_staff(st.session_state.user_role):
+        test_clicked = st.button(":material/science: Run Test Scan", use_container_width=True, key="run_test_scan_btn",
+                                  help="Uses mock/sample data - doesn't spend real RentCast quota.")
+    if not is_guest and st.session_state.user_credits <= 0 and not roles.is_admin_or_above(st.session_state.user_role):
+        if st.button(":material/add_card: Buy Credits", use_container_width=True, key="buy_credits_trigger_btn"):
+            pricing.render_pricing_dialog()
 
-    criteria = {
-        "location": location_display_label(selected_state, selected_cities, zip_code),
-        "property_type": property_type, "max_price": max_price, "min_beds": min_beds,
-        "state": selected_state, "selected_cities": selected_cities, "zip_code": zip_code,
-    }
-    return criteria, run_clicked, test_clicked
+    return run_clicked, test_clicked
 
 
 # (state, city) pairs, not free text - each must be a real curated city in
@@ -364,6 +371,89 @@ def _render_scan_search_form(is_guest=False):
 GUEST_QUICK_SEARCH_CITIES = [
     ("Colorado", "Denver"), ("Texas", "Austin"), ("Florida", "Miami"), ("Colorado", "Boulder"),
 ]
+
+
+def _render_mini_results_strip(coords_json, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                                calc_down_pct, calc_interest, calc_target_yield, key_prefix, max_cards=5):
+    """A small, right-aligned row of property chips shown beside the Run
+    Live Scan button once a scan has results - "see properties without
+    scrolling" taken further still: not a row below the form, a glance
+    right next to the button that produced them. Deliberately only the
+    top few by cash-on-cash return, not the full result set - the
+    complete list, map, filters, and written report are one click away
+    via "View Full Results" below the map (see [[hero_redesign_compact_results]]),
+    not crammed in here too. Click a chip to open the same floating
+    detail dialog every other card in the app uses."""
+    if not coords_json:
+        return
+    try:
+        points = json.loads(coords_json)
+    except Exception:
+        return
+    if not points:
+        return
+
+    scored = []
+    for p in points:
+        m = compute_deal_metrics(float(p["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                  hoa_monthly=_safe_hoa(p))
+        scored.append((p, m))
+    scored.sort(key=lambda pm: pm[1]["coc"], reverse=True)
+    top = scored[:max_cards]
+
+    grade_emojis = {"excellent": "🟢", "average": "🟡", "critical": "🔴"}
+    st.markdown(f"""
+        <style>
+        /* Each st.container(key=...) call made inside this outer
+        container becomes its own direct-child wrapper div - Streamlit's
+        default flex-direction:column on the outer is what stacks them
+        vertically; overriding it to row here is what actually lays the
+        chips out side by side (confirmed live via computed styles, not
+        guessed - the outer key-classed div itself is the real flex
+        parent, each chip's own wrapper is just one of its several direct
+        children, not nested one level deeper). */
+        div.st-key-{key_prefix}_mini_strip {{
+            display: flex !important; flex-direction: row !important;
+            flex-wrap: wrap !important; justify-content: flex-end !important; gap: 6px !important;
+        }}
+        /* Each st.container() call's own direct-child wrapper still
+        defaults to Streamlit's normal full-width single-column sizing,
+        which forces flex-wrap to push every next chip onto its own line
+        even though the row above is correctly flex-direction:row -
+        confirmed live (computed width equaled the whole row's width
+        until this was added). Has to be targeted separately from the
+        grandchild rule below since it's an anonymous wrapper div with no
+        stable class of its own - `> div` reaches it by position instead. */
+        div.st-key-{key_prefix}_mini_strip > div {{
+            flex: none !important; width: fit-content !important;
+        }}
+        div[class*="st-key-{key_prefix}_mini_chip_"] {{
+            flex: none !important; width: fit-content !important;
+        }}
+        div[class*="st-key-{key_prefix}_mini_chip_"] button {{
+            font-size: 12px !important; font-weight: 600 !important;
+            padding: 5px 12px !important; min-height: 0 !important;
+            border-radius: var(--radar-radius-pill) !important; white-space: nowrap !important;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key=f"{key_prefix}_mini_strip"):
+        for idx, (p, m) in enumerate(top):
+            street = (p.get("address", "") or p.get("title", "Property")).split(",")[0]
+            label = f"{grade_emojis.get(m['grade'], '')} {_format_price_short(p['price'])} · {street}"
+            with st.container(key=f"{key_prefix}_mini_chip_{idx}"):
+                if st.button(label, key=f"{key_prefix}_mini_chip_btn_{idx}"):
+                    st.session_state.property_dialog_ctx = {
+                        "row_item": p, "metrics": m, "address": p.get("address", ""),
+                        "user_id": st.session_state.user_id, "reference_point": st.session_state.get("distance_reference_point"),
+                        "calc_target_yield": calc_target_yield,
+                        "current_assumptions": {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                                 "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
+                        "key_prefix": f"{key_prefix}_mini", "idx": idx,
+                    }
+                    render_property_detail_dialog()
 
 
 def _build_coord_list(raw_listings_data):
@@ -637,6 +727,115 @@ def _execute_scan(criteria, run_clicked, test_clicked, active_category):
         st.error("Something went wrong running this scan. Please try again.")
     finally:
         loading_placeholder.empty()
+
+
+def _render_clustered_results_map(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                                   calc_down_pct, calc_interest, calc_target_yield,
+                                   filter_min_price=None, filter_max_price=None, filter_min_beds=0, filter_min_baths=0,
+                                   filter_grades=None, height=650):
+    """Full-width, grade-colored, clustered results map with click-a-pin
+    (or a cluster) for detail - originally _render_scan_results's own
+    "Map Only" view mode, extracted so the hero's compact results area
+    (see [[hero_redesign_compact_results]]) can show the exact same map
+    instead of a second, differently-built one. filter_* default to "no
+    filtering", so a caller with no quick-filter bar of its own (the
+    hero) can just omit them."""
+    if filter_grades is None:
+        filter_grades = ["excellent", "average", "critical"]
+    if not coords_json:
+        return
+    try:
+        parsed_points = json.loads(coords_json)
+        df_listings_grid = pd.DataFrame(parsed_points)
+        if filter_min_price is not None:
+            df_listings_grid = df_listings_grid[
+                (df_listings_grid["price"] >= filter_min_price) &
+                (df_listings_grid["price"] <= filter_max_price) &
+                (df_listings_grid["beds"] >= filter_min_beds) &
+                (df_listings_grid["baths"] >= filter_min_baths)
+            ].reset_index(drop=True)
+
+        if df_listings_grid.empty:
+            st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
+            return
+
+        grades_for_map = []
+        for _, r in df_listings_grid.iterrows():
+            m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                                      calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                                      hoa_monthly=_safe_hoa(r))
+            grades_for_map.append(m["grade"])
+        df_listings_grid["_grade"] = grades_for_map
+
+        if filter_grades and len(filter_grades) < 3:
+            df_listings_grid = df_listings_grid[df_listings_grid["_grade"].isin(filter_grades)].reset_index(drop=True)
+
+        if df_listings_grid.empty:
+            st.info("No properties match your current filters. Try widening the price range, lowering the min beds, or including more deal grades.")
+            return
+
+        grade_colors = {"excellent": "#10b981", "average": "#f59e0b", "critical": "#ef4444"}
+
+        cluster_df = build_clustered_map_data(df_listings_grid)
+        # Unclustered pins get a bigger marker than before (was 18px) so a
+        # short price label like "$450K" actually fits and stays legible -
+        # at a glance across the map, not just on hover/click, matching how
+        # Zillow shows price directly on individual (non-clustered) pins.
+        cluster_df["_marker_size"] = cluster_df["count"].apply(lambda c: 30 if c == 1 else min(24 + c * 3, 46))
+        cluster_df["_marker_text"] = cluster_df.apply(
+            lambda row: str(row["count"]) if row["is_cluster"] else _format_price_short(row["price"]), axis=1
+        )
+
+        fig_full_map = px.scatter_mapbox(
+            cluster_df, lat="latitude", lon="longitude", hover_name="title",
+            hover_data={"address": True, "price": True, "count": True, "latitude": False, "longitude": False},
+            color="grade", color_discrete_map=grade_colors,
+            size="_marker_size", size_max=46, text="_marker_text",
+            zoom=11, center={"lat": df_listings_grid["latitude"].mean(), "lon": df_listings_grid["longitude"].mean()}
+        )
+        fig_full_map.update_traces(textfont=dict(color="white", size=11, family="Arial Black"), textposition="middle center")
+        fig_full_map.update_layout(
+            mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            height=height, showlegend=False,
+        )
+
+        map_event = st.plotly_chart(
+            fig_full_map, use_container_width=True, key=f"{key_prefix}_full_map_view_chart",
+            on_select="rerun", selection_mode="points",
+            config={"displayModeBar": True, "scrollZoom": True},
+        )
+
+        selected_points = map_event.get("selection", {}).get("points", []) if map_event else []
+        if selected_points:
+            point_index = selected_points[0].get("point_index")
+            if point_index is not None and point_index < len(cluster_df):
+                clicked = cluster_df.iloc[point_index]
+                st.markdown("---")
+                if clicked["is_cluster"]:
+                    st.markdown(f"#### :material/location_on: {clicked['count']} properties in this area")
+                    st.caption("Zoom in on the map or narrow your filters above to click an individual property.")
+                    member_rows = df_listings_grid.iloc[clicked["member_indices"]]
+                    summary_df = member_rows[["title", "address", "price", "beds", "baths"]].copy()
+                    summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
+                    st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
+                else:
+                    st.markdown("#### :material/location_on: Selected Property")
+                    sel_idx = clicked["member_indices"][0]
+                    sel_row = df_listings_grid.iloc[sel_idx]
+                    sel_metrics = compute_deal_metrics(
+                        float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
+                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                        hoa_monthly=_safe_hoa(sel_row)
+                    )
+                    render_property_card(sel_idx, sel_row, sel_metrics, view_mode, f"{key_prefix}_map_view_card", True,
+                                          st.session_state.user_id, st.session_state.get("distance_reference_point"),
+                                          calc_target_yield,
+                                          {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
+                                           "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
+        else:
+            st.info("Click a pin above to see that property's price, deal grade, and full details.", icon=":material/lightbulb:")
+    except Exception:
+        st.caption("Unable to load the map for this scan.")
 
 
 def _render_scan_results(report_body, profile_name, coords_json, key_prefix, view_mode,
@@ -1012,97 +1211,11 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
 
     elif view_toggle == ":material/map: Map Only":  # full-width map, click a pin to see that property's details
         st.caption("Click any pin to see that property's full details below the map. Nearby properties group into clusters - click a cluster to see what's inside.")
-        if coords_json:
-            try:
-                parsed_points = json.loads(coords_json)
-                df_listings_grid = pd.DataFrame(parsed_points)
-                if filter_min_price is not None:
-                    df_listings_grid = df_listings_grid[
-                        (df_listings_grid["price"] >= filter_min_price) &
-                        (df_listings_grid["price"] <= filter_max_price) &
-                        (df_listings_grid["beds"] >= filter_min_beds) &
-                        (df_listings_grid["baths"] >= filter_min_baths)
-                    ].reset_index(drop=True)
-
-                if df_listings_grid.empty:
-                    st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
-                else:
-                    grades_for_map = []
-                    for _, r in df_listings_grid.iterrows():
-                        m = compute_deal_metrics(float(r["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                                  calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                                  hoa_monthly=_safe_hoa(r))
-                        grades_for_map.append(m["grade"])
-                    df_listings_grid["_grade"] = grades_for_map
-
-                    if filter_grades and len(filter_grades) < 3:
-                        df_listings_grid = df_listings_grid[df_listings_grid["_grade"].isin(filter_grades)].reset_index(drop=True)
-
-                    if df_listings_grid.empty:
-                        st.info("No properties match your current filters. Try widening the price range, lowering the min beds, or including more deal grades.")
-                    else:
-                        grade_colors = {"excellent": "#10b981", "average": "#f59e0b", "critical": "#ef4444"}
-
-                        cluster_df = build_clustered_map_data(df_listings_grid)
-                        # Unclustered pins get a bigger marker than before (was 18px) so a
-                        # short price label like "$450K" actually fits and stays legible -
-                        # at a glance across the map, not just on hover/click, matching how
-                        # Zillow shows price directly on individual (non-clustered) pins.
-                        cluster_df["_marker_size"] = cluster_df["count"].apply(lambda c: 30 if c == 1 else min(24 + c * 3, 46))
-                        cluster_df["_marker_text"] = cluster_df.apply(
-                            lambda row: str(row["count"]) if row["is_cluster"] else _format_price_short(row["price"]), axis=1
-                        )
-
-                        fig_full_map = px.scatter_mapbox(
-                            cluster_df, lat="latitude", lon="longitude", hover_name="title",
-                            hover_data={"address": True, "price": True, "count": True, "latitude": False, "longitude": False},
-                            color="grade", color_discrete_map=grade_colors,
-                            size="_marker_size", size_max=46, text="_marker_text",
-                            zoom=11, center={"lat": df_listings_grid["latitude"].mean(), "lon": df_listings_grid["longitude"].mean()}
-                        )
-                        fig_full_map.update_traces(textfont=dict(color="white", size=11, family="Arial Black"), textposition="middle center")
-                        fig_full_map.update_layout(
-                            mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0},
-                            height=650, showlegend=False,
-                        )
-
-                        map_event = st.plotly_chart(
-                            fig_full_map, use_container_width=True, key=f"{key_prefix}_full_map_view_chart",
-                            on_select="rerun", selection_mode="points",
-                            config={"displayModeBar": True, "scrollZoom": True},
-                        )
-
-                        selected_points = map_event.get("selection", {}).get("points", []) if map_event else []
-                        if selected_points:
-                            point_index = selected_points[0].get("point_index")
-                            if point_index is not None and point_index < len(cluster_df):
-                                clicked = cluster_df.iloc[point_index]
-                                st.markdown("---")
-                                if clicked["is_cluster"]:
-                                    st.markdown(f"#### :material/location_on: {clicked['count']} properties in this area")
-                                    st.caption("Zoom in on the map or narrow your filters above to click an individual property.")
-                                    member_rows = df_listings_grid.iloc[clicked["member_indices"]]
-                                    summary_df = member_rows[["title", "address", "price", "beds", "baths"]].copy()
-                                    summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
-                                    st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
-                                else:
-                                    st.markdown("#### :material/location_on: Selected Property")
-                                    sel_idx = clicked["member_indices"][0]
-                                    sel_row = df_listings_grid.iloc[sel_idx]
-                                    sel_metrics = compute_deal_metrics(
-                                        float(sel_row["price"]), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                                        calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                                        hoa_monthly=_safe_hoa(sel_row)
-                                    )
-                                    render_property_card(sel_idx, sel_row, sel_metrics, view_mode, f"{key_prefix}_map_view_card", True,
-                                                          st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                                          calc_target_yield,
-                                                          {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                           "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
-                        else:
-                            st.info("Click a pin above to see that property's price, deal grade, and full details.", icon=":material/lightbulb:")
-            except Exception:
-                st.caption("Unable to load the map for this scan.")
+        _render_clustered_results_map(
+            coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+            calc_down_pct, calc_interest, calc_target_yield,
+            filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades,
+        )
 
     else:  # Table View - every matched property as a sortable/filterable spreadsheet-style grid
         st.caption("Drag a column header to reorder it, click a header to sort, or use the toolbar above the table to search, hide columns, or export to CSV.")
@@ -1319,37 +1432,43 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     """, unsafe_allow_html=True)
 
 
-def _render_execute_scan_tab(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
-    """Renders directly under the search form in the hero (not behind a
-    separate tab click) so results are visible without extra navigation -
-    see [[hero_redesign_unified_map]]. Before a scan has run, shows the
-    same map slot the results will use, but in city-picker mode (pick a
-    search area) instead of duplicating a second map inside the search
-    form itself - "we only need one map"."""
-    if is_guest:
-        render_guest_banner("this is a live preview scan, not your own saved search")
+def _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                                  calc_down_pct, calc_interest, calc_target_yield, is_guest=False):
+    """The one shared map area, directly under the search form + button
+    row - before a scan, city-picker mode (pick a search area); after a
+    scan, the real results map, full width, no separate tab click needed
+    to see it. Everything else a scan produces (written report, best-deal
+    prose, filters, the full card grid/table view, PDF export) lives
+    behind "View Full Results" below instead of always rendering inline -
+    per the user's own ask, keep the default view to just form + chips +
+    map, put the "story text" one click away for whoever wants it.
+    See [[hero_redesign_compact_results]]."""
     if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
-        _render_scan_results(
-            st.session_state.active_scanned_report,
-            st.session_state.get("active_scanned_profile", "Your Search"),
-            st.session_state.active_scanned_coords,
-            "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-            calc_down_pct, calc_interest, calc_target_yield,
-            show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
-            pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
+        _render_clustered_results_map(
+            st.session_state.active_scanned_coords, "hero_map", view_mode,
+            calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+            height=500,
         )
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        show_full_key = "hero_show_full_results"
+        show_full = st.session_state.get(show_full_key, False)
+        if st.button(":material/expand_less: Hide Full Results" if show_full else ":material/expand_more: View Full Results, Filters & Report",
+                     key="hero_toggle_full_results_btn"):
+            st.session_state[show_full_key] = not show_full
+            st.rerun()
+        if show_full:
+            st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+            _render_scan_results(
+                st.session_state.active_scanned_report,
+                st.session_state.get("active_scanned_profile", "Your Search"),
+                st.session_state.active_scanned_coords,
+                "live", view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                calc_down_pct, calc_interest, calc_target_yield,
+                show_preview_notice=True, pdf_button_label="Export Live Scan Report to Document PDF / Print",
+                pdf_filename_prefix="DealRadar_Report", is_guest=is_guest,
+            )
     else:
-        prompt_col, map_col = st.columns([0.85, 1.3])
-        with prompt_col:
-            st.markdown("<div style='height:60px;'></div>", unsafe_allow_html=True)
-            st.markdown("""
-                <div style='text-align:center; padding:0 var(--radar-space-5);'>
-                    <div style='font-weight:700; color:var(--radar-navy); font-size:15px; margin-bottom:6px;'>No scan yet</div>
-                    <div style='color:var(--radar-text-muted); font-size:13.5px;'>Set your search above and click <b>Run Live Scan</b> - matching properties will appear here, next to the map.</div>
-                </div>
-            """, unsafe_allow_html=True)
-        with map_col:
-            render_city_picker_map(criteria.get("state") or "Colorado", criteria.get("selected_cities") or [], "scan_form")
+        render_city_picker_map(criteria.get("state") or "Colorado", criteria.get("selected_cities") or [], "scan_form", height=500)
 
 
 def _clear_hist_delete_target():
@@ -1784,7 +1903,7 @@ def render_analytics_dashboard(is_guest=False):
             # payment, interest rate, etc. don't apply to a car deal -
             # car_engine.py's grading is self-contained on price vs.
             # estimated market value). These stay defined because
-            # _render_execute_scan_tab and friends take them
+            # _render_hero_map_and_results and friends take them
             # positionally regardless of category; the cars results
             # path never actually reads them.
             view_mode = "Simple"
@@ -1932,95 +2051,134 @@ def render_analytics_dashboard(is_guest=False):
         """, unsafe_allow_html=True)
 
         with st.container(key="dashboard_action_card"):
-            criteria, run_clicked, test_clicked = _render_scan_search_form(is_guest=is_guest)
+            criteria = _render_scan_search_form(is_guest=is_guest)
 
-        # Quick Access: click a chip to re-run that exact search immediately
-        # (load its saved criteria, then run) - one click, not "select it,
-        # then also click Run" the way the old profile dropdown needed.
-        # Guests get a fixed, curated set of cities to explore instead of
-        # their own saved searches (they have none) - same idea, same UI.
-        quick_click = None
-        if is_guest:
-            quick_items = [city for _, city in GUEST_QUICK_SEARCH_CITIES]
-        else:
-            quick_items = raw_profiles[:5]
-        if quick_items:
-            st.markdown("<div style='text-align:center; margin-top:14px;'>", unsafe_allow_html=True)
-            st.markdown("<span style='color:var(--radar-text-on-dark-muted); font-size:14px; font-weight:600; margin-right:8px;'>Quick access:</span>", unsafe_allow_html=True)
-            quick_cols = st.columns([1] * len(quick_items) + [3])
-            for i, item_label in enumerate(quick_items):
-                with quick_cols[i]:
-                    with st.container(key=f"dashboard_quick_chip_{i}"):
-                        if st.button(item_label, key=f"dashboard_quick_btn_{i}", use_container_width=True):
-                            quick_click = i
-            st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+            # Each hero card is a real (CSS-restyled) button, not decorative
+            # HTML - click opens a floating st.dialog with drill-down detail,
+            # matching the pattern already used for the admin dashboard's stat
+            # cards (components/admin_controls.py).
+            hero_cards = [
+                {"id": "best_deal", "title": "Best Deal in This Scan",
+                 "render": lambda: _render_clickable_hero_card(
+                     "best_deal", ":material/emoji_events:", best_deal_display, "Best Deal in This Scan (CoC)",
+                     lambda: _show_best_deal_dialog(_pts, scan_metrics, best_pt_idx)),
+                 "default_row": 1, "default_col": 1, "default_span": 1},
+                {"id": "deals_meeting_target", "title": "Deals Meeting Your Target",
+                 "render": lambda: _render_clickable_hero_card(
+                     "deals_meeting_target", ":material/check_circle:", target_met_display, "Deals Meeting Your Target",
+                     lambda: _show_deals_meeting_target_dialog(_pts, scan_metrics)),
+                 "default_row": 1, "default_col": 2, "default_span": 1},
+                {"id": "total_value_scanned", "title": "Total Portfolio Value Scanned",
+                 "render": lambda: _render_clickable_hero_card(
+                     "total_value_scanned", ":material/payments:", total_value_display, "Total Portfolio Value Scanned",
+                     lambda: _show_total_value_dialog(_pts)),
+                 "default_row": 1, "default_col": 3, "default_span": 1},
+            ]
+            render_dashboard_grid("customer", hero_cards, default_grid_columns=3)
 
-        st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
-        # Each hero card is a real (CSS-restyled) button, not decorative
-        # HTML - click opens a floating st.dialog with drill-down detail,
-        # matching the pattern already used for the admin dashboard's stat
-        # cards (components/admin_controls.py).
-        hero_cards = [
-            {"id": "best_deal", "title": "Best Deal in This Scan",
-             "render": lambda: _render_clickable_hero_card(
-                 "best_deal", ":material/emoji_events:", best_deal_display, "Best Deal in This Scan (CoC)",
-                 lambda: _show_best_deal_dialog(_pts, scan_metrics, best_pt_idx)),
-             "default_row": 1, "default_col": 1, "default_span": 1},
-            {"id": "deals_meeting_target", "title": "Deals Meeting Your Target",
-             "render": lambda: _render_clickable_hero_card(
-                 "deals_meeting_target", ":material/check_circle:", target_met_display, "Deals Meeting Your Target",
-                 lambda: _show_deals_meeting_target_dialog(_pts, scan_metrics)),
-             "default_row": 1, "default_col": 2, "default_span": 1},
-            {"id": "total_value_scanned", "title": "Total Portfolio Value Scanned",
-             "render": lambda: _render_clickable_hero_card(
-                 "total_value_scanned", ":material/payments:", total_value_display, "Total Portfolio Value Scanned",
-                 lambda: _show_total_value_dialog(_pts)),
-             "default_row": 1, "default_col": 3, "default_span": 1},
-        ]
-        render_dashboard_grid("customer", hero_cards, default_grid_columns=3)
+            st.markdown("<div style='height:14px;'></div>", unsafe_allow_html=True)
+            # Button + compact results row: Run Live Scan (and friends) on
+            # the left, Quick Access + a handful of top-match chips on the
+            # right, right-aligned - not a full-width row of its own below
+            # the button, and not shown at all until there's actually data
+            # to show. See [[hero_redesign_compact_results]].
+            btn_col, results_col = st.columns([1, 2.3])
+            with btn_col:
+                run_clicked, test_clicked = _render_scan_action_buttons(is_guest=is_guest)
 
-        # Runs (and shows the loading radar) here, after the 3 stat cards
-        # above - not from inside the search form alongside its buttons.
-        # Those cards render from the *previous* scan's still-valid
-        # session_state, unaffected by whether a new one is about to
-        # start, so they're already on screen by the time this either
-        # no-ops (nothing clicked) or kicks off a scan.
-        if quick_click is not None:
-            if is_guest:
-                q_state, q_city = GUEST_QUICK_SEARCH_CITIES[quick_click]
-                run_clicked = True
-                criteria = {
-                    "location": location_display_label(q_state, [q_city], ""),
-                    "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
-                    "state": q_state, "selected_cities": [q_city], "zip_code": "",
-                }
-            else:
-                loaded = _load_saved_criteria(quick_items[quick_click], st.session_state.user_id)
-                if loaded:
-                    criteria, run_clicked = loaded, True
+            with results_col:
+                # Quick Access: click a chip to re-run that exact search
+                # immediately (load its saved criteria, then run) - one
+                # click, not "select it, then also click Run" the way the
+                # old profile dropdown needed. Guests get a fixed, curated
+                # set of cities to explore instead of their own saved
+                # searches (they have none) - same idea, same compact UI.
+                quick_click = None
+                if is_guest:
+                    quick_items = [city for _, city in GUEST_QUICK_SEARCH_CITIES]
+                else:
+                    quick_items = raw_profiles[:5]
+                if quick_items:
+                    st.markdown("""
+                        <style>
+                        /* See the matching comment on the mini-results-strip
+                        CSS - the outer key-classed div is the real flex
+                        parent of these chip buttons (each st.container()
+                        call is one of its several direct children, not
+                        nested a level deeper). */
+                        div.st-key-dashboard_quick_row {
+                            display: flex !important; flex-direction: row !important;
+                            flex-wrap: wrap !important; justify-content: flex-end !important; gap: 6px !important; margin-bottom: 8px !important;
+                        }
+                        /* See the matching comment on the mini-results-strip
+                        CSS - each chip's own anonymous direct-child wrapper
+                        still defaults to full-width, which forces a wrap
+                        after every single chip unless constrained here too. */
+                        div.st-key-dashboard_quick_row > div {
+                            flex: none !important; width: fit-content !important;
+                        }
+                        div[class*="st-key-dashboard_quick_chip_"] {
+                            flex: none !important; width: fit-content !important;
+                        }
+                        div[class*="st-key-dashboard_quick_chip_"] button {
+                            font-size: 12px !important; padding: 4px 12px !important; min-height: 0 !important;
+                            border-radius: var(--radar-radius-pill) !important; white-space: nowrap !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    with st.container(key="dashboard_quick_row"):
+                        for i, item_label in enumerate(quick_items):
+                            with st.container(key=f"dashboard_quick_chip_{i}"):
+                                if st.button(f":material/history: {item_label}", key=f"dashboard_quick_btn_{i}"):
+                                    quick_click = i
 
-        if is_guest:
-            if run_clicked:
-                _run_guest_demo_scan(criteria)
-            elif "active_scanned_report" not in st.session_state:
-                # First-load default so the page never looks empty for a
-                # brand-new guest, matching the old guest_landing.py's own
-                # "auto-run a sample search" behavior.
-                default_state, default_city = GUEST_QUICK_SEARCH_CITIES[0]
-                _run_guest_demo_scan({
-                    "location": location_display_label(default_state, [default_city], ""),
-                    "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
-                    "state": default_state, "selected_cities": [default_city], "zip_code": "",
-                })
-        else:
-            _execute_scan(criteria, run_clicked, test_clicked, active_category)
+                if quick_click is not None:
+                    if is_guest:
+                        q_state, q_city = GUEST_QUICK_SEARCH_CITIES[quick_click]
+                        run_clicked = True
+                        criteria = {
+                            "location": location_display_label(q_state, [q_city], ""),
+                            "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
+                            "state": q_state, "selected_cities": [q_city], "zip_code": "",
+                        }
+                    else:
+                        loaded = _load_saved_criteria(quick_items[quick_click], st.session_state.user_id)
+                        if loaded:
+                            criteria, run_clicked = loaded, True
 
-        # Results render right here, directly under the search form and
-        # stat cards - not behind a separate tab click - so a match is
-        # visible without extra navigation or scrolling past a second
-        # nav row first. See [[hero_redesign_unified_map]].
-        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
-        _render_execute_scan_tab(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
+                if is_guest:
+                    if run_clicked:
+                        _run_guest_demo_scan(criteria)
+                    elif "active_scanned_report" not in st.session_state:
+                        # First-load default so the page never looks empty for a
+                        # brand-new guest, matching the old guest_landing.py's own
+                        # "auto-run a sample search" behavior.
+                        default_state, default_city = GUEST_QUICK_SEARCH_CITIES[0]
+                        _run_guest_demo_scan({
+                            "location": location_display_label(default_state, [default_city], ""),
+                            "property_type": "Multi-Family", "max_price": 750000, "min_beds": 3,
+                            "state": default_state, "selected_cities": [default_city], "zip_code": "",
+                        })
+                else:
+                    _execute_scan(criteria, run_clicked, test_clicked, active_category)
+
+                # Small result chips - only once there's actually a scan to
+                # show, never a placeholder beforehand.
+                if "active_scanned_report" in st.session_state and st.session_state.active_scanned_report:
+                    _render_mini_results_strip(
+                        st.session_state.active_scanned_coords, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                        calc_down_pct, calc_interest, calc_target_yield, "hero_mini",
+                    )
+
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+        # The map (and, once expanded, the full results/filters/report)
+        # render directly below the button+results row - not behind a
+        # separate tab click - so a match is visible without extra
+        # navigation. See [[hero_redesign_unified_map]] and
+        # [[hero_redesign_compact_results]].
+        _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                                      calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
