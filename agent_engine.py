@@ -715,6 +715,60 @@ def get_nearby_places(latitude, longitude, place_type, radius_meters=1500):
         return []
 
 
+def geocode_dealer(dealer_name, city, state, user_id=None):
+    """Finds a specific car dealer's real address/coordinates via Google
+    Places' Find Place From Text search - "{dealer_name}, {city}, {state}"
+    as a free-text query, same as searching it on Google yourself, which is
+    exactly what a real dealer address lookup needs: Auto.dev's own listings
+    response only carries city/state/zip, no street address. Cached (see
+    get_cached_dealer_coords/cache_dealer_coords) since the same dealer
+    shows up across many searches - a cache hit costs nothing and isn't
+    logged against the budget below.
+
+    Google Places is pay-per-request billing on the admin's own Google
+    Cloud account, not a fixed plan this app can read - places_config's
+    monthly_limit is a self-declared budget the admin sets (Admin Controls),
+    checked the same way RentCast's real plan limit is, just without any
+    claim this app knows Google's actual quota. Returns None on missing
+    input, no key configured, no match, or the self-declared budget already
+    reached - callers should fall back to no coordinates (or a coarser
+    city/ZIP-level geocode) rather than treat this as fatal."""
+    if not google_maps_api_key or not dealer_name or not city:
+        return None
+
+    cached = db.get_cached_dealer_coords(dealer_name, city, state)
+    if cached is not None:
+        return cached
+
+    usage_this_month = db.get_places_usage_this_month()
+    monthly_limit = db.get_places_config()["monthly_limit"]
+    if usage_this_month >= monthly_limit:
+        print(f"[Places API] Monthly budget reached ({usage_this_month}/{monthly_limit}) - skipping dealer geocode.")
+        return None
+
+    try:
+        import requests
+        query = f"{dealer_name}, {city}, {state or ''}".strip(", ")
+        url = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+        params = {
+            "input": query, "inputtype": "textquery", "fields": "geometry",
+            "key": google_maps_api_key,
+        }
+        response = requests.get(url, params=params, timeout=5)
+        data = response.json()
+        candidates = data.get("candidates") or []
+        db.log_places_call(success=bool(candidates), user_id=user_id)
+        if not candidates:
+            return None
+        loc = candidates[0]["geometry"]["location"]
+        lat, lon = loc["lat"], loc["lng"]
+        db.cache_dealer_coords(dealer_name, city, state, lat, lon)
+        return (lat, lon)
+    except Exception as e:
+        print(f"[Places API] Dealer geocode failed: {e}")
+        return None
+
+
 def validate_and_geocode_location(location_input_string):
     """
     Connects to OpenStreetMap to verify if a text location string exists.

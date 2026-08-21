@@ -14,6 +14,7 @@ import time
 import urllib.parse
 
 import database as db
+import agent_engine as engine
 from dotenv import load_dotenv
 from underwriting import render_grade_badge
 
@@ -180,6 +181,19 @@ def generate_mock_car_listings(make=None, model=None, min_year=None, max_price=N
         model_pool = [(mk, m) for mk, models in CAR_CATALOG.items() for m in models]
     candidates = model_pool
 
+    # Mock listings have no real dealer to geocode, so - same trick
+    # agent_engine.py's own mock property generator uses - resolve one
+    # center point for the whole batch (the search's own ZIP, geocoded via
+    # the free OpenStreetMap lookup, no Places budget involved) and jitter
+    # each listing a few miles around it, instead of every mock listing
+    # sharing one exact point (which made a map view of preview data
+    # pointless - every pin stacked on the same spot).
+    center_lat, center_lon = 40.0150, -105.2705  # Boulder, CO - matches this function's existing "80301" zip fallback
+    if zip_code:
+        geo_result = engine.validate_and_geocode_location(str(zip_code))
+        if geo_result:
+            center_lat, center_lon = geo_result["latitude"], geo_result["longitude"]
+
     listings = []
     for i in range(count):
         pick_make, pick_model = random.choice(candidates)
@@ -206,6 +220,8 @@ def generate_mock_car_listings(make=None, model=None, min_year=None, max_price=N
             "price": price,
             "dealer_name": random.choice(DEALER_NAMES),
             "zip_code": zip_code or "80301",
+            "latitude": center_lat + random.uniform(-0.15, 0.15),
+            "longitude": center_lon + random.uniform(-0.15, 0.15),
             "vin": f"MOCK{random.randint(10**12, 10**13 - 1)}",
             "is_mock": True,
             **metrics,
@@ -470,6 +486,21 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
             # can only ever drop broken data, never a genuine cheap listing.
             if price < 1500:
                 continue
+            dealer_name = retail.get("dealer") or "Private Seller"
+            dealer_city, dealer_state = retail.get("city"), retail.get("state")
+            # Auto.dev's own response has no dealer street address, only
+            # city/state/zip - geocoding the dealer BY NAME via Google
+            # Places (see agent_engine.geocode_dealer) gives a real,
+            # precise pin instead of settling for a city-centroid one.
+            # Cached, so the same dealer across many listings/searches
+            # costs one real lookup, not one per listing. None for a
+            # private-party seller (nothing to search for) or once the
+            # self-declared Places budget is reached - the listing still
+            # renders fine, it just won't have a map position.
+            dealer_coords = (
+                engine.geocode_dealer(dealer_name, dealer_city, dealer_state, user_id=user_id)
+                if dealer_name != "Private Seller" and dealer_city else None
+            )
             listings.append({
                 "id": item.get("vin") or vehicle.get("vin"),
                 "vin": item.get("vin") or vehicle.get("vin"),
@@ -479,10 +510,12 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
                 "year": int(year),
                 "mileage": int(mileage),
                 "price": int(price),
-                "dealer_name": retail.get("dealer") or "Private Seller",
-                "city": retail.get("city"),
-                "state": retail.get("state"),
+                "dealer_name": dealer_name,
+                "city": dealer_city,
+                "state": dealer_state,
                 "zip_code": retail.get("zip") or zip_code,
+                "latitude": dealer_coords[0] if dealer_coords else None,
+                "longitude": dealer_coords[1] if dealer_coords else None,
                 "primary_image": retail.get("primaryImage"),
                 "listing_url": retail.get("vdp"),
                 "carfax_url": retail.get("carfaxUrl"),

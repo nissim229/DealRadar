@@ -17,9 +17,27 @@ the guest-browsing feature is built around.
 import streamlit as st
 import database as db
 import roles
+import car_engine
 from data_utils import relative_time
 from topbar_logo import render_topbar_logo_html
 from components.pricing import render_pricing_dialog
+
+
+def _usage_badge(used, limit, threshold_pct=85):
+    """Shared green/amber/red bucketing for the admin-only API-usage
+    badges below - same logic RentCast's badge originated, now used for
+    Auto.dev and Places too. Returns (text, color), or (None, None) when
+    there's nothing sensible to show (a zero/negative limit)."""
+    if limit <= 0:
+        return None, None
+    pct = (used / limit) * 100
+    if used >= limit:
+        color = "red"
+    elif pct >= threshold_pct:
+        color = "amber"
+    else:
+        color = "green"
+    return f"{used}/{limit}", color
 
 CATEGORIES = [
     {"value": "real_estate", "label": "Property", "icon": ":material/home:"},
@@ -305,7 +323,7 @@ def render_main_topbar(is_guest=False):
             div.st-key-topbar_icons_row .st-key-topbar_help_popover_wrap,
             div.st-key-topbar_icons_row .st-key-topbar_alerts_popover_wrap,
             div.st-key-topbar_icons_row .st-key-topbar_account_popover_wrap,
-            div.st-key-topbar_icons_row [class*="st-key-topbar_rentcast_badge_wrap_"] {
+            div.st-key-topbar_icons_row [class*="st-key-topbar_usage_badge_"] {
                 flex: none !important; width: fit-content !important;
             }
             /* The wraps above are GRANDchildren of topbar_icons_row - the
@@ -405,37 +423,41 @@ def render_main_topbar(is_guest=False):
                 background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
             }
 
-            /* Admin-only RentCast usage pill - a rounded rectangle (holds
-            text like "29/50", so a same-size circle wouldn't fit it)
-            rather than a fifth identical nav icon. Its color depends on
-            live usage data computed at render time, so the color is baked
-            into the container's own key (green/amber/red variant) and
-            matched here as 3 static rules, instead of injecting a fresh
-            <style> tag inside the wrap on every render - that approach
-            was tried first and broke alignment: the injected tag became
-            an extra sibling inside the wrap's own default column layout,
-            pushing the actual button down and sideways out of the row. */
-            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] {
+            /* Admin-only API-usage pills - rounded rectangles (hold text
+            like "29/50", so a same-size circle wouldn't fit) rather than
+            more identical nav icons. One shared rule set covers all three
+            sources (RentCast/Auto.dev/Places, see _usage_badge below) -
+            each container's key encodes BOTH which source it is and its
+            live-computed color (e.g. "topbar_usage_badge_rentcast_green"),
+            matched here with two class-substring selectors (source-
+            agnostic shape/sizing, then a color-only selector for the
+            background) instead of one rule per source. Colors are baked
+            into the key as static classes, never injected via a fresh
+            <style> tag on every render - that was tried first and broke
+            alignment: the injected tag became an extra sibling inside the
+            wrap's own default column layout, pushing the button down and
+            sideways out of the row. */
+            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] {
                 color: white !important; border: none !important;
                 height: 34px !important; min-height: 0 !important; width: auto !important;
                 border-radius: 17px !important; padding: 0 14px !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
                 font-weight: 700 !important;
             }
-            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] p {
+            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] p {
                 color: white !important; margin: 0 !important; font-size: 13px !important;
                 font-variant-numeric: tabular-nums !important;
             }
-            div[class*="st-key-topbar_rentcast_badge_wrap_"] [data-testid="stPopoverButton"] div[aria-hidden="true"] {
+            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] div[aria-hidden="true"] {
                 display: none !important;
             }
-            div.st-key-topbar_rentcast_badge_wrap_green [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_badge_"][class*="_green"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #22c55e, #16a34a) !important;
             }
-            div.st-key-topbar_rentcast_badge_wrap_amber [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_badge_"][class*="_amber"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #f59e0b, #d97706) !important;
             }
-            div.st-key-topbar_rentcast_badge_wrap_red [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_badge_"][class*="_red"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #ef4444, #dc2626) !important;
             }
 
@@ -573,26 +595,46 @@ def render_main_topbar(is_guest=False):
 
         with col_icons:
             with st.container(key="topbar_icons_row"):
-                # Admin-only RentCast usage badge - computed before Help
-                # renders so it lands right next to it in visual order
-                # ("keep track of it" without opening the alerts bell or
-                # Admin Controls). Same shared-quota framing as the bell's
-                # own threshold warning below, just always-visible instead
-                # of alert-only, so it's read once here and reused for
-                # both instead of querying the DB twice.
-                rentcast_badge_text, rentcast_badge_color, rc_conf = None, None, None
+                # Admin-only API-usage badges (RentCast/Auto.dev/Places) -
+                # computed before Help renders so they land right next to
+                # it in visual order ("keep track of it" without opening
+                # the alerts bell or Admin Controls). Same shared-quota
+                # framing as the bell's own threshold warnings below, just
+                # always-visible instead of alert-only, so usage is read
+                # once here and reused for both instead of querying twice.
+                # Shown regardless of the active category (Property/Cars)
+                # since an admin checking one category may still want a
+                # glance at the other's API cost.
+                usage_badges = []
                 if not is_guest and roles.is_admin_or_above(st.session_state.user_role):
                     rc_conf = db.get_rentcast_config()
-                    if rc_conf["monthly_limit"] > 0:
-                        rc_used = db.get_rentcast_usage_this_month()
-                        rc_pct = (rc_used / rc_conf["monthly_limit"]) * 100
-                        rentcast_badge_text = f"{rc_used}/{rc_conf['monthly_limit']}"
-                        if rc_used >= rc_conf["monthly_limit"]:
-                            rentcast_badge_color = "red"
-                        elif rc_pct >= rc_conf["alert_threshold_pct"]:
-                            rentcast_badge_color = "amber"
-                        else:
-                            rentcast_badge_color = "green"
+                    rc_text, rc_color = _usage_badge(db.get_rentcast_usage_this_month(), rc_conf["monthly_limit"], rc_conf["alert_threshold_pct"])
+                    if rc_text:
+                        usage_badges.append({
+                            "source": "rentcast", "text": rc_text, "color": rc_color,
+                            "help": f"RentCast usage this month · {rc_conf['plan_name']} plan",
+                            "line1": f"**{rc_text}** RentCast calls used this month.",
+                            "line2": f"Alerts fire at {rc_conf['alert_threshold_pct']}% - adjust in Admin Controls > Pricing.",
+                        })
+
+                    ad_text, ad_color = _usage_badge(db.get_autodev_usage_this_month(), car_engine.AUTODEV_MONTHLY_LIMIT)
+                    if ad_text:
+                        usage_badges.append({
+                            "source": "autodev", "text": ad_text, "color": ad_color,
+                            "help": "Auto.dev usage this month · powers Cars listings",
+                            "line1": f"**{ad_text}** Auto.dev calls used this month.",
+                            "line2": f"Fixed {car_engine.AUTODEV_MONTHLY_LIMIT:,}/month plan - powers real car listings.",
+                        })
+
+                    places_conf = db.get_places_config()
+                    pl_text, pl_color = _usage_badge(db.get_places_usage_this_month(), places_conf["monthly_limit"])
+                    if pl_text:
+                        usage_badges.append({
+                            "source": "places", "text": pl_text, "color": pl_color,
+                            "help": "Google Places usage this month · dealer address lookups",
+                            "line1": f"**{pl_text}** Places lookups used this month.",
+                            "line2": "Self-declared budget (not a real Google-enforced cap) - adjust in Admin Controls > Pricing.",
+                        })
 
                 with st.container(key="topbar_help_popover_wrap"):
                     with st.popover(":material/help:", help="Help",
@@ -609,12 +651,12 @@ def render_main_topbar(is_guest=False):
                         st.caption("A **deal grade** compares a listing to real market comps - "
                                     "if there isn't enough comparable data, we say so rather than guess.")
 
-                if rentcast_badge_text:
-                    with st.container(key=f"topbar_rentcast_badge_wrap_{rentcast_badge_color}"):
-                        with st.popover(rentcast_badge_text, help=f"RentCast usage this month · {rc_conf['plan_name']} plan",
-                                         key=f"topbar_rentcast_badge_popover_{st.session_state.current_page}"):
-                            st.caption(f"**{rentcast_badge_text}** RentCast calls used this month.")
-                            st.caption(f"Alerts fire at {rc_conf['alert_threshold_pct']}% - adjust in Admin Controls > Pricing.")
+                for badge in usage_badges:
+                    with st.container(key=f"topbar_usage_badge_{badge['source']}_{badge['color']}"):
+                        with st.popover(badge["text"], help=badge["help"],
+                                         key=f"topbar_usage_badge_popover_{badge['source']}_{st.session_state.current_page}"):
+                            st.caption(badge["line1"])
+                            st.caption(badge["line2"])
 
                 if is_guest:
                     recent_activity = []
@@ -626,12 +668,14 @@ def render_main_topbar(is_guest=False):
                     last_read = db.get_last_notifications_read_at(st.session_state.user_id)
                     low_credits = st.session_state.user_credits <= 3
 
-                    # Same threshold the badge above already computed -
-                    # only the framing differs (a one-time-feeling alert
-                    # inside the bell vs. an always-visible number).
-                    rentcast_quota_warning = None
-                    if rentcast_badge_color in ("amber", "red"):
-                        rentcast_quota_warning = f"RentCast usage at {rc_pct:.0f}% this month ({rentcast_badge_text} calls)."
+                    # Same badges computed above - only the framing differs
+                    # (a one-time-feeling alert inside the bell vs. an
+                    # always-visible number). Every source at amber/red
+                    # gets its own warning line, not just RentCast.
+                    usage_warnings = [
+                        f"{badge['source'].capitalize()} usage at {badge['text']} this month."
+                        for badge in usage_badges if badge["color"] in ("amber", "red")
+                    ]
 
                     unread_count = sum(
                         1 for _, _, generated_at in recent_activity
@@ -639,8 +683,7 @@ def render_main_topbar(is_guest=False):
                     )
                     if alerts_broadcast and (last_read is None or (alerts_broadcast_at and alerts_broadcast_at > last_read)):
                         unread_count += 1
-                    if rentcast_quota_warning:
-                        unread_count += 1
+                    unread_count += len(usage_warnings)
 
                 with st.container(key="topbar_alerts_popover_wrap"):
                     with st.popover(":material/notifications:", help="Alerts",
@@ -650,8 +693,8 @@ def render_main_topbar(is_guest=False):
                         else:
                             if low_credits:
                                 st.warning(f"Running low on credits ({st.session_state.user_credits} left).", icon=":material/bolt:")
-                            if rentcast_quota_warning:
-                                st.warning(rentcast_quota_warning, icon=":material/data_usage:")
+                            for warning_line in usage_warnings:
+                                st.warning(warning_line, icon=":material/data_usage:")
                             if alerts_broadcast:
                                 st.info(alerts_broadcast, icon=":material/campaign:")
                             if recent_activity:

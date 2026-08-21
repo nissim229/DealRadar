@@ -211,6 +211,25 @@ def init_db():
             )
         """)
 
+        # Same shape again, for Google Places "Find Place From Text" calls -
+        # used to geocode a car dealer's real address by name (see
+        # agent_engine.geocode_dealer). Google Places is pay-per-request
+        # billing on the user's own Google Cloud account, not a fixed plan
+        # like RentCast/Auto.dev - this app has no way to read the real
+        # budget/quota from Google's side, so places_config below is a
+        # self-declared number the admin sets, tracked against this log the
+        # same way. Existing Street View/Nearby-Places calls elsewhere in
+        # this app are NOT logged here yet - only the new dealer-geocode
+        # call site was in scope when this was added.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS places_usage_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                called_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                success INTEGER,
+                user_id INTEGER
+            )
+        """)
+
         # Simulated purchase ledger - "Buy Credits" has no real payment
         # processor wired up yet (see components/pricing.py), so this is the
         # paper trail for admin revenue visibility until one exists: every
@@ -393,6 +412,26 @@ def init_db():
                 lat REAL,
                 lon REAL,
                 UNIQUE(city, state)
+            )
+        """)
+
+        # Same idea as city_coords_cache, for a specific car dealer's
+        # geocoded address (dealer_name + city/state - Auto.dev's listings
+        # response has no dealer street address of its own, only city/
+        # state/zip, but a dealer name + city is enough for Google Places to
+        # find the real business - see agent_engine.geocode_dealer). The
+        # same dealer shows up across many different searches, so caching
+        # here is what keeps repeat lookups free instead of spending the
+        # Places budget on the same dealer over and over.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dealer_coords_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dealer_name TEXT,
+                city TEXT,
+                state TEXT,
+                lat REAL,
+                lon REAL,
+                UNIQUE(dealer_name, city, state)
             )
         """)
 
@@ -1151,6 +1190,56 @@ def get_autodev_usage_this_month():
             "SELECT COUNT(*) FROM autodev_usage_log WHERE strftime('%Y-%m', called_at) = strftime('%Y-%m', 'now')"
         )
         return cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+def log_places_call(success, user_id=None):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO places_usage_log (success, user_id) VALUES (?, ?)",
+                        (1 if success else 0, int(user_id) if user_id is not None else None))
+        conn.commit()
+    finally:
+        conn.close()
+
+def get_places_usage_this_month():
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM places_usage_log WHERE strftime('%Y-%m', called_at) = strftime('%Y-%m', 'now')"
+        )
+        return cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+def get_places_config():
+    """Google Places has no app-readable plan/quota the way RentCast does -
+    it's pay-per-request billing on the admin's own Google Cloud account.
+    monthly_limit here is a self-declared budget (the admin's own number,
+    from their Cloud Console), tracked against places_usage_log the same
+    way RentCast's real plan limit is - just without any claim that this
+    app actually knows Google's side of it."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key='places_monthly_limit'")
+        row = cursor.fetchone()
+        return {"monthly_limit": int(row[0]) if row else 1000}
+    finally:
+        conn.close()
+
+def update_places_config(monthly_limit):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO app_settings (key, value) VALUES ('places_monthly_limit', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(int(monthly_limit)),)
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -1949,6 +2038,36 @@ def get_cached_city_coords(city, state):
         cursor.execute("SELECT lat, lon FROM city_coords_cache WHERE city=? AND state=?", (city, state))
         row = cursor.fetchone()
         return (row[0], row[1]) if row else None
+    finally:
+        conn.close()
+
+def get_cached_dealer_coords(dealer_name, city, state):
+    """Returns (lat, lon) for a previously-geocoded dealer, or None on a
+    miss - same idea as get_cached_city_coords, keyed on the (dealer_name,
+    city, state) triple since a dealer name alone isn't unique (many
+    "CarMax" locations) but the combination is what Google Places was
+    actually asked to resolve."""
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT lat, lon FROM dealer_coords_cache WHERE dealer_name=? AND city=? AND state=?",
+            (dealer_name, city, state)
+        )
+        row = cursor.fetchone()
+        return (row[0], row[1]) if row else None
+    finally:
+        conn.close()
+
+def cache_dealer_coords(dealer_name, city, state, lat, lon):
+    conn = sqlite3.connect(DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO dealer_coords_cache (dealer_name, city, state, lat, lon) VALUES (?, ?, ?, ?, ?)",
+            (dealer_name, city, state, float(lat), float(lon))
+        )
+        conn.commit()
     finally:
         conn.close()
 

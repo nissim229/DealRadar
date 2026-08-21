@@ -396,6 +396,22 @@ def _render_pricing_tab():
             st.rerun()
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+    places_conf = db.get_places_config()
+    places_used = db.get_places_usage_this_month()
+    with st.form("admin_places_config_form"):
+        st.markdown("**Google Places (car dealer address lookups)**")
+        st.caption(
+            f"{places_used} / {places_conf['monthly_limit']} lookups used this month. Google Places bills "
+            "per request on your own Google Cloud account - this app has no way to read your real budget/quota "
+            "from Google's side, so this number is a self-declared cap you set from what you know in Cloud Console."
+        )
+        places_limit_input = st.number_input("Self-declared monthly budget (calls)", min_value=1, value=int(places_conf["monthly_limit"]))
+        if st.form_submit_button(":material/save: Save Places Budget", type="primary", use_container_width=True):
+            db.update_places_config(places_limit_input)
+            st.toast("Places budget updated.")
+            st.rerun()
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     oa_conf = db.get_openai_config()
     oa_used = db.get_openai_usage_this_month()
     with st.form("admin_openai_config_form"):
