@@ -395,6 +395,7 @@ def init_db():
             ("car_model", "TEXT"),
             ("car_min_year", "INTEGER"),
             ("car_max_mileage", "INTEGER"),
+            ("car_trim", "TEXT"),
         ]:
             try:
                 cursor.execute(f"ALTER TABLE reports ADD COLUMN {column} {col_type}")
@@ -2003,7 +2004,7 @@ def create_super_user_admin(email, password, role="admin"):
 
 def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
                         state=None, cities_json=None, zip_code=None, category=None,
-                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None):
+                        car_make=None, car_model=None, car_min_year=None, car_max_mileage=None, car_trim=None):
     """`state`/`cities_json`/`zip_code` are the new structured location
     picker's fields (see location_data.py); left as None for callers that
     still only have a free-text location string (e.g. the legacy path, or
@@ -2019,10 +2020,10 @@ def save_report_config(user_id, name, loc, price, beds, p_type, email, s_time,
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO reports (user_id, profile_name, location, max_price, min_beds, property_type, recipient_email, schedule_time, state, cities_json, zip_code, category, car_make, car_model, car_min_year, car_max_mileage, car_trim)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (int(user_id), name, loc, int(price), int(beds), p_type, email, s_time, state, cities_json, zip_code,
-              category, car_make, car_model, car_min_year, car_max_mileage))
+              category, car_make, car_model, car_min_year, car_max_mileage, car_trim))
         conn.commit()
     finally:
         conn.close()

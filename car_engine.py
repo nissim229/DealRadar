@@ -151,6 +151,24 @@ def get_available_models(make, user_id=None):
     return _cached_facets(f"models:{make.lower()}", _fetch) or models_for_make(make)
 
 
+def get_available_trims(make, model, user_id=None):
+    """Same idea as get_available_models, scoped to one make+model - Auto.dev's
+    facets response includes a real 'trims' facet once both are set
+    (confirmed live: Toyota Camry -> LE/Nightshade/SE/XSE/XLE/...), so this
+    is genuine live inventory data, not a guess. Falls back to an empty
+    list (not the small static CAR_CATALOG, which has no trim data at all)
+    on any failure - callers should treat that as "no trim filter
+    available for this pick" rather than an error."""
+    if not make or make == "Any make" or not model or model == "Any model":
+        return []
+
+    def _fetch():
+        facets = _fetch_autodev_facets({"vehicle.make": make, "vehicle.model": model}, user_id=user_id)
+        return _facet_labels_to_list(facets["trims"]) if facets and facets.get("trims") else None
+
+    return _cached_facets(f"trims:{make.lower()}:{model.lower()}", _fetch) or []
+
+
 def _estimate_market_value(make, model, year, mileage, current_year=2026):
     """Simple age + mileage depreciation off the catalog baseline - not a
     real valuation, just enough for "this listing is X% below a plausible
@@ -163,7 +181,7 @@ def _estimate_market_value(make, model, year, mileage, current_year=2026):
     return max(2500, round(value, -2))
 
 
-def generate_mock_car_listings(make=None, model=None, min_year=None, max_price=None,
+def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, max_price=None,
                                 max_mileage=None, zip_code=None, count=6):
     """Returns a list of mock car listing dicts, each already graded. Every
     field a real listings API would plausibly provide is present (even if
@@ -219,6 +237,11 @@ def generate_mock_car_listings(make=None, model=None, min_year=None, max_price=N
             "mileage": mileage,
             "price": price,
             "dealer_name": random.choice(DEALER_NAMES),
+            # No real trim-tier pricing data exists for mock listings (the
+            # small CAR_CATALOG has none) - a selected trim is just echoed
+            # onto every result so the card displays what was searched for,
+            # rather than silently dropping the filter's own label.
+            "trim": trim if trim and trim != "Any trim" else None,
             "zip_code": zip_code or "80301",
             "latitude": center_lat + random.uniform(-0.15, 0.15),
             "longitude": center_lon + random.uniform(-0.15, 0.15),
@@ -406,7 +429,7 @@ def _grade_real_listings(listings):
     return listings
 
 
-def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, user_id=None, limit=20):
+def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_code, radius=50, trim=None, user_id=None, limit=20):
     """Calls Auto.dev's real vehicle-listings API (api.auto.dev/listings)
     and maps the response into this app's internal listing shape - mirrors
     agent_engine.py's _fetch_rentcast_listings: returns None on any failure
@@ -443,6 +466,8 @@ def fetch_live_car_listings(make, model, min_year, max_price, max_mileage, zip_c
             params["vehicle.make"] = make
         if model and model != "Any model":
             params["vehicle.model"] = model
+        if trim and trim != "Any trim":
+            params["vehicle.trim"] = trim
         if max_price:
             params["retailListing.price"] = f"0-{int(max_price)}"
         if zip_code:
