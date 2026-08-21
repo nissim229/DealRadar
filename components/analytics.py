@@ -854,34 +854,37 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     (e.g. "live" vs f"hist_{log_id}") - every internal widget/session_state
     key below is namespaced with it so two calls in the same run (live scan
     still showing, plus a history row selected) never collide."""
-    st.markdown("---")
-
     if view_mode == "Pro":
-        with st.expander(":material/description: Full Written Report", expanded=True):
+        with st.expander(":material/description: Full Written Report", expanded=False):
             st.markdown(report_body)
-    else:
-        st.info("Simple mode is showing you deal cards below. Switch to Pro mode in the sidebar for the full written analyst report and detailed underwriting.", icon=":material/lightbulb:")
 
     try:
         _header_count = len(json.loads(coords_json))
     except Exception:
         _header_count = 0
     match_word = "Match" if _header_count == 1 else "Matches"
-    st.markdown(f"### :material/apartment: {profile_name} — {_header_count} {match_word}")
 
+    # Header + any preview/sample-data note share ONE compact line instead
+    # of a heading followed by a full-width colored st.info box each -
+    # real feedback was that these notices "take too much space" and
+    # "disturb the results view" for what's ultimately a small aside, not
+    # a headline-level message.
+    header_line = f"**:material/apartment: {profile_name}** — {_header_count} {match_word}"
+    preview_note = None
     if show_preview_notice and st.session_state.get("last_scan_was_preview"):
         if is_guest:
-            st.info(":material/visibility: You're viewing sample data as a guest. Sign in for a free account and real listings.")
+            preview_note = "sample data as a guest - sign in for real listings"
         elif st.session_state.get("last_scan_was_test"):
-            st.info(":material/science: This was a **Test Scan** - showing mock/sample data so you can check the UI without spending real RentCast quota. Use Run Live Scan when you want real listings.")
+            preview_note = "sample data (Test Scan) - no RentCast quota used"
         else:
-            notice_col1, notice_col2 = st.columns([4, 1])
-            with notice_col1:
-                st.info("This scan is showing preview/sample data - you're out of credits. Buy more to pull real listings for this search.")
-            with notice_col2:
-                st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
-                if st.button(":material/add_card: Buy Credits", use_container_width=True, key=f"{key_prefix}_results_buy_credits_btn"):
-                    pricing.render_pricing_dialog()
+            preview_note = "sample data - out of credits"
+    if preview_note:
+        st.caption(f"{header_line} · :material/visibility: {preview_note}")
+        if show_preview_notice and st.session_state.get("last_scan_was_preview") and not is_guest and not st.session_state.get("last_scan_was_test"):
+            if st.button(":material/add_card: Buy Credits", key=f"{key_prefix}_results_buy_credits_btn"):
+                pricing.render_pricing_dialog()
+    else:
+        st.caption(header_line)
 
     best_deal_coc, best_deal_address = None, None
     try:
@@ -2023,16 +2026,16 @@ def render_analytics_dashboard(is_guest=False):
     """, unsafe_allow_html=True)
 
     with st.container(key="dashboard_hero"):
+        # Shrunk from a large centered icon+title+subtitle block to one
+        # slim line - real feedback was that it "takes too much space" for
+        # what's mostly restating the navbar item already highlighted
+        # right above it ("Run Property Scans"), not information that
+        # helps search or view results.
         st.markdown(f"""
-            <div style='text-align:center; max-width:760px; margin:0 auto 24px auto;'>
-                <div style='display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:10px;'>
-                    <div style='background: var(--radar-gradient-brand); width: 48px; height: 48px;
-                                border-radius: var(--radar-radius-md); display:flex; align-items:center; justify-content:center; flex-shrink:0;'>
-                        {svg_icon("radar", size=24, color="white")}
-                    </div>
-                    <div style='font-family:var(--radar-font-display); font-size:32px; font-weight:800; color:white; line-height:1.2;'>Analytics Dashboard</div>
-                </div>
-                <div style='font-size:16px; color:var(--radar-text-on-dark-muted);'>Scan your active targets and evaluate pipeline real estate returns</div>
+            <div style='display:flex; align-items:center; gap:8px; margin-bottom:12px;'>
+                {svg_icon("radar", size=16, color="var(--radar-accent)")}
+                <span style='font-family:var(--radar-font-mono); font-size:11.5px; font-weight:700;
+                             letter-spacing:0.08em; text-transform:uppercase; color:var(--radar-text-on-dark-muted);'>Run Property Scans</span>
             </div>
         """, unsafe_allow_html=True)
 
@@ -2157,14 +2160,16 @@ def render_analytics_dashboard(is_guest=False):
                         calc_down_pct, calc_interest, calc_target_yield, "hero_mini",
                     )
 
-        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-        # The map (and, once expanded, the full results/filters/report)
-        # render directly below the button+results row - not behind a
-        # separate tab click - so a match is visible without extra
-        # navigation. See [[hero_redesign_unified_map]] and
-        # [[hero_redesign_compact_results]].
-        _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                                      calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
+            st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+            # The map and results render inside this SAME bordered box as
+            # the search form and Run Live Scan button, directly below the
+            # button+chips row - not a separate box further down the page -
+            # so the whole flow (search -> scan -> results) reads as one
+            # continuous unit instead of several visually disconnected
+            # pieces. See [[hero_redesign_unified_map]] and
+            # [[hero_redesign_compact_results]].
+            _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                                          calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
 
     st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
 
