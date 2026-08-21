@@ -621,3 +621,65 @@ sets `property_dialog_ctx` then raises `NameError` on the very next line.
 Confirmed via `git blame`: present since the initial commit (`82d0192`,
 2026-08-17), untouched by every commit since including this entire
 monolith split - not a regression, does not block this approval.
+
+---
+
+## Entry 6 — FIXLIST.md Section 6, property_card.py NameError fix (2026-08-21)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commits:
+- `fffee08` - the fix itself
+- `dba4d17` - marks the FIXLIST.md Section 6 checkbox done
+
+### The bug
+
+`components/property_card.py:486` called `_property_detail_dialog()`,
+which is defined nowhere in the repo - the real function is
+`render_property_detail_dialog()` (defined line 279, correctly called
+elsewhere at line 425 - the table view's "eye" icon path). This is the
+*other* "View Full Details" path: the button on a property card in the
+grid views (Properties Only / Properties + Map / Map Only). Clicking it
+set `property_dialog_ctx` then raised `NameError` on the very next line.
+Surfaced by the external reviewer during Entry 5's review (folded in
+there), confirmed via `git blame` before fixing: present since the
+initial commit (`82d0192`, 2026-08-17), untouched by every commit since -
+not caused by the monolith split.
+
+### The fix (`fffee08`)
+
+One-line change: `_property_detail_dialog()` -> `render_property_detail_dialog()`
+at line 486. Nothing else touched.
+
+### Verification
+
+`py_compile` clean, all 14 tests in `tests/test_auth.py` pass. Live
+browser check: ran a scan, opened the dialog from a card's "View Full
+Details" button in both Properties Only and Properties + Map view -
+correct property data, grade, and underwriting breakdown render in the
+modal, dialog closes cleanly. (The first attempt at this live check
+misleadingly appeared to still fail - traced to a stale Python module
+cache in the long-running dev server process, which had been started
+before `components/analytics_results.py` existed; restarting the server
+process cleanly resolved it and confirmed the fix works. Not a defect in
+the fix itself.)
+
+### What to check
+
+- Is the one-line diff actually correct and complete - does line 486 now
+  call the real function, and does nothing else in the file still
+  reference the non-existent name?
+- Does `FIXLIST.md` Section 6 accurately describe the bug and its fix?
+
+### Reviewer Feedback (Entry 6)
+
+**Verdict: approved.** Independently re-verified before folding in: the
+`fffee08` diff really is the exact one-liner (`1 insertion(+), 1
+deletion(-)`, nothing else touched); the live file confirms line 486 now
+calls the real function and both call sites (425 and 486) resolve to the
+same `render_property_detail_dialog` defined at line 279; `FIXLIST.md`
+Section 6 exists with an accurate description and its checkbox marked;
+full suite rerun independently: 14 passed.
+
+The reviewer's one procedural note - that this entry didn't exist yet
+when they checked - is what prompted writing it; no other gaps found.
