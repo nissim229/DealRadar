@@ -130,3 +130,43 @@ showed zero diff afterward, confirming a clean restore).
   `PASSWORD_PEPPER` that could leak through and mask a regression)?
 - Anything in the "already completed" scope that looks incomplete or
   wrong when checked against the real files at those two commit hashes?
+
+### Reviewer Feedback (Entry 1)
+
+**Verdict: approved**, all 5 "what to check" items confirmed, with 3 new
+findings. Every claim below was independently re-verified against the real
+repo before being recorded here (grep for bare `except:`, the stale
+`strategy_config.py` references, `except Exception:` line numbers,
+`FIXLIST.md` checkbox counts, `git status`/`git diff` state, and a
+`pytest` rerun) — nothing here is taken on the reviewer's word alone.
+
+- Bare-except fix: confirmed, zero bare `except:` remain repo-wide.
+- SETUP.md: confirmed accurate, **except** one stale leftover - its "Bugs
+  fixed in this version" section still cites `strategy_config.py`, which
+  no longer exists as source (only an orphaned `.pyc` remains in
+  `components/__pycache__/`). `main.py`'s router comment (line 46) also
+  still references it.
+- 12-test coverage: confirmed as a sound core. Named gaps, none blocking:
+  `change_own_password()`/`update_own_profile()`'s current-password checks,
+  the password-reset flows, `register_user()` end-to-end, and - flagged as
+  highest-value - **the opportunistic-hash-upgrade write-failure path**
+  (the `except sqlite3.Error: pass` in `authenticate_user()` from commit
+  82828c2) has zero test coverage despite being load-bearing: a regression
+  there could silently lock out valid logins.
+- CWD regression test: confirmed sound, no material gap. Noted it assumes
+  an already-initialized project (real `.env` present) - would fail loudly
+  on a pristine from-scratch clone rather than pass vacuously, which is
+  the correct failure mode, just worth knowing for a future CI setup.
+- Completeness: confirmed. Working tree, checkbox counts, and the
+  database.py clean-restore claim all check out exactly as stated.
+
+**New issues found** (not yet acted on - candidates for a follow-up entry):
+1. Stale `strategy_config.py` references (SETUP.md + main.py comment) and
+   an orphaned `.pyc` to delete.
+2. Missing test for the failed-upgrade-write resilience path (suggested
+   approach: monkeypatch the cursor/connection to raise `sqlite3.Error`
+   during the UPDATE, assert `authenticate_user()` still returns the user
+   dict).
+3. Minor/cosmetic: `tests/test_auth.py`'s `temp_db` fixture uses the
+   deprecated, race-prone `tempfile.mktemp()`; pytest's built-in
+   `tmp_path` fixture does the same job idiomatically.
