@@ -170,3 +170,59 @@ repo before being recorded here (grep for bare `except:`, the stale
 3. Minor/cosmetic: `tests/test_auth.py`'s `temp_db` fixture uses the
    deprecated, race-prone `tempfile.mktemp()`; pytest's built-in
    `tmp_path` fixture does the same job idiomatically.
+
+---
+
+## Entry 2 — Follow-up on Entry 1's 3 new findings (2026-08-21)
+
+**Status**: Pending review
+
+Commit: `7ded9c7` (pushed to `master`).
+
+Addresses all 3 items from Entry 1's "New issues found":
+
+1. **Stale `strategy_config.py` references fixed.** `main.py`'s
+   `active_category` comment and `SETUP.md`'s "Bugs fixed" section both
+   described a module that no longer exists as source (real-estate search
+   is ad-hoc now, mirroring cars - see `components/analytics.py`).
+   Updated both; `SETUP.md`'s entry is historical so it was annotated
+   rather than deleted. Also deleted the orphaned
+   `components/__pycache__/strategy_config.cpython-313.pyc`.
+   (Note: several *other* files - `components/car_search.py`,
+   `components/pricing.py`, `components/analytics.py`,
+   `DESIGN_STANDARDS.md`, `location_data.py` - also reference
+   `strategy_config.py` in docstrings/comments, mostly as "same pattern
+   as X" comparisons. These were out of the scope the reviewer actually
+   flagged - only `SETUP.md` and `main.py`'s comment were named - so left
+   untouched here rather than expanding scope unprompted.)
+
+2. **Added `test_login_succeeds_even_if_hash_upgrade_write_fails`** to
+   `tests/test_auth.py`, covering the previously-untested load-bearing
+   path: `authenticate_user()`'s opportunistic hash-upgrade write is
+   wrapped in `try/except sqlite3.Error` so a failed write can never turn
+   a correct login into a failure (commit 82828c2). Since
+   `sqlite3.Cursor`/`Connection` are immutable C types that block
+   `monkeypatch.setattr()` on their methods directly, the failure is
+   forced via a thin proxy wrapping `sqlite3.connect()` that intercepts
+   only the one `UPDATE users SET password_hash` statement. **Sanity-
+   checked**: temporarily removed the `try/except`, confirmed this exact
+   new test fails (the simulated `OperationalError` propagates uncaught),
+   then restored and confirmed all 13 tests pass (`git diff` on
+   `database.py` empty afterward).
+
+3. **Swapped `tempfile.mktemp()` for pytest's `tmp_path` fixture** in the
+   `temp_db` fixture - same behavior, no longer using a documented-
+   deprecated, race-prone API.
+
+Full suite: **13 passed** (was 12; +1 from item 2 above).
+
+### What to check (Entry 2)
+
+- Are the `SETUP.md`/`main.py` reference fixes accurate against the
+  current codebase?
+- Is the proxy-based approach for forcing the sqlite3 write failure sound,
+  or is there a cleaner/more standard way to do this in pytest that was
+  missed?
+- Was leaving the other `strategy_config.py` references (outside what was
+  explicitly flagged) alone the right call, or should those be swept up
+  too in a future entry?
