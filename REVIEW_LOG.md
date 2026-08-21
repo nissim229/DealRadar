@@ -439,7 +439,7 @@ work this entry's own "Remaining Section 5 work" note flagged.
 
 ## Entry 5 — FIXLIST.md Section 5, monolith split (2026-08-21)
 
-**Status**: Pending review
+**Status**: Reviewer feedback folded in below - approved.
 
 The three files FIXLIST.md Section 5 flagged as "fine to defer, cosmetic"
 - `topbar.py` (785 lines), `database.py` (2780 lines, 127 functions), and
@@ -560,3 +560,64 @@ the whole plan.
 - Is the final `components/analytics.py` facade's 5-name re-export list
   actually complete - any other file in the repo importing a 6th name
   from `components.analytics` that got missed?
+
+### Reviewer Feedback (Entry 5)
+
+**Verdict: approved**, with one pre-existing bug surfaced (unrelated to
+the split, not a regression). Every check was redone independently with
+different methods than this log's own verification (AST parsing across
+all 61 project `.py` files, live DB builds from git snapshots, byte-level
+compares), rather than trusting the logged claims. Confirmed the one
+concrete bug claim myself before recording it here (git blame on
+`components/property_card.py:486`) rather than folding it in blindly.
+
+- **Commit range**: exactly 28 commits, matching this entry's list
+  one-for-one in sequence. `HEAD` = `9b9f845`, tree clean, synced with
+  origin/master.
+- **Facade completeness - exhaustive, not spot-checked**: every `db.X`/
+  `database.X` reference, every `from database import ...`/`from
+  components.analytics import ...`/`from topbar import ...`, and every
+  direct sibling-module import across all 61 `.py` files resolves in its
+  target namespace - zero unresolved references. Independently confirmed
+  the analytics facade's 5-name re-export list is complete (answers this
+  entry's last "what to check" item).
+- **Pure-move confirmation**, sampled deep on `e838e61` (crypto+shared),
+  `6089faa` (billing), and `b201b4c` (orchestrator): every removed
+  monolith line reappears in its sibling module identically after
+  normalizing whitespace and the `db.`->`database.` prefix rewrite - zero
+  residual logic deltas. `38c560f`'s CSS block compared byte-for-byte
+  against the pre-split inline literal: 28,668 of 28,672 characters
+  identical, the sole difference one whitespace-only line.
+- **`init_db()` decomposition, verified empirically rather than by
+  auditing this log's own diff script**: built fresh DBs from both the
+  pre-split monolith and the new `database_schema.py` path (checked out
+  in an isolated sandbox) and diffed them directly - 22 tables, all
+  column/index/trigger definitions, all 4 seed rows, and the seeded
+  master-admin row identical; double-init produced no duplicate seeds.
+  Answers this entry's diff-script-soundness question: moot, since the
+  outcome was verified independently of the script's method.
+- **`property_dialog_ctx` contract - fully preserved**: all 4 producers
+  survive (the `_mini`-suffix producer had moved to
+  `components/analytics_scan_form.py:241`, not lost - initially looked
+  like 3). Every producer's key set matches the pre-split snapshot
+  exactly, both `key_prefix` suffixes preserved verbatim, and the
+  consumer in `components/property_card.py` reads the same 10 keys before
+  and after.
+- **Cross-module reference pattern**: confirmed via the same AST sweep -
+  no bare-name call survives that depends on import-order luck. Full
+  `pytest` rerun: 14 passed.
+- **Sandbox discipline**: all verification ran in isolated temp dirs with
+  temp `DB_NAME`s and a sandbox pepper; the project `.env` was checked
+  afterward - exactly one `PASSWORD_PEPPER` line, unmodified, and
+  production `agent_config.db` untouched.
+
+**One finding, added to `FIXLIST.md`**: `components/property_card.py:486`
+calls `_property_detail_dialog()`, which is defined nowhere in the repo -
+the correct name is `render_property_detail_dialog()` (defined line 279,
+correctly called at line 425, the table view's "eye" icon path). This is
+the OTHER "View Full Details" path - the button on a property card in the
+grid views (Properties Only / Properties + Map / Map Only). Clicking it
+sets `property_dialog_ctx` then raises `NameError` on the very next line.
+Confirmed via `git blame`: present since the initial commit (`82d0192`,
+2026-08-17), untouched by every commit since including this entire
+monolith split - not a regression, does not block this approval.
