@@ -1651,90 +1651,16 @@ from database_history import (
 
 
 # --- SAVED / FAVORITED PROPERTIES (with optional personal notes) ---
-# A property is uniquely identified per-user by its address, since the mock
-# listing generator doesn't have stable IDs across scans.
+from database_saved_properties import (
+    save_property,
+    unsave_property,
+    is_property_saved,
+    update_property_notes,
+    get_property_notes,
+    get_saved_properties,
+    count_saved_properties,
+)
 
-def save_property(user_id, address, title, price, beds, baths, latitude, longitude):
-    """Adds a property to the user's saved/favorites list. Safe to call again
-    on an already-saved property - it just updates the cached details."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO saved_properties (user_id, address, title, price, beds, baths, latitude, longitude)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, address) DO UPDATE SET
-                title=excluded.title, price=excluded.price, beds=excluded.beds,
-                baths=excluded.baths, latitude=excluded.latitude, longitude=excluded.longitude
-        """, (int(user_id), address, title, int(price), int(beds), float(baths), float(latitude), float(longitude)))
-        conn.commit()
-    finally:
-        conn.close()
-
-def unsave_property(user_id, address):
-    """Removes a property from the saved/favorites list."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM saved_properties WHERE user_id=? AND address=?", (int(user_id), address))
-        conn.commit()
-    finally:
-        conn.close()
-
-def is_property_saved(user_id, address):
-    """Returns True if this address is currently saved for this user."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM saved_properties WHERE user_id=? AND address=?", (int(user_id), address))
-        return cursor.fetchone() is not None
-    finally:
-        conn.close()
-
-def update_property_notes(user_id, address, notes):
-    """Updates the personal notes text for a saved property."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE saved_properties SET notes=? WHERE user_id=? AND address=?", (notes, int(user_id), address))
-        conn.commit()
-    finally:
-        conn.close()
-
-def get_property_notes(user_id, address):
-    """Returns the saved notes text for a property, or empty string if none."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT notes FROM saved_properties WHERE user_id=? AND address=?", (int(user_id), address))
-        row = cursor.fetchone()
-        return row[0] if row and row[0] else ""
-    finally:
-        conn.close()
-
-def get_saved_properties(user_id):
-    """Fetches all saved/favorited properties for a user, most recently saved first."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT address, title, price, beds, baths, latitude, longitude, notes, saved_at
-            FROM saved_properties WHERE user_id=? ORDER BY saved_at DESC
-        """, (int(user_id),))
-        return cursor.fetchall()
-    finally:
-        conn.close()
-
-def count_saved_properties(user_id):
-    """Used by the saved-properties plan-limit gate - cheaper than fetching
-    every saved property just to call len() on it."""
-    conn = sqlite3.connect(DB_NAME)
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM saved_properties WHERE user_id=?", (int(user_id),))
-        return cursor.fetchone()[0]
-    finally:
-        conn.close()
 
 # --- PERSONAL PORTFOLIO (properties the user actually owns) ---
 
