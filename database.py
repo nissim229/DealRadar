@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import secrets
+import bcrypt
 from datetime import datetime, timedelta
 from plan_limits import PLAN_ORDER
 
@@ -15,8 +16,41 @@ from plan_limits import PLAN_ORDER
 DB_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_config.db")
 
 def hash_password(password):
-    """Securely hashes passwords using SHA-256."""
+    """Securely hashes a password using bcrypt. The password is pre-hashed
+    with SHA-256 into a fixed 32-byte digest first, so bcrypt's own 72-byte
+    input limit never silently truncates a long passphrase before it
+    reaches the slow algorithm that actually needs the entropy."""
+    pre_hashed = hashlib.sha256(password.encode()).digest()
+    return bcrypt.hashpw(pre_hashed, bcrypt.gensalt()).decode()
+
+def _hash_password_legacy(password):
+    """The original unsalted SHA-256 hashing this app used before the
+    bcrypt migration. Kept ONLY so verify_password() can still check a
+    password against an account that hasn't logged in since the migration
+    (its stored hash is still in this old format) - never used to create
+    new hashes."""
     return hashlib.sha256(password.encode()).hexdigest()
+
+def _is_bcrypt_hash(stored_hash):
+    """bcrypt hashes always start with one of these version prefixes;
+    a legacy SHA-256 hash is just a 64-char hex digest and never does."""
+    return bool(stored_hash) and stored_hash.startswith(("$2a$", "$2b$", "$2y$"))
+
+def verify_password(password, stored_hash):
+    """Checks password against whichever hash format stored_hash is in -
+    bcrypt for accounts already migrated, legacy SHA-256 otherwise. This
+    dual-format check is what lets authenticate_user() migrate a legacy
+    hash to bcrypt transparently on a successful login, instead of forcing
+    every existing user through a password reset."""
+    if not stored_hash:
+        return False
+    if _is_bcrypt_hash(stored_hash):
+        pre_hashed = hashlib.sha256(password.encode()).digest()
+        try:
+            return bcrypt.checkpw(pre_hashed, stored_hash.encode())
+        except ValueError:
+            return False
+    return _hash_password_legacy(password) == stored_hash
 
 
 def _generate_account_id(cursor):
@@ -723,20 +757,28 @@ def authenticate_user(email, password):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, role, credits, theme_preference, name, is_suspended, plan FROM users WHERE email=? AND password_hash=?",
-            (email, hash_password(password))
+            "SELECT id, role, credits, theme_preference, name, is_suspended, plan, password_hash FROM users WHERE email=?",
+            (email,)
         )
         row = cursor.fetchone()
-        if row:
-            if row[5]:
-                return {"suspended": True}
-            return {
-                "id": int(row[0]), "role": str(row[1]), "credits": int(row[2]),
-                "theme_preference": str(row[3]) if row[3] else "light",
-                "name": str(row[4]) if row[4] else "",
-                "plan": str(row[6]) if row[6] else "Free",
-            }
-        return None
+        if not row or not verify_password(password, row[7]):
+            return None
+        # A correct password against a still-legacy SHA-256 hash means this
+        # account hasn't logged in since the bcrypt migration - upgrade its
+        # stored hash right here, transparently, instead of requiring a
+        # separate forced reset for every existing user. See hash_password()
+        # and verify_password() for the full migration design.
+        if not _is_bcrypt_hash(row[7]):
+            cursor.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(password), int(row[0])))
+            conn.commit()
+        if row[5]:
+            return {"suspended": True}
+        return {
+            "id": int(row[0]), "role": str(row[1]), "credits": int(row[2]),
+            "theme_preference": str(row[3]) if row[3] else "light",
+            "name": str(row[4]) if row[4] else "",
+            "plan": str(row[6]) if row[6] else "Free",
+        }
     finally:
         conn.close()
 
@@ -1751,7 +1793,7 @@ def update_own_profile(user_id, first_name, middle_name, last_name, email, phone
             return {"success": False, "error": "Account not found."}
         current_email, password_hash = row
         if email != current_email:
-            if not current_password or hash_password(current_password) != password_hash:
+            if not current_password or not verify_password(current_password, password_hash):
                 return {"success": False, "error": "Enter your current password to change your email."}
         cursor.execute(
             "UPDATE users SET name=?, first_name=?, middle_name=?, last_name=?, email=?, phone=?, address=? WHERE id=?",
@@ -1818,7 +1860,7 @@ def change_own_password(user_id, current_password, new_password):
         cursor = conn.cursor()
         cursor.execute("SELECT password_hash FROM users WHERE id=?", (int(user_id),))
         row = cursor.fetchone()
-        if not row or row[0] != hash_password(current_password):
+        if not row or not verify_password(current_password, row[0]):
             return False
         cursor.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(new_password), int(user_id)))
         conn.commit()

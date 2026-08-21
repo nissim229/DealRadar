@@ -7,3 +7,4 @@ python-dotenv==1.2.2
 geopy==2.5.0
 requests==2.34.2
 tzdata==2026.3
+bcrypt==5.0.0
