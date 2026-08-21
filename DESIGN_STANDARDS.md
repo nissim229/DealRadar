@@ -70,7 +70,7 @@ Every page header uses the same shell: `var(--radar-gradient-hero)`
 background, a centered 48×48px `var(--radar-gradient-brand)` icon box
 (via `icons.py`'s `icon()`), a 32px/800-weight white title, and a 16px
 `var(--radar-text-on-dark-muted)` subtitle underneath. See
-`components/strategy_config.py`, `components/portfolio.py`, or
+`components/analytics.py`, `components/portfolio.py`, or
 `components/admin_controls.py` for the reference markup.
 
 ## 5. Stat cards
@@ -140,11 +140,12 @@ uses `:red[SUSPENDED]` instead of a custom span like everywhere else.
 Use `components/analytics.py`'s `render_empty_state(icon_name, title,
 description, cta_label=None, cta_page=None)` for every "nothing here yet"
 message — not a bare `st.info()`/`st.caption()` one-liner.
-**Known gap**: `components/strategy_config.py` has its own private
-near-duplicate (`_render_empty_state`, missing the CTA-button support) —
-should import and use the shared one instead. Several other pages
-(admin_controls, portfolio, analytics) also still use bare one-liners in
-lower-traffic spots.
+(The private `_render_empty_state` near-duplicate this section used to
+flag lived in `components/strategy_config.py`, which has since been
+removed entirely - real-estate search is ad-hoc now, like cars. No such
+duplicate remains; `portfolio.py` correctly imports the shared
+`render_empty_state`.) Several pages (admin_controls, portfolio, analytics)
+still use bare one-liners in lower-traffic spots.
 
 ## 10. Color & spacing
 

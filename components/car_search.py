@@ -2,8 +2,9 @@
 car_search.py
 The redesigned Cars-category flow: search runs immediately on one page, no
 saved profile required first - replaces the old two-step Manage Car Search
-Criteria -> Run Car Scans pattern for cars only (real estate's own flow in
-analytics.py/strategy_config.py is untouched). "Save this search" is an
+Criteria -> Run Car Scans pattern. Real estate's own flow (analytics.py)
+was later brought to this same ad-hoc shape too - see
+nav_simplification_ad_hoc_search. "Save this search" is an
 optional, secondary action offered next to the results, for the minority
 of users who want to revisit or re-run one - see render_saved_car_searches_page.
 
@@ -784,8 +785,8 @@ def _clear_car_saved_delete_target():
 
 @st.dialog("Delete Search", on_dismiss=_clear_car_saved_delete_target)
 def _delete_saved_car_search_dialog():
-    """Same floating-dialog shape as strategy_config.py's
-    _delete_search_dialog (see [[table_action_pattern]]) - no edit dialog
+    """Same floating-dialog shape as analytics.py's
+    _delete_history_dialog (see [[table_action_pattern]]) - no edit dialog
     needed alongside it here, since a saved car search has nothing to
     edit in place (the whole point of this flow is search-then-optionally-
     save, not maintain a profile - see this module's own docstring).

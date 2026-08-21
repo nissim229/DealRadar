@@ -1,9 +1,9 @@
 """
 components/pricing.py
 The "Buy Scan Credits" package dialog and the shared "you've hit your
-plan's limit" upsell block, used from three separate places (portfolio.py,
-property_card.py, strategy_config.py) plus analytics.py's credit-exhausted
-gate. Kept standalone rather than folded into analytics.py: analytics.py
+plan's limit" upsell block, used from portfolio.py, property_card.py, and
+topbar.py, plus analytics.py's credit-exhausted gate. Kept standalone
+rather than folded into analytics.py: analytics.py
 already imports components/property_card.py, and property_card.py needs
 this dialog too - putting it in analytics.py would create a circular import.
 """

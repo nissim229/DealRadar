@@ -1445,8 +1445,8 @@ def _clear_hist_delete_target():
 
 @st.dialog("Delete Scan Report", on_dismiss=_clear_hist_delete_target)
 def _delete_history_dialog():
-    """Same floating-dialog shape as strategy_config.py's
-    _delete_search_dialog (see [[table_action_pattern]]) - both the grid's
+    """Same floating-dialog shape as car_search.py's
+    _delete_saved_car_search_dialog (see [[table_action_pattern]]) - both the grid's
     trash icon and the "Remove" button under an opened report set
     hist_delete_target and land here, so there's exactly one delete
     confirmation, not two different ones with different behavior (the

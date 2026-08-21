@@ -1,7 +1,7 @@
 """
 location_data.py
 Curated state -> major-city name lists backing the hunt-criteria location
-picker (components/strategy_config.py). Deliberately holds only city NAMES,
+picker (location_picker.py). Deliberately holds only city NAMES,
 not coordinates - coordinates are resolved on demand via the app's existing
 geocoder (agent_engine.validate_and_geocode_location, geopy/Nominatim) and
 cached in database.py's city_coords_cache table, so a wrong hand-typed
