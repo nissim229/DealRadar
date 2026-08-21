@@ -39,12 +39,29 @@ def render_grade_explanation(metrics, calc_target_yield):
     # for (see underwriting.py's compute_deal_metrics), not an omission.
     if metrics.get("annual_hoa"):
         rows.append(("🏘️ HOA fees", f"${metrics['annual_hoa']:,.0f}/yr", f"${metrics['monthly_hoa']:,.0f}/mo homeowners association dues"))
+    # Same "only shown when non-zero" pattern as HOA above - management
+    # defaults to $0 (no assumption made unless a caller opts in), but
+    # maintenance defaults to a real 5%-of-rent reserve (matching the
+    # What-If sandbox's own default), so this row now appears on every
+    # card by default - previously this cost was silently baked into NOI
+    # with no line explaining it, which made this table's own numbers
+    # not add up (rent minus taxes/insurance no longer equals NOI once
+    # this exists) if left unlabeled.
+    if metrics.get("annual_mgmt_fee"):
+        rows.append(("🧰 Property management", f"${metrics['annual_mgmt_fee']:,.0f}/yr", "Fee for a property manager, as a % of rent collected"))
+    if metrics.get("annual_maintenance"):
+        rows.append(("🔧 Maintenance reserve", f"${metrics['annual_maintenance']:,.0f}/yr", "Ongoing repairs/upkeep, set aside as a % of rent"))
     rows += [
-        ("📊 Net Operating Income (NOI)", f"${metrics['noi']:,.0f}/yr", "Income minus taxes/insurance/HOA - your profit before the mortgage"),
+        ("📊 Net Operating Income (NOI)", f"${metrics['noi']:,.0f}/yr", "Income minus taxes/insurance/HOA/management/maintenance - your profit before the mortgage"),
         ("🏦 Mortgage payment", f"${metrics['a_debt']:,.0f}/yr", "What you pay the bank each year on the loan"),
         ("💰 Cash flow", f"${metrics['cashflow']:,.0f}/yr", "NOI minus mortgage payment - what's left in your pocket"),
-        ("🎯 Cash-on-Cash Return (your ROI)", f"{metrics['coc']:.2f}%", "Cash flow ÷ your down payment - your real return on the cash you put in"),
     ]
+    if metrics.get("closing_costs"):
+        rows.append(("🧾 Closing costs", f"${metrics['closing_costs']:,.0f}", "One-time cost at purchase, added to your total cash needed"))
+    coc_help = ("Cash flow ÷ (your down payment + closing costs) - your real return on the cash you put in"
+                if metrics.get("closing_costs") else
+                "Cash flow ÷ your down payment - your real return on the cash you put in")
+    rows.append(("🎯 Cash-on-Cash Return (your ROI)", f"{metrics['coc']:.2f}%", coc_help))
     if grade == "excellent":
         rows.append(("✅ Vs. your target", f"+{margin:.2f} pts", f"Clears your {calc_target_yield:.2f}% target"))
     elif grade == "average":

@@ -19,7 +19,8 @@ def monthly_payment_factor(annual_rate_pct, n_periods):
 
 
 def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
-                          calc_down_pct, calc_interest, calc_target_yield, hoa_monthly=0.0):
+                          calc_down_pct, calc_interest, calc_target_yield, hoa_monthly=0.0,
+                          calc_mgmt_pct=0.0, calc_maint_pct=5.0, calc_closing_costs=0.0):
     """Shared underwriting math - used identically by the summary cards, the property
     cards, and the detailed Pro tabs, so the numbers never disagree with each other.
 
@@ -31,13 +32,32 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     hoa_monthly (see agent_engine.py) so a $300/mo HOA condo doesn't get
     graded as if it had none - a real gap flagged by the user: "i dont
     think we [are] adding that to the calculation to decide if it [is a]
-    good outstanding deal."""
+    good outstanding deal."
+
+    calc_mgmt_pct/calc_maint_pct/calc_closing_costs mirror the What-If
+    sandbox's own property-management %, maintenance-reserve %, and
+    closing-cost inputs - previously only the sandbox modeled these,
+    so the exact same listing could grade "excellent" on its card but
+    drop to "average" the moment someone opened What-If for it (both
+    surfaces were internally correct, just different models - see the
+    reviewer's deal-math audit, Gaps 2-3). Folding them into this one
+    shared function instead of duplicating the sandbox's math again
+    means the two surfaces can no longer disagree. Defaults
+    (mgmt 0%, maintenance 5%, closing $0) match What-If's own slider
+    defaults exactly, so an existing call site that doesn't pass these
+    picks up the same "out of the box" assumptions a fresh What-If
+    session would - maintenance is the one line that was already
+    nonzero by default, so every card's numbers get a little more
+    realistic even without any caller changes; management/closing stay
+    a no-op until a caller opts in."""
     v_loss = (calc_rent * 12) * (calc_vacancy_pct / 100)
     eff_gross = (calc_rent * 12) - v_loss
     taxes = price * (calc_tax_rate / 100)
     insurance = price * (calc_ins_rate / 100)
     hoa_annual = (hoa_monthly or 0) * 12
-    expenses = taxes + insurance + hoa_annual
+    mgmt_fee = eff_gross * (calc_mgmt_pct / 100)
+    maintenance = eff_gross * (calc_maint_pct / 100)
+    expenses = taxes + insurance + hoa_annual + mgmt_fee + maintenance
     # NOI itself must stay unclamped - cashflow/CoC/grade all derive from it,
     # and flooring it at 0 was hiding real losses on all-cash (or near
     # free-and-clear) deals: with no debt service, cashflow = noi, so a
@@ -59,7 +79,13 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
         a_debt = 0.0
 
     cashflow = noi - a_debt
-    coc = (cashflow / down_amt) * 100 if down_amt > 0 else 0.0
+    # Total cash needed includes closing costs alongside the down payment,
+    # matching What-If's own CoC denominator - a $10k closing-cost buyer's
+    # real return on capital is lower than one who only put down the
+    # purchase-price fraction, and this was previously invisible on every
+    # card/summary surface.
+    total_cash = down_amt + calc_closing_costs
+    coc = (cashflow / total_cash) * 100 if total_cash > 0 else 0.0
 
     target_yield = calc_target_yield / 100
     down_ratio = calc_down_pct / 100
@@ -69,14 +95,20 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     else:
         debt_factor = 0.0
     denom = tax_ins_ratio + (debt_factor * (1 - down_ratio)) + (target_yield * down_ratio)
-    # HOA is a fixed dollar cost, not a rate-of-price like tax/insurance,
-    # so it can't be folded into tax_ins_ratio the same way (that ratio
-    # is what makes this formula solvable for price in the first place).
-    # Treating it as a straight reduction of the income available to
-    # cover everything else is a simplification, but it's directionally
-    # correct: a higher HOA lowers the max price this deal can still
-    # justify, instead of MAO silently ignoring it.
-    mao = (eff_gross - hoa_annual) / denom if denom > 0 else price
+    # HOA/mgmt/maintenance are fixed-dollar or rent-proportional costs, not
+    # rate-of-price like tax/insurance, so none of them can fold into
+    # tax_ins_ratio the same way (that ratio is what makes this formula
+    # solvable for price in the first place) - each instead reduces the
+    # income available to cover everything else, in the numerator. Closing
+    # costs land in the numerator too (scaled by target_yield, since they
+    # add directly to the total-cash denominator of the CoC this MAO is
+    # solving for) rather than the denominator, matching the exact
+    # algebraic derivation used by What-If's own suggested-max-offer
+    # calculation (see whatif_calculator.py's compute()) - both are the
+    # same closed-form now, not two independently-derived formulas that
+    # happen to agree.
+    mao_numerator = eff_gross - hoa_annual - mgmt_fee - maintenance - (target_yield * calc_closing_costs)
+    mao = mao_numerator / denom if denom > 0 else price
     mao_delta = price - mao
 
     if cashflow < 0:
@@ -92,6 +124,8 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
         "mao": mao, "mao_delta": mao_delta, "grade": grade,
         "eff_gross_income": eff_gross, "annual_taxes": taxes, "annual_insurance": insurance,
         "vacancy_loss": v_loss, "annual_hoa": hoa_annual, "monthly_hoa": hoa_monthly or 0,
+        "annual_mgmt_fee": mgmt_fee, "annual_maintenance": maintenance,
+        "closing_costs": calc_closing_costs, "total_cash_needed": total_cash,
     }
 
 
