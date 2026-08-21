@@ -368,31 +368,38 @@ def fetch_live_listings(location, property_type, max_price, min_beds, allow_live
     except (TypeError, ValueError):
         min_b = 3
 
-    # --- ADVANCED GEOGRAPHIC ROUTING MATRIX ---
-    # Dictionary structure mapping location keys to a center point plus street
-    # name options used to generate a varied, randomized set of matches.
+    # These 4 specific cities get a hardcoded, network-independent lat/lon -
+    # deliberately, not just historically: they're exactly
+    # GUEST_QUICK_SEARCH_CITIES (analytics.py), the buttons an anonymous
+    # visitor clicks first, and guest scans always run with allow_live=False
+    # (never spend real RentCast quota), landing here. A live Nominatim
+    # geocode call on that critical first-impression path would trade a
+    # guaranteed-instant demo for one dependent on a third-party geocoder's
+    # uptime/rate limits - not worth it for 4 fixed, known coordinates.
     city_directory = {
-        "denver": {
-            "lat": 39.7392, "lon": -104.9903,
-            "streets": ["Market Street", "Larimer Street", "Blake Street", "Wynkoop Street", "Capital Avenue"],
-        },
-        "boulder": {
-            "lat": 40.0205, "lon": -105.2764,
-            "streets": ["Pearl Street", "Pine Street", "Mapleton Avenue", "Canyon Boulevard", "Broadway"],
-        },
-        "austin": {
-            "lat": 30.2672, "lon": -97.7431,
-            "streets": ["Congress Avenue", "Rainey Street", "South Lamar Boulevard", "6th Street", "Silicon Hills Drive"],
-        },
-        "miami": {
-            "lat": 25.7617, "lon": -80.1918,
-            "streets": ["Brickell Avenue", "Biscayne Boulevard", "Ocean Drive", "Collins Avenue", "Flagler Street"],
-        },
+        "denver": {"lat": 39.7392, "lon": -104.9903},
+        "boulder": {"lat": 40.0205, "lon": -105.2764},
+        "austin": {"lat": 30.2672, "lon": -97.7431},
+        "miami": {"lat": 25.7617, "lon": -80.1918},
     }
+
+    # One shared pool of plausible-sounding street names for every mock
+    # listing regardless of city - previously only the 4 cities above got
+    # this variety (5-10 curated real streets each) while every other
+    # searched city recycled the same 5 generic names. Merging them into
+    # one wider pool means a city outside the guest-demo list gets the same
+    # richness instead of a visibly smaller, repeated set.
+    MOCK_STREET_NAMES = [
+        "Main Street", "Market Street", "Central Avenue", "Pipeline Drive", "Strategic Way",
+        "Larimer Street", "Blake Street", "Wynkoop Street", "Capital Avenue",
+        "Pearl Street", "Pine Street", "Mapleton Avenue", "Canyon Boulevard", "Broadway",
+        "Congress Avenue", "Rainey Street", "South Lamar Boulevard", "6th Street", "Silicon Hills Drive",
+        "Brickell Avenue", "Biscayne Boulevard", "Ocean Drive", "Collins Avenue", "Flagler Street",
+    ]
+    street_options = MOCK_STREET_NAMES
 
     if override_coords is not None:
         center_lat, center_lon = override_coords
-        street_options = ["Main Street", "Market Street", "Central Avenue", "Pipeline Drive", "Strategic Way"]
     else:
         # Find matching city key using a clean loop check string layout lookups
         matched_city = None
@@ -401,19 +408,18 @@ def fetch_live_listings(location, property_type, max_price, min_beds, allow_live
                 matched_city = city_directory[city_key]
                 break
 
-        # If the location isn't one of our 4 hardcoded cities, try to geocode it for
-        # real so the mock listings (and Street View photos) land somewhere sensible,
-        # instead of always defaulting to one generic rural point with no imagery.
+        # If the location isn't one of our 4 fast-path cities, geocode it for
+        # real so the mock listings (and Street View photos) land somewhere
+        # sensible, instead of always defaulting to one generic rural point
+        # with no imagery.
         if matched_city is None:
             geo_result = validate_and_geocode_location(loc_display)
             if geo_result:
                 center_lat, center_lon = geo_result["latitude"], geo_result["longitude"]
             else:
                 center_lat, center_lon = 39.8283, -98.5795  # Geographic Center of the US (Lebanon, Kansas)
-            street_options = ["Main Street", "Market Street", "Central Avenue", "Pipeline Drive", "Strategic Way"]
         else:
             center_lat, center_lon = matched_city["lat"], matched_city["lon"]
-            street_options = matched_city["streets"]
 
     # If a RentCast API key is configured, try real listings first - falls
     # through to the local simulator below on any failure (no key, network
