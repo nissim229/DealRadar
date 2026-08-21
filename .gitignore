@@ -10,6 +10,7 @@ client_secret_*.json
 venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
 # User-uploaded files (lease/contract documents - sensitive)
 portfolio_uploads/

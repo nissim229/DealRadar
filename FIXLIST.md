@@ -35,9 +35,9 @@
 
 ## 2. Real test suite (pytest) — protects everything that comes after
 
-- [ ] Create `requirements-dev.txt` with `pytest` (keep it out of the runtime
+- [x] Create `requirements-dev.txt` with `pytest` (keep it out of the runtime
       requirements.txt / lock file).
-- [ ] Create `tests/test_auth.py` porting the ad-hoc verification suite:
+- [x] Create `tests/test_auth.py` porting the ad-hoc verification suite:
       - wrong password rejected on a bcrypt account
       - legacy SHA-256 hash: login succeeds AND stored hash upgrades to
         `$2b$12$...`; second login succeeds with NO further rewrite
@@ -50,13 +50,13 @@
         verification under pepper B
       - suspended account still returns `{"suspended": True}`
       - rough timing parity between missing-account and wrong-password paths
-- [ ] **Hard rule: tests must never touch the production `agent_config.db`.**
+- [x] **Hard rule: tests must never touch the production `agent_config.db`.**
       Copy it to a temp file and monkeypatch `database.DB_NAME` for every test
       (fixture-scoped).
-- [ ] Add the pepper regression test: import `database` with CWD set to an
+- [x] Add the pepper regression test: import `database` with CWD set to an
       unrelated directory, assert `.env` is byte-for-byte unchanged afterwards
       and `PASSWORD_PEPPER` resolves to the value already in `.env`.
-- [ ] Run `pytest` before every commit from here on.
+- [x] Run `pytest` before every commit from here on.
 
 ## 3. Silent exception audit (17 broad handlers)
 
