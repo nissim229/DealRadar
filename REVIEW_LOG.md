@@ -1780,3 +1780,24 @@ errors at any point.
   enough, or does it need a second glyph `icons.py` doesn't have yet?
 - Item 4 (naming pass - "Run Property Scans" relabel) is still
   pending the owner's preferred wording before implementation.
+
+## Entry 19 — Zillow/Redfin button copy (2026-08-22)
+
+**Status**: Done, verified live. Not yet reviewed by HG.
+
+Commit: `239817f`.
+
+Owner's complaint: "Search Zillow"/"Search Redfin" buttons were ugly,
+and "Search" doesn't fit - these open a search for a listing already
+found, not a fresh search. Dropped "Search " from both button labels
+(the card-level row in `property_card.py` and the detail dialog's
+Photos-tab version) and added `:material/open_in_new:` to the
+card-level pair (the dialog version already had it), so both now read
+icon + "Zillow"/"Redfin" only - matching the exact convention
+`car_card.py`'s AutoTrader/Cars.com buttons already used (never said
+"Search AutoTrader"), fixing a property/car inconsistency rather than
+inventing a new pattern.
+
+Verified live: both locations render correctly with the icon, no
+broken markup, same URLs/help tooltips as before (copy-only change).
+Full suite: 59 passed. No server errors.
