@@ -1330,3 +1330,111 @@ than taking them at face value:
 
 Nothing to correct this round - reviewer's citations and algebra both
 held up under direct verification.
+
+## Entry 14 — Manual price-drop "Check Now" on saved properties (2026-08-22)
+
+**Status**: Done, verified live as 3 distinct accounts. Not yet
+reviewed by HG.
+
+Commit: `d7c1caa`.
+
+Closes the standout item from HG's own "what to add next" list
+(price-drop alerts) - the one HG suggestion that survived independent
+verification as a real, unimplemented gap (2 of HG's other 7
+suggestions turned out to already exist in the app - see Entry 12's
+discussion). Owner's explicit framing before implementation: leave
+real payment processing for later, but this + a security pass were
+worth doing now.
+
+### Why manual, not automatic
+
+Investigated whether this could be a background job (checks fire
+without anyone opening the app) before writing any code. Found: this
+app has **no background scheduler at all** - every existing alert
+(RentCast quota, low credits, deal-found) fires synchronously, inline,
+only when a user is actively running a scan. Building real background
+alerting would mean adding infrastructure outside the Streamlit app
+itself (e.g. a Windows Task Scheduler job), which the owner did not
+ask for. Combined with a second real constraint the owner raised
+directly - RentCast has a tight monthly cap on real estate, Auto.dev
+(cars) has much more headroom - any automatic per-property recheck
+loop risks silently burning through a scarce, real-dollar-cost
+resource. Presented 3 options (check-on-visit, piggyback on the
+existing area cache, real scheduled job); owner asked for a
+recommendation while explicitly flagging the quota concern, which
+shaped the final design below.
+
+### What got built
+
+- `check_saved_property_price()` (`agent_engine.py`): re-runs a real
+  RentCast search centered on the saved property's OWN lat/lon and
+  looks for an exact address match. Initially assumed this could ride
+  the existing area-cache for free (see Entry 12/13's caching
+  discussion); checked the actual cache-key composition before
+  promising that and found it doesn't hold - the cache key includes
+  the ORIGINAL scan's search-center coordinates and specific property
+  type, which essentially never matches a saved property's own
+  coordinates + "any type." Corrected course before writing the UI:
+  this is honestly a real API call in the common case, so gating it
+  behind a real cost (1 credit, same as a live scan) is not just
+  cautious, it's accurate.
+- Gating deliberately reuses the plan/credit system that already
+  exists instead of inventing a new per-tier quota: `is_admin_or_above`
+  bypasses entirely (mirrors the exact same bypass real live scans
+  already get), any signed-in user with `credits > 0` can click it,
+  disabled+tooltipped otherwise. This directly answers the owner's own
+  question ("what goes to package or not") - nothing new needs
+  deciding; a plan's existing credit allotment already controls whether
+  its users can afford to use this.
+- `price` is always overwritten with the fresh read (it was already
+  mutable via `save_property`'s own `ON CONFLICT DO UPDATE`, never an
+  immutable snapshot); the alert (toast + opt-in email via new
+  `notify_price_drop` Settings toggle, defaulting off like
+  `notify_deal_found`) fires only when the fresh read is lower than
+  what was on file.
+- New nullable `last_price_checked_at` column on `saved_properties`
+  (standard try/except-OperationalError migration, same pattern as
+  every other additive column in `database_schema.py`).
+
+### Verified
+
+Live in the browser as 3 distinct accounts on a restarted server
+(the schema migration only runs at `database.py`'s import time, so a
+server that was already running before this change needed a real
+restart - confirmed via a stale-column symptom: the button silently
+never rendered until the restart, traced to that root cause rather
+than assumed):
+- **super_admin** (`admin@scoutai.com`): button always enabled,
+  bypasses credits. Full click -> spinner -> real RentCast lookup ->
+  toast flow confirmed end to end. The saved property checked
+  (mock/simulated data, like most of this dev DB) correctly came back
+  "not currently found among active listings" - an honest no-data
+  result, not a bug, since there's no real listing behind a simulated
+  address to match against.
+- **0-credit test user** (temporary test account, saved property
+  added and removed for this test only): button correctly renders
+  disabled with the exact tooltip "Out of credits - buy more or
+  upgrade your plan to check for price drops."
+- Confirmed via direct DB query which real plan-tier accounts exist
+  and which credit levels they're at, rather than assuming.
+
+`py_compile` clean on all 7 touched files; full suite 59 passed
+(unchanged - no test exercises this new UI path yet, matching how
+`add_tenant`/`add_document`'s IDOR fix in Entry 13 also had no direct
+test coverage).
+
+### What to check
+
+- Is `check_saved_property_price`'s address-matching (`listing["address"]
+  == address`, an exact string match against RentCast's own
+  `formattedAddress`) too brittle - could a real listing's address
+  format drift slightly from what was saved and cause a false "not
+  found" even when the property IS still listed?
+- Whether spending 1 credit on a check that comes back "not found" (as
+  opposed to "found, no drop") is the right call, or whether a
+  no-data result should be free since nothing conclusive was learned.
+- The claim that RentCast's cache-key composition (rounded lat/lon +
+  property_type + radius) makes free cache-hit reuse rare for this
+  specific use case - reviewer's own read of `_fetch_rentcast_listings`
+  welcome, since this is the assumption the whole "gate behind 1
+  credit" design rests on.
