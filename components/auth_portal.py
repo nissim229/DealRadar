@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import database as db
 import agent_engine as engine
@@ -6,9 +7,12 @@ import google_oauth
 from icons import icon as svg_icon
 from topbar_logo import render_guest_logo_html
 
-# Local dev only - if this app is ever deployed to a real domain, the reset
-# link needs to point there instead of localhost.
-APP_BASE_URL = "http://localhost:8501"
+# Defaults to localhost for local dev; set APP_BASE_URL in .env before a
+# real deployment so password-reset links point at the actual domain
+# instead of silently staying on localhost (see google_oauth.py's
+# REDIRECT_URI for the identical fix on the Google sign-in side - both
+# need the same real value once deployed).
+APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8501")
 
 
 def _render_auth_topbar():

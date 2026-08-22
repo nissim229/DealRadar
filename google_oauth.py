@@ -22,9 +22,12 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
 
 # Must exactly match an Authorized redirect URI configured on the Google
-# Cloud OAuth client - local dev only, would need to change for a real
-# deployed domain.
-REDIRECT_URI = "http://localhost:8501"
+# Cloud OAuth client. Defaults to localhost for local dev; set
+# APP_BASE_URL in .env before a real deployment - and update the
+# Authorized redirect URI on the Google Cloud OAuth client to match,
+# since Google rejects any mismatch (see components/auth_portal.py's
+# APP_BASE_URL for the identical fix on the password-reset-link side).
+REDIRECT_URI = os.getenv("APP_BASE_URL", "http://localhost:8501")
 
 AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
