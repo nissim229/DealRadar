@@ -155,11 +155,6 @@ def _save_property_fields(p, **changed_fields):
     each call, so a focused sub-tab form (e.g. just the Mortgage fields) must
     merge its edits onto the existing row rather than submitting only its own
     subset - otherwise every other field would get nulled out."""
-    if st.session_state.get("is_guest"):
-        st.toast("Sign in to save changes to a property.", icon=":material/lock:")
-        st.session_state.show_login_form = True
-        st.rerun()
-        return
     merged = {f: p.get(f) for f in db.PORTFOLIO_FIELDS}
     merged.update(changed_fields)
     db.update_portfolio_property(p["id"], st.session_state.user_id, **merged)
@@ -659,9 +654,6 @@ def _render_tenant_card(t):
 
 
 def _render_tenants_subtab(p):
-    if st.session_state.get("is_guest"):
-        st.caption("Sign in to track tenants for a property you own.")
-        return
     tenants = db.get_tenants(p["id"], st.session_state.user_id)
 
     expiring = []
@@ -707,9 +699,6 @@ def _render_tenants_subtab(p):
 
 
 def _render_documents_subtab(p):
-    if st.session_state.get("is_guest"):
-        st.caption("Sign in to store documents for a property you own.")
-        return
     docs = db.get_documents(p["id"], st.session_state.user_id)
     if not docs:
         st.caption("No documents uploaded yet.")
@@ -951,32 +940,6 @@ def _render_summary_tab(properties):
     st.dataframe(display_df, use_container_width=True, hide_index=True, height=len(display_df) * 35 + 38)
 
 
-def _guest_demo_portfolio():
-    """Two plausible owned properties, shaped exactly like
-    db.get_portfolio_properties()'s own return value (same keys as
-    db.PORTFOLIO_FIELDS plus "id") so every existing calculation/rendering
-    function downstream (_current_value, _monthly_cash_flow,
-    _render_property_nav/_detail...) works unmodified - a guest session
-    never has a real portfolio row to read, so this is a fixed stand-in
-    rather than a database query."""
-    base = {f: None for f in db.PORTFOLIO_FIELDS}
-    rental = dict(base, id=-1, address="482 Maple Grove Ln, Austin, TX",
-                  property_type="Single Family", purchase_price=385000, purchase_date="2022-04-15",
-                  current_value_estimate=429000, mortgage_balance=312000, mortgage_rate=5.75,
-                  monthly_mortgage_payment=2210, hoa_monthly=0, insurance_annual=1680,
-                  property_tax_annual=6200, is_rented=True, monthly_rent=3300,
-                  property_management_monthly=185, other_expenses_monthly=0,
-                  rental_status="Occupied", num_occupants=3, notes="Sample data - not a real property.")
-    primary_home = dict(base, id=-2, address="17 Birchwood Ct, Denver, CO",
-                         property_type="Condo", purchase_price=310000, purchase_date="2021-09-01",
-                         current_value_estimate=355000, mortgage_balance=248000, mortgage_rate=6.1,
-                         monthly_mortgage_payment=1890, hoa_monthly=310, insurance_annual=1120,
-                         property_tax_annual=3400, is_rented=False, monthly_rent=0,
-                         property_management_monthly=0, other_expenses_monthly=0,
-                         rental_status="Vacant", notes="Sample data - not a real property.")
-    return [rental, primary_home]
-
-
 def render_portfolio_page(is_guest=False):
     st.markdown("""
         <style>
@@ -1004,10 +967,14 @@ def render_portfolio_page(is_guest=False):
         """, unsafe_allow_html=True)
 
     if is_guest:
-        render_guest_banner("these are sample properties, not a real portfolio")
-        properties = _guest_demo_portfolio()
-    else:
-        properties = db.get_portfolio_properties(st.session_state.user_id)
+        render_guest_banner("your portfolio isn't tracked in a demo session")
+        render_empty_state(
+            "home", "Sign in to build your portfolio",
+            "Every property you add gets saved here automatically once you have an account.",
+        )
+        return
+
+    properties = db.get_portfolio_properties(st.session_state.user_id)
 
     total_value = sum(_current_value(p) for p in properties)
     total_equity = sum(_current_value(p) - (p.get("mortgage_balance") or 0) for p in properties)
@@ -1054,19 +1021,11 @@ def render_portfolio_page(is_guest=False):
                 _render_property_detail(selected)
 
     with tab2:
-        # A guest's 2 sample properties would otherwise trip the Free plan's
-        # real 1-property cap - that check exists to limit *real* saved
-        # data, not to block a guest from even seeing what adding a
-        # property looks like, so it doesn't apply to sample data.
-        if not is_guest and not plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan, "portfolio_properties", len(properties)):
+        if not plan_limits.is_within_limit(st.session_state.user_role, st.session_state.user_plan, "portfolio_properties", len(properties)):
             pricing.render_plan_limit_notice("portfolio_properties", len(properties))
         else:
             new_property = _property_form(key_prefix="add")
-            if new_property and is_guest:
-                st.toast("Sign in to add a property to your portfolio.", icon=":material/lock:")
-                st.session_state.show_login_form = True
-                st.rerun()
-            elif new_property:
+            if new_property:
                 new_id = db.add_portfolio_property(st.session_state.user_id, **new_property)
                 st.session_state.portfolio_selected_id = new_id
                 st.success(f"Added {new_property['address']} to your portfolio. Switch to the 'My Properties' tab to fill in tenants, documents, and more.")
