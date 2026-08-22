@@ -59,8 +59,17 @@ def render_grade_explanation(metrics, calc_target_yield):
     ]
     if metrics.get("closing_costs"):
         rows.append(("🧾 Closing costs", f"${metrics['closing_costs']:,.0f}", "One-time cost at purchase, added to your total cash needed"))
-    coc_help = ("Cash flow ÷ (your down payment + closing costs) - your real return on the cash you put in"
-                if metrics.get("closing_costs") else
+    if metrics.get("rehab_cost"):
+        rows.append(("🛠️ Rehab budget", f"${metrics['rehab_cost']:,.0f}", "One-time renovation cost before move-in, added to your total cash needed"))
+    # Help text names exactly the cash-needed components actually present
+    # for this property, rather than a fixed phrase that would silently
+    # go stale/inaccurate the moment a second upfront-cost line (rehab)
+    # existed alongside the first (closing costs).
+    upfront_extras = [label for label, present in
+                      [("closing costs", metrics.get("closing_costs")), ("rehab budget", metrics.get("rehab_cost"))]
+                      if present]
+    coc_help = ("Cash flow ÷ (your down payment + " + " + ".join(upfront_extras) + ") - your real return on the cash you put in"
+                if upfront_extras else
                 "Cash flow ÷ your down payment - your real return on the cash you put in")
     rows.append(("🎯 Cash-on-Cash Return (your ROI)", f"{metrics['coc']:.2f}%", coc_help))
     if grade == "excellent":

@@ -20,7 +20,8 @@ def monthly_payment_factor(annual_rate_pct, n_periods):
 
 def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                           calc_down_pct, calc_interest, calc_target_yield, hoa_monthly=0.0,
-                          calc_mgmt_pct=0.0, calc_maint_pct=5.0, calc_closing_costs=0.0):
+                          calc_mgmt_pct=0.0, calc_maint_pct=5.0, calc_closing_costs=0.0,
+                          calc_rehab_cost=0.0):
     """Shared underwriting math - used identically by the summary cards, the property
     cards, and the detailed Pro tabs, so the numbers never disagree with each other.
 
@@ -49,7 +50,20 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     session would - maintenance is the one line that was already
     nonzero by default, so every card's numbers get a little more
     realistic even without any caller changes; management/closing stay
-    a no-op until a caller opts in."""
+    a no-op until a caller opts in.
+
+    calc_rehab_cost is a one-time renovation budget, not modeled in the
+    What-If sandbox either at the time this was added (the reviewer's
+    original deal-math audit flagged it as the one real-world cost line
+    missing from BOTH surfaces, alongside mgmt/maintenance/closing which
+    the sandbox already had). Treated identically to calc_closing_costs
+    in every formula below - both are cash required upfront that never
+    touches NOI/cashflow, only the CoC denominator and MAO's numerator -
+    since a renovation budget and a closing-cost budget are the same
+    kind of cost from the math's perspective (a dollar spent before
+    move-in, once, not a recurring operating expense), even though they
+    get their own separate line items for display so a user can see
+    where their total cash requirement actually comes from."""
     v_loss = (calc_rent * 12) * (calc_vacancy_pct / 100)
     eff_gross = (calc_rent * 12) - v_loss
     taxes = price * (calc_tax_rate / 100)
@@ -79,12 +93,12 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
         a_debt = 0.0
 
     cashflow = noi - a_debt
-    # Total cash needed includes closing costs alongside the down payment,
-    # matching What-If's own CoC denominator - a $10k closing-cost buyer's
-    # real return on capital is lower than one who only put down the
-    # purchase-price fraction, and this was previously invisible on every
-    # card/summary surface.
-    total_cash = down_amt + calc_closing_costs
+    # Total cash needed includes closing costs AND rehab budget alongside
+    # the down payment - a buyer sinking $10k into closing plus $30k into
+    # rehab before move-in has a real return on capital lower than one who
+    # only put down the purchase-price fraction, and this was previously
+    # invisible on every card/summary surface.
+    total_cash = down_amt + calc_closing_costs + calc_rehab_cost
     coc = (cashflow / total_cash) * 100 if total_cash > 0 else 0.0
 
     target_yield = calc_target_yield / 100
@@ -100,14 +114,14 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     # tax_ins_ratio the same way (that ratio is what makes this formula
     # solvable for price in the first place) - each instead reduces the
     # income available to cover everything else, in the numerator. Closing
-    # costs land in the numerator too (scaled by target_yield, since they
-    # add directly to the total-cash denominator of the CoC this MAO is
-    # solving for) rather than the denominator, matching the exact
-    # algebraic derivation used by What-If's own suggested-max-offer
-    # calculation (see whatif_calculator.py's compute()) - both are the
-    # same closed-form now, not two independently-derived formulas that
-    # happen to agree.
-    mao_numerator = eff_gross - hoa_annual - mgmt_fee - maintenance - (target_yield * calc_closing_costs)
+    # costs and rehab budget land in the numerator too (scaled by
+    # target_yield, since both add directly to the total-cash denominator
+    # of the CoC this MAO is solving for) rather than the denominator,
+    # matching the exact algebraic derivation used by What-If's own
+    # suggested-max-offer calculation (see whatif_calculator.py's
+    # compute()) - both are the same closed-form now, not two
+    # independently-derived formulas that happen to agree.
+    mao_numerator = eff_gross - hoa_annual - mgmt_fee - maintenance - (target_yield * (calc_closing_costs + calc_rehab_cost))
     # A non-positive numerator means expenses/financing terms are too high
     # to hit the target return at ANY price; a non-positive denom is its
     # own (much rarer) degenerate case. What-If's own compute() treats
@@ -135,7 +149,8 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
         "eff_gross_income": eff_gross, "annual_taxes": taxes, "annual_insurance": insurance,
         "vacancy_loss": v_loss, "annual_hoa": hoa_annual, "monthly_hoa": hoa_monthly or 0,
         "annual_mgmt_fee": mgmt_fee, "annual_maintenance": maintenance,
-        "closing_costs": calc_closing_costs, "total_cash_needed": total_cash,
+        "closing_costs": calc_closing_costs, "rehab_cost": calc_rehab_cost,
+        "total_cash_needed": total_cash,
     }
 
 

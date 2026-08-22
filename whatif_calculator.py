@@ -209,10 +209,14 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
 
             <div class="wi-section">
                 <div class="wi-section-title">💵 At Purchase</div>
-                <div class="wi-field-grid wi-field-grid-2">
+                <div class="wi-field-grid wi-field-grid-3">
                     <div class="wi-field">
                         <div class="wi-row"><span class="wi-label">Closing Costs</span><span class="wi-value" id="v-closing">$0</span></div>
                         <input type="number" id="closing" value="0" step="500">
+                    </div>
+                    <div class="wi-field">
+                        <div class="wi-row"><span class="wi-label">Rehab Budget</span><span class="wi-value" id="v-rehab">$0</span></div>
+                        <input type="number" id="rehab" value="0" step="500">
                     </div>
                     <div class="wi-field">
                         <div class="wi-row"><span class="wi-label">Target Return</span><span class="wi-value" id="v-target">0%</span></div>
@@ -245,7 +249,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             <div class="wi-metrics">
                 <div class="wi-metric" title="Net Operating Income ÷ purchase price - your return if you paid 100% cash, no loan"><div class="wi-metric-label">CAP RATE</div><div class="wi-metric-value" id="m-cap">0%</div></div>
                 <div class="wi-metric" title="Annual cash flow ÷ total cash invested - your actual ROI on the cash you put in"><div class="wi-metric-label">CASH-ON-CASH ROI</div><div class="wi-metric-value" id="m-coc">0%</div></div>
-                <div class="wi-metric" title="Down payment + closing costs - total upfront cash to close this deal"><div class="wi-metric-label">CASH NEEDED</div><div class="wi-metric-value" id="m-cash">$0</div></div>
+                <div class="wi-metric" title="Down payment + closing costs + rehab budget - total upfront cash to close this deal and get it rent-ready"><div class="wi-metric-label">CASH NEEDED</div><div class="wi-metric-value" id="m-cash">$0</div></div>
                 <div class="wi-metric" title="Taxes + insurance + management + maintenance + HOA, per month"><div class="wi-metric-label">MONTHLY EXPENSES</div><div class="wi-metric-value" id="m-exp">$0</div></div>
                 <div class="wi-metric" title="Rental income minus operating expenses, before the mortgage - your annual operating profit"><div class="wi-metric-label">ANNUAL NOI</div><div class="wi-metric-value" id="m-noi">$0</div></div>
                 <div class="wi-metric" title="Debt Service Coverage Ratio: NOI ÷ annual mortgage payment. Lenders typically require 1.20-1.25+ to approve a loan"><div class="wi-metric-label">DSCR</div><div class="wi-metric-value" id="m-dscr">0.00</div></div>
@@ -263,7 +267,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
 
     <script>
     (function() {{
-        const ids = ['price','down','interest','term','rent','vacancy','mgmt','maint','hoa','closing','target'];
+        const ids = ['price','down','interest','term','rent','vacancy','mgmt','maint','hoa','closing','rehab','target'];
         const el = {{}};
         ids.forEach(id => el[id] = document.getElementById(id));
 
@@ -284,6 +288,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             const maintPct = parseFloat(el.maint.value) || 0;
             const hoa = parseFloat(el.hoa.value) || 0;
             const closing = parseFloat(el.closing.value) || 0;
+            const rehab = parseFloat(el.rehab.value) || 0;
             const target = parseFloat(el.target.value) || 0;
 
             const vLoss = (rent*12)*(vacancy/100);
@@ -311,7 +316,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
                 aDebt = mDebt*12;
             }}
             const cashflow = noi-aDebt;
-            const totalCash = downAmt+closing;
+            const totalCash = downAmt+closing+rehab;
             const coc = totalCash>0 ? (cashflow/totalCash)*100 : 0;
 
             let grade = 'average';
@@ -322,7 +327,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             el_v('v-price', fmtMoney(price)); el_v('v-down', downPct+'%'); el_v('v-interest', interest.toFixed(3)+'%');
             el_v('v-rent', fmtMoney(rent)); el_v('v-vacancy', vacancy+'%');
             el_v('v-mgmt', mgmtPct+'%'); el_v('v-maint', maintPct+'%'); el_v('v-hoa', fmtMoney(hoa)+'/mo');
-            el_v('v-closing', fmtMoney(closing)); el_v('v-target', target+'%');
+            el_v('v-closing', fmtMoney(closing)); el_v('v-rehab', fmtMoney(rehab)); el_v('v-target', target+'%');
 
             const cfMonthly = cashflow/12;
             const cfEl = document.getElementById('cf-value');
@@ -363,7 +368,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
 
             // Suggested Max Offer: solve for the price P where Cash-on-Cash ROI
             // exactly equals your target, holding rent/vacancy/mgmt/maintenance/
-            // HOA/closing/financing-% assumptions fixed. Derived algebraically
+            // HOA/closing/rehab/financing-% assumptions fixed. Derived algebraically
             // rather than searched, so it's exact, not an approximation.
             const fixedNonPriceExpenses = mgmtFee + maintenance + hoaAnnual;
             const A = effGross - fixedNonPriceExpenses;
@@ -378,7 +383,7 @@ def render_whatif_calculator_html(row_item, defaults, calc_target_yield):
             const D = downPct/100;
             const targetFrac = target/100;
             const denom = B + C + (targetFrac * D);
-            const numerator = A - (targetFrac * closing);
+            const numerator = A - (targetFrac * (closing + rehab));
             const maoBox = document.getElementById('mao-value');
             const maoDelta = document.getElementById('mao-delta');
             const maoApply = document.getElementById('mao-apply');

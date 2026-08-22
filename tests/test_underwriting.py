@@ -205,6 +205,41 @@ def test_closing_costs_leave_cashflow_unchanged_but_shift_coc_and_mao():
     assert base["mao"] - bumped["mao"] == pytest.approx(expected_mao_shift, rel=1e-6)
 
 
+def test_rehab_cost_leaves_cashflow_unchanged_but_shifts_coc_and_mao():
+    """Rehab budget is treated identically to closing costs in the
+    formula (both are one-time cash required upfront, never an ongoing
+    operating expense) - same shape of test as the closing-costs one
+    above, confirming rehab_cost doesn't leak into NOI/cashflow either."""
+    base = compute_deal_metrics(**_COMMON, calc_rehab_cost=0)
+    bumped = compute_deal_metrics(**_COMMON, calc_rehab_cost=20000)
+
+    assert bumped["cashflow"] == pytest.approx(base["cashflow"], rel=1e-9)
+    assert bumped["total_cash_needed"] - base["total_cash_needed"] == pytest.approx(20000.0)
+    assert bumped["coc"] < base["coc"]
+
+    target_yield = 8 / 100
+    expected_mao_shift = target_yield * 20000 / _DENOM
+    assert base["mao"] - bumped["mao"] == pytest.approx(expected_mao_shift, rel=1e-6)
+
+
+def test_closing_costs_and_rehab_cost_combine_additively_in_mao():
+    """Both upfront-cost lines land in the same MAO numerator term,
+    scaled together by target_yield - confirms they combine additively
+    (closing+rehab) rather than one silently overwriting the other when
+    both are set simultaneously, which the individual single-variable
+    tests above couldn't catch on their own."""
+    both = compute_deal_metrics(**_COMMON, calc_closing_costs=8000, calc_rehab_cost=20000)
+    closing_only = compute_deal_metrics(**_COMMON, calc_closing_costs=8000, calc_rehab_cost=0)
+    rehab_only = compute_deal_metrics(**_COMMON, calc_closing_costs=0, calc_rehab_cost=20000)
+    base = compute_deal_metrics(**_COMMON, calc_closing_costs=0, calc_rehab_cost=0)
+
+    closing_shift = base["mao"] - closing_only["mao"]
+    rehab_shift = base["mao"] - rehab_only["mao"]
+    combined_shift = base["mao"] - both["mao"]
+    assert combined_shift == pytest.approx(closing_shift + rehab_shift, rel=1e-9)
+    assert both["total_cash_needed"] == pytest.approx(closing_only["total_cash_needed"] + 20000.0)
+
+
 # ---------------------------------------------------------------------------
 # car_engine.py: pure grading helpers
 # ---------------------------------------------------------------------------
