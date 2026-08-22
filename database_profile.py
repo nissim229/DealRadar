@@ -13,7 +13,7 @@ database_admin.py in a later step, not here.
 """
 import sqlite3
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import database
 
@@ -123,7 +123,13 @@ def create_password_reset_token(user_id, valid_minutes=60):
     presented is itself valid and unused, so an old emailed link simply
     stops mattering once its own expiry passes."""
     token = secrets.token_urlsafe(32)
-    expires_at = (datetime.utcnow() + timedelta(minutes=valid_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    # .replace(tzinfo=None) keeps this the same naive-UTC value utcnow()
+    # used to produce (datetime.utcnow() is deprecated in 3.12+) - expires_at
+    # is stored as a plain string and compared against strptime()'s own
+    # naive result in validate_reset_token below, so switching to an aware
+    # datetime here without stripping tzinfo would raise a naive/aware
+    # comparison TypeError there instead of just fixing a warning.
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=valid_minutes)).strftime("%Y-%m-%d %H:%M:%S")
     conn = sqlite3.connect(database.DB_NAME)
     try:
         cursor = conn.cursor()
@@ -156,7 +162,7 @@ def validate_reset_token(token):
         user_id, expires_at, used = row
         if used:
             return None
-        if datetime.utcnow() > datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S"):
+        if datetime.now(timezone.utc).replace(tzinfo=None) > datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S"):
             return None
         return int(user_id)
     finally:
