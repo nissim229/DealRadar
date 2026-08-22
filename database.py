@@ -190,6 +190,8 @@ from database_saved_properties import (
     get_property_notes,
     get_saved_properties,
     count_saved_properties,
+    record_price_check,
+    record_price_check_not_found,
 )
 
 

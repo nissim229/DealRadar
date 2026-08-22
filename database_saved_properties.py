@@ -104,6 +104,25 @@ def record_price_check(user_id, address, new_price):
     finally:
         conn.close()
 
+def record_price_check_not_found(user_id, address):
+    """Stamps last_price_checked_at (only) when a 'Check Now' click spent a
+    real API call but the address wasn't found among current listings -
+    reviewer-flagged UX asymmetry (Entry 14/Round 5): without this, a
+    'not found' result left last_price_checked_at NULL forever even though
+    a real check WAS performed, so the UI kept saying 'Price not manually
+    checked yet' as if nothing had happened. price is deliberately left
+    untouched - there's no fresh number to record."""
+    conn = sqlite3.connect(database.DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE saved_properties SET last_price_checked_at=CURRENT_TIMESTAMP WHERE user_id=? AND address=?",
+            (int(user_id), address)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 def count_saved_properties(user_id):
     """Used by the saved-properties plan-limit gate - cheaper than fetching
     every saved property just to call len() on it."""

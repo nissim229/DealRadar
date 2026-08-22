@@ -49,8 +49,9 @@ def _render_check_now(user_id, address, price, latitude, longitude, last_price_c
         db.deduct_credit(user_id)
         st.session_state.user_credits = max(0, st.session_state.user_credits - 1)
     if fresh_price is None:
+        db.record_price_check_not_found(user_id, address)
         st.toast(f"{address}: not currently found among active listings - no fresh price data available.", icon=":material/info:")
-        return
+        st.rerun()
     old_price = db.record_price_check(user_id, address, fresh_price)
     if old_price is not None and fresh_price < old_price:
         st.toast(f"Price dropped: {address} is now ${fresh_price:,.0f} (was ${old_price:,.0f}).", icon=":material/trending_down:")
