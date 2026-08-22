@@ -501,7 +501,13 @@ def _render_table_view(coords_json, filter_min_price, filter_max_price, filter_m
                         "Cap Rate %": round(m["cap_rate"], 2),
                         "Cash-on-Cash %": round(m["coc"], 2),
                         "Annual Cash Flow": round(m["cashflow"], 2),
-                        "MAO": round(m["mao"], 2),
+                        # NaN (not None) keeps this column's dtype numeric so
+                        # st.column_config.NumberColumn's "$%d" formatting
+                        # still applies to every other row - Streamlit renders
+                        # a NaN cell blank, an honest "no number to show"
+                        # instead of a misleading negative dollar figure when
+                        # the target return isn't achievable at any price.
+                        "MAO": round(m["mao"], 2) if m["mao"] is not None else float("nan"),
                         "Save": "★" if is_saved else "☆",
                         "View": ":material/visibility:",
                     })

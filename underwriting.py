@@ -108,8 +108,18 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
     # same closed-form now, not two independently-derived formulas that
     # happen to agree.
     mao_numerator = eff_gross - hoa_annual - mgmt_fee - maintenance - (target_yield * calc_closing_costs)
-    mao = mao_numerator / denom if denom > 0 else price
-    mao_delta = price - mao
+    # A non-positive numerator means expenses/financing terms are too high
+    # to hit the target return at ANY price; a non-positive denom is its
+    # own (much rarer) degenerate case. What-If's own compute() treats
+    # both the same way - "Not achievable" - via the identical
+    # `denom>0 && numerator>0` guard (see whatif_calculator.py). Matching
+    # that here (rather than the previous Python-only fallback of
+    # returning `price` when denom<=0) means None consistently means "not
+    # achievable at these assumptions" instead of silently rendering a
+    # negative dollar figure like "$-45,000" on a card/PDF - a confusing
+    # number, not an honest one. Every consumer must handle mao is None.
+    mao = mao_numerator / denom if (denom > 0 and mao_numerator > 0) else None
+    mao_delta = (price - mao) if mao is not None else None
 
     if cashflow < 0:
         grade = "critical"
