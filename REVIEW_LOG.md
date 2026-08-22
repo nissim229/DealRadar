@@ -1602,3 +1602,76 @@ errors in the logs.
   dump of the DataFrame), but worth a second look given they ride
   along through `_render_properties_only_view`/`_render_properties_
   and_map_view` too.
+
+## Entry 17 — Equal-height cards + cards-per-row control (2026-08-22)
+
+**Status**: Done, verified live. Not yet reviewed by HG.
+
+Commit: `84397c8`.
+
+Owner reported two issues while using the redesigned Saved Properties
+page (Entry 16): (1) a card with less conditional content (no HOA
+line, no MLS#, no vehicle history) renders visibly shorter than its
+neighbor in the same row, so link buttons land at different heights
+across a row; (2) no way to control how many cards show per row in
+either Properties Only or Properties + Map (or the Cars equivalents).
+
+### Equal-height fix
+
+Investigated the live DOM before assuming a fix was needed - found
+Streamlit's own column layout already stretches each card's OUTER box
+to match its tallest sibling (confirmed via `getComputedStyle`/
+`getBoundingClientRect` on a live row: `align-items: stretch`, equal
+column heights). The actual gap: each card's last-rendered block (the
+View Full Details/Zillow/Redfin row, or AutoTrader/Cars.com for cars)
+just floats right after that card's own shorter content instead of
+landing at a consistent Y position. Fixed by making each card's own
+bordered container a flex column (`display:flex; flex-direction:
+column; height:100%`) and pinning its last direct child to the bottom
+via `margin-top:auto` - identical fix in `property_card.py`'s
+`render_property_card` and `car_card.py`'s `render_car_card`.
+
+### Cards-per-row control
+
+New "Cards per row" popover (2/3/4/5) added to both the shared
+property toolbar (`_render_quick_filter_toolbar` - covers scan
+results/History/Saved Properties at once) and car search's own
+parallel toolbar (`_render_car_view_toolbar`) - previously hardcoded
+(Properties Only: 3, Properties + Map: 2, Cars Only: 3, none
+adjustable). Persisted as a new `default_cards_per_row` user setting
+(Settings > Default Scan View & Mode), shared across properties and
+cars, same session-first-then-Settings-default pattern the view-mode
+toggle already uses.
+
+Photo/image block height now scales down as cards-per-row goes up
+(`CARDS_PER_ROW_PHOTO_HEIGHT` / `CAR_CARDS_PER_ROW_PHOTO_HEIGHT`
+mappings) instead of staying a fixed size and looking disproportionate
+at 4-5 per row - `render_property_card`/`render_car_card` both gained
+a `photo_height` parameter, defaulting to their original fixed values
+so every other existing caller is unaffected.
+
+### Verified
+
+Live on a freshly restarted server: changed cards-per-row via the
+toolbar popover on Properties Only, Properties + Map, and Cars Only -
+grid relaid out instantly each time, photo height scaled with it;
+Settings page's new dropdown saves to and reads back from the DB
+correctly, and a value set there seeds a fresh session on BOTH
+Property and Cars pages (one shared setting, confirmed by setting it
+to 4 on the Property side and seeing Cars Only open already at 4/row).
+Visually confirmed equal button-row alignment across cards with
+genuinely different content length (a property with an HOA line next
+to ones without, same row). Full suite: 59 passed, no regressions. No
+server errors in the logs.
+
+### What to check
+
+- The `margin-top:auto` pin-to-bottom selector (`div.st-key-{card_key}
+  > div:last-child`) assumes the card's rendered content elements are
+  direct-child `div`s with no extra Streamlit wrapper level in between -
+  confirmed via live DOM inspection for the current Streamlit version
+  (1.61.1), but worth a second check given this app's own past history
+  of Streamlit-version-specific flex quirks (see the dashboard_grid.py
+  precedent this fix's approach was modeled on).
+- Whether 5-per-row's photo height (165px properties / 100px cars) is
+  still a reasonable size, or too cramped to be useful in practice.
