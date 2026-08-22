@@ -1675,3 +1675,27 @@ server errors in the logs.
   precedent this fix's approach was modeled on).
 - Whether 5-per-row's photo height (165px properties / 100px cars) is
   still a reasonable size, or too cramped to be useful in practice.
+
+### Follow-up fix (`b5d81ad`): capped Properties + Map at 2/row
+
+Real bug the owner hit within the same day: setting 5/row broke
+Properties + Map specifically - that view's card column only gets
+~40% of the page width (the map takes the rest), so at 5/row each card
+measured ~8% of the page width (vs ~20% for Properties Only at 5/row,
+confirmed live to still work fine at any per-row count - the full-
+width grid has no equivalent problem). At 8% width the address line
+has no room to wrap at word boundaries and instead wraps one or two
+characters per line - exactly the screenshot the owner reported.
+
+Fixed by capping this ONE view's effective column count at 2,
+independent of the shared toolbar control's own value, rather than
+lowering the toolbar's range itself (which would have needlessly
+limited the full-width Properties Only grid too). A caption appears
+only when the cap actually reduces the user's choice ("Showing 2 per
+row here - 5 would be too narrow..."), so picking 5 doesn't look like
+the control silently failed.
+
+Verified live: 5/row now shows exactly 2 well-formed cards in
+Properties + Map with the explanatory caption; Properties Only at
+5/row still correctly shows all 5, full width, no wrapping issue.
+Full suite: 59 passed. No server errors.
