@@ -1801,3 +1801,15 @@ inventing a new pattern.
 Verified live: both locations render correctly with the icon, no
 broken markup, same URLs/help tooltips as before (copy-only change).
 Full suite: 59 passed. No server errors.
+
+### Codex sign-off (Entries 18-19)
+
+Codex reviewed `CLAUDE_HANDOFF_TO_CODEX.md` and the actual code changes
+for items 1-3 of the design-review plan (`06deaa2`, `6ce655e`,
+`b627630`) plus the related Zillow/Redfin button fix (`239817f`):
+**approved, no blocking issues**. No specific line-level findings came
+back to independently verify against the code this round (unlike HG's
+usual citation-backed feedback) - this is recorded as a plain approval
+signal, not folded in as a technical claim. Item 4 (naming pass) is
+still unstarted, pending the owner's preferred wording - not part of
+what Codex reviewed.
