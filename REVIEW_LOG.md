@@ -1438,3 +1438,34 @@ test coverage).
   specific use case - reviewer's own read of `_fetch_rentcast_listings`
   welcome, since this is the assumption the whole "gate behind 1
   credit" design rests on.
+
+### Reviewer Feedback (Entry 14)
+
+**Verdict: all 3 checks confirmed accurate** on independent
+verification - admin-bypass pattern match (`analytics_scan_engine.py`
+215-217 vs `analytics_saved.py` 31,48-49), the shared `formattedAddress`
+field on both sides of the address comparison (`agent_engine.py:262`),
+and the "not found" early-return-before-`record_price_check` asymmetry
+(confirmed at the exact lines cited). `REVIEWER_FEEDBACK.md` again
+properly overwritten (single "Round 5" write). Reviewer additionally
+flagged a real multi-unit/condo edge case for address-as-identifier
+(pre-existing, baked into the `UNIQUE(user_id, address)` constraint,
+not new) and suggested fixing the asymmetry via option (a): stamp
+`last_price_checked_at` even on "not found," since a real check WAS
+performed.
+
+**Implemented option (a)** (commit `3024eda`) - and while wiring in the
+second call to `db.record_price_check(...)`'s sibling function,
+**found a real bug neither the reviewer's read nor my own original
+live testing had caught**: `record_price_check()` itself (added in
+`d7c1caa`) was never re-exported from `database.py`'s facade, so
+`db.record_price_check(...)` would raise `AttributeError` the moment
+ANY check actually found a real price - the "not found" branch was the
+ONLY one that had ever been exercised, in review or in testing,
+because every saved property tested against was mock-sourced and
+therefore always "not found" against real RentCast data. Confirmed via
+`hasattr(db, "record_price_check")` before assuming, added the missing
+re-export, then re-verified live end to end on a freshly restarted
+server: "Check Now" now correctly flips the caption from "Price not
+manually checked yet" to "Price checked just now," confirmed directly
+against the DB. Full suite: 59 passed.
