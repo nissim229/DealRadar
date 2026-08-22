@@ -1521,3 +1521,84 @@ errors in the logs.
   Property Scans, before History/My Portfolio) as the closest fit to
   the natural workflow (scan -> save -> come back later) - worth a
   second opinion on whether that ordering is actually right.
+
+## Entry 16 — View modes + sort for Saved Properties; Check Now moved into the dialog (2026-08-22)
+
+**Status**: Done, verified live. Not yet reviewed by HG.
+
+Commit: `f4b69d3`.
+
+Owner's ask: bring "all the view and sort options" to Saved
+Properties, which had only a fixed 2-column card grid - no filters, no
+map, no table, no way to reorder a growing saved list.
+
+### View modes + quick filters
+
+Reused the exact same toolbar and 4 view-mode functions scan results
+and History already share (`_render_quick_filter_toolbar`,
+`_render_properties_only_view`, `_render_properties_and_map_view`,
+`_render_map_only_view`, `_render_table_view` -
+`components/analytics_results.py`) rather than reimplementing them.
+Those functions all take a JSON string (not a Python list), so
+`_render_saved_properties_tab` now builds each row as a dict (metrics
+precomputed once per row), sorts the list, then `json.dumps()`s it
+before handing off - zero changes needed to the shared functions
+themselves, so scan results/History are untouched.
+
+### Sort (new - didn't exist for properties before)
+
+Ported from car search's own "Sort by" popover - the only place a sort
+control existed in this app before (scan results itself never had
+one). "Best Deal First" sorts directly by cash-on-cash return;
+properties always get a real grade from `compute_deal_metrics`, so
+(unlike cars) there's no "too few comps to grade" case to carve out.
+Also added Price (low/high) and Newest/Oldest Saved.
+
+### Check Now relocated into the property detail dialog
+
+The shared view-mode functions have no extension point for per-card
+extra content, so Entry 14's "Check Now" button (previously inline
+under every card in the old custom grid) moved into
+`render_property_detail_dialog` as a new "Price Check" tab -
+`_render_property_detail_tabs` only adds it when
+`db.is_property_saved(user_id, address)` is true, so it never appears
+on a plain scan result. Net improvement, not just a workaround: Price
+Check is now reachable from every view mode (Properties Only/+Map/Map
+Only/Table View), not just the one grid layout it used to be pinned
+to. Added `get_saved_property_check_info()` to
+`database_saved_properties.py` (+ facade re-export in `database.py`)
+so the dialog can look up one property's check-freshness without the
+full saved list already in hand.
+
+**Known trade-off, not a regression**: the old per-card "Saved 3 days
+ago" caption is gone - the shared view functions have no slot for it.
+Partly recovered via the new Newest/Oldest Saved sort options instead
+of a permanently-visible per-card timestamp.
+
+### Verified
+
+Live on a freshly restarted server, signed in as admin: sort control
+renders and correctly reorders (confirmed in Table View - Excellent/
+highest-CoC rows first, then Average, then Critical last); Properties
++ Map, Map Only, and Table View all render real saved-property data
+correctly; opened the Price Check tab via "View Full Details" and
+clicked Check Now - confirmed end-to-end against the DB
+(`last_price_checked_at` correctly stamped). `py_compile` clean on all
+4 touched files. Full suite: 59 passed, no regressions. No server
+errors in the logs.
+
+### What to check
+
+- Whether losing the per-card "Saved X ago" caption is an acceptable
+  trade for the new sort options, or worth a follow-up to recover it
+  some other way.
+- Whether Check Now living only in the dialog (not also inline on the
+  card) hurts discoverability compared to Entry 14's original always-
+  visible placement - the dialog does require one more click
+  ("View Full Details") to reach it now.
+- The precomputed `_coc`/`_saved_at` extra keys added to each row dict
+  before JSON-encoding - confirmed they don't leak into Table View's
+  visible columns (it builds its own named-column dict, not a raw
+  dump of the DataFrame), but worth a second look given they ride
+  along through `_render_properties_only_view`/`_render_properties_
+  and_map_view` too.
