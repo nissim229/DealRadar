@@ -390,17 +390,30 @@ def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_pr
                     st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
                 st.caption("Click **Focus** on any card to zoom the map to that property. Scroll within the list below to see more.")
                 with st.container(key=scroll_box_key):
-                    # This column is narrower than the full-width Properties
-                    # Only grid (it shares the row with the map), so the same
-                    # cards-per-row choice looks noticeably tighter here -
-                    # shrink the photo one size class further, capped at the
-                    # smallest defined size, rather than adding a second,
-                    # separate control just for this view.
-                    photo_height = CARDS_PER_ROW_PHOTO_HEIGHT.get(min(cards_per_row + 1, 5), 200)
+                    # This column only gets ~40% of the page width (the map
+                    # takes the rest), so the SAME cards-per-row number
+                    # produces a much narrower card here than in the
+                    # full-width Properties Only grid - at 5/row this column
+                    # was measured at ~8% of page width per card, vs ~20% for
+                    # Properties Only at 5/row, and the card's own content
+                    # (especially the address) doesn't reflow at that width -
+                    # it wraps one or two characters per line instead of
+                    # wrapping at word boundaries, since there's no min-width
+                    # floor on the card. Confirmed live (real bug report):
+                    # a user-chosen 5/row here rendered exactly this way.
+                    # Capping at 2 for this view specifically, rather than
+                    # capping the shared toolbar control's own range (which
+                    # would also needlessly limit the full-width Properties
+                    # Only grid), keeps this column's cards at a usable
+                    # width regardless of what's picked for the other views.
+                    effective_cards_per_row = min(cards_per_row, 2)
+                    if effective_cards_per_row < cards_per_row:
+                        st.caption(f":material/info: Showing 2 per row here - {cards_per_row} would be too narrow to read in this side-by-side view. Try Properties Only for more per row.")
+                    photo_height = CARDS_PER_ROW_PHOTO_HEIGHT.get(min(effective_cards_per_row + 1, 5), 200)
                     row_indices = list(df_listings_grid.index)
-                    for pair_start in range(0, len(row_indices), cards_per_row):
-                        pair_indices = row_indices[pair_start:pair_start + cards_per_row]
-                        grid_cols = st.columns(cards_per_row)
+                    for pair_start in range(0, len(row_indices), effective_cards_per_row):
+                        pair_indices = row_indices[pair_start:pair_start + effective_cards_per_row]
+                        grid_cols = st.columns(effective_cards_per_row)
                         for slot, idx in enumerate(pair_indices):
                             row_item = df_listings_grid.loc[idx]
                             with grid_cols[slot]:
