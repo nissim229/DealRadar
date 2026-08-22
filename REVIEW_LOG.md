@@ -1087,7 +1087,8 @@ than a behavior change for real users. Full suite: 29 passed.
 
 ## Entry 12 — Reviewer scan: dead code cleanup, deployment blocker, test coverage (2026-08-22)
 
-**Status**: Done, pending reviewer verification.
+**Status**: Reviewer feedback folded in below - approved. Follow-up
+`datetime.utcnow()` fix (commit `1c5056c`) also done.
 
 Commits: `9f6fff1` (dead code), `c6b681d` (deployment blocker),
 `543b7ed` (test coverage).
@@ -1169,3 +1170,41 @@ pass).
   a browser-driven flow would hit, or do any of them call the
   underlying `database_profile.py`/`google_oauth.py` functions in a way
   that skips something a real request would go through?
+
+### Reviewer Feedback (Entry 12)
+
+**Verdict: approved**, all three commits verified clean against the
+real diffs (dead-code removal, both `APP_BASE_URL` sites, the full test
+suite). Confirmed HEAD/branch/tree state matched, 57/57 passed.
+
+**Security-path coverage question, answered with call-site citations**:
+the reviewer traced each test back to its real production call site -
+`components/settings.py:291` (`change_own_password`),
+`components/auth_portal.py:350/385/417` (the reset-token lifecycle, in
+the same order the tests exercise it), and
+`components/analytics_scan_engine.py:217` (`deduct_credit`) - all
+independently confirmed correct by re-reading those exact lines. One
+citation needed a correction: `generate_state` is not called directly
+from `auth_portal.py:188` as stated - it's called from inside
+`google_oauth.build_auth_url()` (line 91), which `auth_portal.py:114`
+calls. The tests still validate the real production code path (`build_
+auth_url` is the only caller of `generate_state` anywhere in the repo),
+just one level removed from where the citation placed it - not a defect
+in the tests themselves, a citation-accuracy correction only.
+
+**New finding, fixed in this round** (commit `1c5056c`):
+`database_profile.py:126,159` used `datetime.utcnow()`, deprecated
+since Python 3.12 and surfaced as 6 warnings by the new test suite.
+Not a naive find-replace - swapping in `datetime.now(datetime.UTC)`
+would produce an *aware* datetime, but `expires_at` is stored as a
+plain string and re-parsed via `datetime.strptime()` (always naive) -
+comparing an aware "now" against that naive value would raise
+`TypeError`. Fixed with `datetime.now(timezone.utc).replace(tzinfo=None)`,
+which reproduces `utcnow()`'s exact old naive-UTC value instead.
+Verified: full suite reruns clean under `-W error::DeprecationWarning`
+(promotes any remaining deprecation warning to a hard failure) -
+57 passed, confirming the warning is actually gone; a direct functional
+check against a temp DB confirmed a valid token still validates and an
+already-expired one is still correctly rejected, so the fix didn't
+silently change the real expiry comparison logic. CI green on the real
+GitHub Actions run for `1c5056c`.
