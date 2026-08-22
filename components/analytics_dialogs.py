@@ -52,7 +52,7 @@ def _show_deals_meeting_target_dialog(pts, metrics):
             {"Address": p.get("address") or p.get("title", "-"), "Price": f"${p['price']:,.0f}", "CoC Return": f"{m['coc']:.1f}%"}
             for p, m in matches
         ]),
-        use_container_width=True, hide_index=True, height=min(len(matches), 10) * 35 + 38,
+        width="stretch", hide_index=True, height=min(len(matches), 10) * 35 + 38,
     )
     st.caption("Full results with map and filters are below the search form.")
 
@@ -79,6 +79,6 @@ def _show_total_value_dialog(pts):
             {"City": city, "Properties": info["count"], "Total Value": f"${info['total']:,.0f}"}
             for city, info in rows
         ]),
-        use_container_width=True, hide_index=True, height=min(len(rows), 10) * 35 + 38,
+        width="stretch", hide_index=True, height=min(len(rows), 10) * 35 + 38,
     )
     st.caption(f"{len(pts)} propert{'y' if len(pts) == 1 else 'ies'} scanned across {len(by_city)} location{'s' if len(by_city) != 1 else ''} in this scan.")

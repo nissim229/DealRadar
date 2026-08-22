@@ -43,12 +43,13 @@ horizontal `st.radio()` — represents section navigation.
   `min(len(df), N) * 35 + 38` for a capped preview) — never the ~10-row
   Streamlit default.
 - Always `hide_index=True`.
-- Use `width="stretch"`, not the deprecated `use_container_width=True`.
-  **Known gap**: every `st.dataframe`/`st.button`/`st.link_button`/
-  `st.form_submit_button`/`st.popover` call in the app currently uses
-  `use_container_width=True` — internally consistent, but all on the
-  deprecated API. Worth one repo-wide find/replace pass rather than
-  per-file fixes.
+- Use `width="stretch"` (or `width="content"` for the `False` case),
+  not the deprecated `use_container_width=`. Fixed repo-wide in one
+  pass (149 call sites across 19 files: `st.button`, `st.dataframe`,
+  `st.plotly_chart`, `st.popover`, `st.link_button`,
+  `st.form_submit_button`, `st.download_button`) rather than
+  per-file fixes - no remaining `use_container_width` usage anywhere
+  in the app.
 
 ## 3. Pagination
 

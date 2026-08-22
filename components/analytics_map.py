@@ -131,7 +131,7 @@ def _render_clustered_results_map(coords_json, key_prefix, view_mode, calc_rent,
         )
 
         map_event = st.plotly_chart(
-            fig_full_map, use_container_width=True, key=f"{key_prefix}_full_map_view_chart",
+            fig_full_map, width="stretch", key=f"{key_prefix}_full_map_view_chart",
             on_select="rerun", selection_mode="points",
             config={"displayModeBar": True, "scrollZoom": True},
         )
@@ -148,7 +148,7 @@ def _render_clustered_results_map(coords_json, key_prefix, view_mode, calc_rent,
                     member_rows = df_listings_grid.iloc[clicked["member_indices"]]
                     summary_df = member_rows[["title", "address", "price", "beds", "baths"]].copy()
                     summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
-                    st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
+                    st.dataframe(summary_df, hide_index=True, width="stretch", height=len(summary_df) * 35 + 38)
                 else:
                     st.markdown("#### :material/location_on: Selected Property")
                     sel_idx = clicked["member_indices"][0]

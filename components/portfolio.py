@@ -293,7 +293,7 @@ def _render_schedule_section(p):
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=chart_font_color,
             height=280, margin=dict(l=10, r=10, t=40, b=10),
         )
-        st.plotly_chart(fig_split, use_container_width=True, key=f"portfolio_sched_split_{p['id']}")
+        st.plotly_chart(fig_split, width="stretch", key=f"portfolio_sched_split_{p['id']}")
 
         fig_balance = px.line(sched_df, x="Year", y="Ending Balance")
         fig_balance.update_traces(line_color="#2563eb", fill="tozeroy", fillcolor="rgba(37,99,235,0.15)")
@@ -304,12 +304,12 @@ def _render_schedule_section(p):
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color=chart_font_color,
             height=280, margin=dict(l=10, r=10, t=40, b=10),
         )
-        st.plotly_chart(fig_balance, use_container_width=True, key=f"portfolio_sched_balance_{p['id']}")
+        st.plotly_chart(fig_balance, width="stretch", key=f"portfolio_sched_balance_{p['id']}")
     else:
         table_df = sched_df.copy()
         for col in ["Payment", "Principal Paid", "Interest Paid", "Ending Balance", "Cumulative Interest", "Cumulative Principal"]:
             table_df[col] = table_df[col].apply(lambda v: f"${v:,.0f}")
-        st.dataframe(table_df, use_container_width=True, hide_index=True, height=min(len(table_df), 12) * 35 + 38)
+        st.dataframe(table_df, width="stretch", hide_index=True, height=min(len(table_df), 12) * 35 + 38)
 
 
 # --- ADD-PROPERTY FORM (used only by the "Add a Property" tab - a fresh
@@ -364,7 +364,7 @@ def _property_form(existing=None, key_prefix="add"):
         notes = st.text_area("Notes", value=e.get("notes", ""), placeholder="Anything else worth remembering about this property...", key=f"{key_prefix}_notes")
 
         st.caption("Once added, you'll be able to fill in tenants, documents, and occupancy details from the property's own page.")
-        submitted = st.form_submit_button(":material/add_home: Add Property", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/add_home: Add Property", type="primary", width="stretch")
 
     if submitted:
         errors = []
@@ -450,7 +450,7 @@ def _render_overview_subtab(p):
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
     with st.expander(":material/delete: Remove This Property"):
         st.warning("This permanently deletes the property along with its tenants and uploaded documents.")
-        if guest_action_button(":material/delete: Confirm Remove", "remove a property", key=f"portfolio_delete_{p['id']}", use_container_width=True):
+        if guest_action_button(":material/delete: Confirm Remove", "remove a property", key=f"portfolio_delete_{p['id']}", width="stretch"):
             db.delete_portfolio_property(p["id"], st.session_state.user_id)
             st.session_state.pop("portfolio_selected_id", None)
             st.toast("Property removed from your portfolio.")
@@ -492,7 +492,7 @@ def _render_mortgage_subtab(p):
                     loan["monthly_mortgage_payment"] != int(p.get("monthly_mortgage_payment") or 0)
                 ))
             )
-            if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", use_container_width=True, disabled=not loan_has_changes):
+            if st.button(":material/save: Save Loan Information", key=f"{key_prefix}_save_loan", type="primary", width="stretch", disabled=not loan_has_changes):
                 _save_property_fields(
                     p, mortgage_balance=loan["mortgage_balance"], monthly_mortgage_payment=loan["monthly_mortgage_payment"],
                     mortgage_rate=loan["mortgage_rate"], original_loan_amount=loan["original_loan_amount"],
@@ -508,7 +508,7 @@ def _render_mortgage_subtab(p):
             # section, tab, or property) without clicking Save would otherwise
             # leave that abandoned draft sitting here indefinitely, masking the
             # real saved value next time this section is viewed.
-            if st.button("Discard changes", key=f"{key_prefix}_discard_loan", use_container_width=True):
+            if st.button("Discard changes", key=f"{key_prefix}_discard_loan", width="stretch"):
                 for suffix in ["use_calc", "rate", "loan_amt", "start_date", "term", "balance", "payment", "pmi"]:
                     st.session_state.pop(f"{key_prefix}_{suffix}", None)
                 st.rerun()
@@ -525,7 +525,7 @@ def _render_mortgage_subtab(p):
                 lender["lender_phone"] != p.get("lender_phone", "") or lender["lender_email"] != p.get("lender_email", "") or
                 lender["loan_account_number"] != p.get("loan_account_number", "")
             )
-            if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", use_container_width=True, disabled=not lender_has_changes):
+            if st.button(":material/save: Save Lender Contact", key=f"{key_prefix}_save_lender", type="primary", width="stretch", disabled=not lender_has_changes):
                 _save_property_fields(
                     p, lender_name=lender["lender_name"], loan_officer_name=lender["loan_officer_name"],
                     lender_phone=lender["lender_phone"], lender_email=lender["lender_email"],
@@ -534,7 +534,7 @@ def _render_mortgage_subtab(p):
                 st.toast("Lender contact updated.")
                 st.rerun()
 
-            if st.button("Discard changes", key=f"{key_prefix}_discard_lender", use_container_width=True):
+            if st.button("Discard changes", key=f"{key_prefix}_discard_lender", width="stretch"):
                 for suffix in ["lender_name", "lender_phone", "loan_acct", "officer", "lender_email"]:
                     st.session_state.pop(f"{key_prefix}_{suffix}", None)
                 st.rerun()
@@ -557,7 +557,7 @@ def _render_property_details_subtab(p):
             with c2:
                 property_tax_annual = st.number_input("Annual Property Tax ($)", min_value=0, value=int(p.get("property_tax_annual") or 0), step=50, key=f"{key_prefix}_tax")
             property_management_monthly = st.number_input("Property Management ($/mo)", min_value=0, value=int(p.get("property_management_monthly") or 0), step=25, help="What you pay a property manager, if any.", key=f"{key_prefix}_mgmt")
-        submitted = st.form_submit_button(":material/save: Save Property Details", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/save: Save Property Details", type="primary", width="stretch")
 
     if submitted:
         if not address:
@@ -585,7 +585,7 @@ def _render_rental_status_subtab(p):
             key=f"{key_prefix}_rs",
         )
         monthly_rent = st.number_input("Monthly Rent ($)", min_value=0, value=int(p.get("monthly_rent") or 0), step=25, help="Only counted toward cash flow when status is 'Occupied'.", key=f"{key_prefix}_rent")
-        submitted = st.form_submit_button(":material/save: Save Rental Status", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/save: Save Rental Status", type="primary", width="stretch")
 
     if submitted:
         if rental_status == "Occupied" and monthly_rent <= 0:
@@ -606,7 +606,7 @@ def _render_occupancy_subtab(p):
         with c2:
             num_keys_given = st.number_input("Number of Keys Given", min_value=0, value=int(p.get("num_keys_given") or 0), step=1, key=f"{key_prefix}_keys")
             parking_storage_info = st.text_input("Parking / Storage Assigned", value=p.get("parking_storage_info", ""), placeholder="e.g., Spot #12, Storage unit B", key=f"{key_prefix}_park")
-        submitted = st.form_submit_button(":material/save: Save Occupancy Details", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/save: Save Occupancy Details", type="primary", width="stretch")
 
     if submitted:
         _save_property_fields(
@@ -639,7 +639,7 @@ def _render_tenant_card(t):
                 with td2:
                     lease_end = st.date_input("Lease End", value=_parse_date(t.get("lease_end")) or date.today(), key=f"{key_prefix}_end")
                 notes = st.text_area("Notes", value=t.get("notes", ""), key=f"{key_prefix}_notes")
-                submitted = st.form_submit_button(":material/save: Save Tenant", type="primary", use_container_width=True)
+                submitted = st.form_submit_button(":material/save: Save Tenant", type="primary", width="stretch")
             if submitted:
                 if not name:
                     st.error("Tenant name is required.")
@@ -647,7 +647,7 @@ def _render_tenant_card(t):
                     db.update_tenant(t["id"], st.session_state.user_id, name, phone, email, lease_start.isoformat(), lease_end.isoformat(), notes)
                     st.toast("Tenant updated.")
                     st.rerun()
-            if st.button(":material/delete: Remove Tenant", key=f"{key_prefix}_delete", use_container_width=True):
+            if st.button(":material/delete: Remove Tenant", key=f"{key_prefix}_delete", width="stretch"):
                 db.delete_tenant(t["id"], st.session_state.user_id)
                 st.toast("Tenant removed.")
                 st.rerun()
@@ -687,7 +687,7 @@ def _render_tenants_subtab(p):
         with d2:
             lease_end = st.date_input("Lease End", value=date.today(), key=f"prop_{p['id']}_new_tenant_end")
         notes = st.text_area("Notes", key=f"prop_{p['id']}_new_tenant_notes")
-        submitted = st.form_submit_button(":material/person_add: Add Tenant", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/person_add: Add Tenant", type="primary", width="stretch")
 
     if submitted:
         if not name:
@@ -712,9 +712,9 @@ def _render_documents_subtab(p):
                 file_path = os.path.join(db.PORTFOLIO_UPLOADS_DIR, d["stored_filename"])
                 if os.path.exists(file_path):
                     with open(file_path, "rb") as f:
-                        st.download_button(":material/download: Download", f.read(), file_name=d["original_filename"], key=f"dl_doc_{d['id']}", use_container_width=True)
+                        st.download_button(":material/download: Download", f.read(), file_name=d["original_filename"], key=f"dl_doc_{d['id']}", width="stretch")
             with col3:
-                if st.button(":material/delete: Remove", key=f"del_doc_{d['id']}", use_container_width=True):
+                if st.button(":material/delete: Remove", key=f"del_doc_{d['id']}", width="stretch"):
                     db.delete_document(d["id"], st.session_state.user_id)
                     st.toast("Document removed.")
                     st.rerun()
@@ -723,7 +723,7 @@ def _render_documents_subtab(p):
     st.caption("Lease agreements, insurance policies, inspection reports - anything worth keeping with this property.")
     uploaded = st.file_uploader("Choose a file", key=f"prop_{p['id']}_uploader", label_visibility="collapsed")
     if uploaded is not None:
-        if st.button(":material/upload: Save This Document", key=f"prop_{p['id']}_save_upload", type="primary", use_container_width=True):
+        if st.button(":material/upload: Save This Document", key=f"prop_{p['id']}_save_upload", type="primary", width="stretch"):
             ext = os.path.splitext(uploaded.name)[1]
             stored_filename = f"{p['id']}_{uuid.uuid4().hex}{ext}"
             with open(os.path.join(db.PORTFOLIO_UPLOADS_DIR, stored_filename), "wb") as f:
@@ -744,7 +744,7 @@ def _render_expenses_notes_subtab(p):
             other_expenses_notes = st.text_input("What's included in that?", value=p.get("other_expenses_notes", ""), placeholder="e.g., Lawn care $80 + water $70", key=f"{key_prefix}_line")
         st.markdown("##### Notes")
         notes = st.text_area("General notes about this property", value=p.get("notes", ""), label_visibility="collapsed", placeholder="Anything else worth remembering...", key=f"{key_prefix}_notes")
-        submitted = st.form_submit_button(":material/save: Save", type="primary", use_container_width=True)
+        submitted = st.form_submit_button(":material/save: Save", type="primary", width="stretch")
 
     if submitted:
         _save_property_fields(p, other_expenses_monthly=other_expenses_monthly, other_expenses_notes=other_expenses_notes, notes=notes)
@@ -880,7 +880,7 @@ def _render_summary_tab(properties):
         fig.update_traces(textposition="outside")
         fig.update_layout(title="Monthly Cash Position by Property", xaxis_title="$ / month", yaxis_title="",
                            height=chart_height, margin=dict(l=10, r=10, t=40, b=10), **chart_layout)
-        st.plotly_chart(fig, use_container_width=True, key="portfolio_cashflow_chart")
+        st.plotly_chart(fig, width="stretch", key="portfolio_cashflow_chart")
 
     elif view == "Equity vs. Mortgage":
         equity_df = df.melt(id_vars=["Address"], value_vars=["Equity", "Mortgage Balance"], var_name="Component", value_name="Amount")
@@ -890,7 +890,7 @@ def _render_summary_tab(properties):
         )
         fig.update_layout(title="Equity vs. Mortgage Balance by Property", xaxis_title="$", yaxis_title="",
                            height=chart_height, margin=dict(l=10, r=10, t=40, b=10), **chart_layout)
-        st.plotly_chart(fig, use_container_width=True, key="portfolio_equity_chart")
+        st.plotly_chart(fig, width="stretch", key="portfolio_equity_chart")
 
     elif view == "Income & Expenses":
         # Expenses plotted as negative values so each property's bar naturally
@@ -923,7 +923,7 @@ def _render_summary_tab(properties):
         fig.add_vline(x=0, line_width=1, line_color=chart_font_color)
         fig.update_layout(title="Monthly Income & Expenses by Property", xaxis_title="$ / month", yaxis_title="",
                            height=chart_height, margin=dict(l=10, r=10, t=40, b=10), **chart_layout)
-        st.plotly_chart(fig, use_container_width=True, key="portfolio_income_expense_chart")
+        st.plotly_chart(fig, width="stretch", key="portfolio_income_expense_chart")
 
     elif view == "Portfolio Composition":
         fig = px.pie(df, names="Address", values="Current Value", hole=0.45,
@@ -931,13 +931,13 @@ def _render_summary_tab(properties):
         fig.update_traces(textinfo="label+percent", textposition="outside")
         fig.update_layout(title="Portfolio Value by Property", showlegend=False,
                            height=chart_height + 100, margin=dict(l=10, r=10, t=40, b=10), **chart_layout)
-        st.plotly_chart(fig, use_container_width=True, key="portfolio_composition_chart")
+        st.plotly_chart(fig, width="stretch", key="portfolio_composition_chart")
 
     st.markdown("##### All Properties")
     display_df = df[["Address", "Type", "Current Value", "Equity", "Rented", "Monthly Rent", "Monthly Costs", "Monthly Cash Position"]].copy()
     for col in ["Current Value", "Equity", "Monthly Rent", "Monthly Costs", "Monthly Cash Position"]:
         display_df[col] = display_df[col].apply(lambda v: f"${v:,.0f}")
-    st.dataframe(display_df, use_container_width=True, hide_index=True, height=len(display_df) * 35 + 38)
+    st.dataframe(display_df, width="stretch", hide_index=True, height=len(display_df) * 35 + 38)
 
 
 def render_portfolio_page(is_guest=False):

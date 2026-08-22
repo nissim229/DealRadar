@@ -42,13 +42,13 @@ def _delete_history_dialog():
     st.warning(f"Delete **{ctx['name']}** from your scan history? This can't be undone.")
     confirm_col, cancel_col = st.columns(2)
     with confirm_col:
-        if st.button(":material/delete_forever: Confirm Delete", type="primary", use_container_width=True):
+        if st.button(":material/delete_forever: Confirm Delete", type="primary", width="stretch"):
             db.delete_history_log(st.session_state.user_id, ctx["id"])
             st.session_state.hist_delete_target = None
             st.toast("Removed from your scan history.")
             st.rerun()
     with cancel_col:
-        if st.button("Cancel", use_container_width=True):
+        if st.button("Cancel", width="stretch"):
             st.session_state.hist_delete_target = None
             st.rerun()
 
@@ -81,7 +81,7 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
                 bulk_days = st.number_input("Delete every log older than this many days", min_value=1, value=90, step=1, key="hist_bulk_days")
             with bulk_col2:
                 st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-                if st.button(":material/delete_sweep: Preview & Delete", use_container_width=True, key="hist_bulk_delete_trigger"):
+                if st.button(":material/delete_sweep: Preview & Delete", width="stretch", key="hist_bulk_delete_trigger"):
                     st.session_state.hist_bulk_pending = bulk_days
 
             if st.session_state.get("hist_bulk_pending"):
@@ -90,13 +90,13 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
                 st.warning(f"Delete every scan log from before **{cutoff_label}** ({int(pending_days)}+ days old)? This can't be undone.")
                 bulk_confirm_col, bulk_cancel_col = st.columns(2)
                 with bulk_confirm_col:
-                    if st.button(":material/delete_sweep: Confirm Bulk Delete", type="primary", use_container_width=True, key="hist_bulk_confirm_btn"):
+                    if st.button(":material/delete_sweep: Confirm Bulk Delete", type="primary", width="stretch", key="hist_bulk_confirm_btn"):
                         deleted_count = db.delete_history_logs_older_than(st.session_state.user_id, pending_days)
                         st.session_state.hist_bulk_pending = None
                         st.toast(f"Deleted {deleted_count} old log{'s' if deleted_count != 1 else ''}.")
                         st.rerun()
                 with bulk_cancel_col:
-                    if st.button("Cancel", use_container_width=True, key="hist_bulk_cancel_btn"):
+                    if st.button("Cancel", width="stretch", key="hist_bulk_cancel_btn"):
                         st.session_state.hist_bulk_pending = None
                         st.rerun()
 
@@ -107,13 +107,13 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
 
         page_nav1, page_nav2, page_nav3 = st.columns([1, 2, 1])
         with page_nav1:
-            if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key="hist_prev_page_btn"):
+            if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, width="stretch", key="hist_prev_page_btn"):
                 st.session_state.hist_current_page = current_page - 1
                 st.rerun()
         with page_nav2:
             st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total scans</div>", unsafe_allow_html=True)
         with page_nav3:
-            if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key="hist_next_page_btn"):
+            if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, width="stretch", key="hist_next_page_btn"):
                 st.session_state.hist_current_page = current_page + 1
                 st.rerun()
 
@@ -152,7 +152,7 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
         df_hist_display["Generation Date"] = df_hist_page["Generation Date"]
         df_hist_display["Delete"] = ":material/delete:"
         selected_log_grid = st.dataframe(
-            df_hist_display, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="history_log_grid",
+            df_hist_display, width="stretch", hide_index=True, on_select="rerun", selection_mode="single-row", key="history_log_grid",
             height=len(df_hist_display) * 35 + 38,
             column_config={
                 "Matches": st.column_config.TextColumn(width="small"),
@@ -187,7 +187,7 @@ def _render_history_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, c
                 st.info(f"Viewing Historical Saved Archive Record: **{archived_report_name}**")
             with delete_col:
                 st.markdown("<div style='margin-top:6px;'></div>", unsafe_allow_html=True)
-                if st.button(":material/delete: Remove", key=f"delete_history_{archived_log_id}", use_container_width=True):
+                if st.button(":material/delete: Remove", key=f"delete_history_{archived_log_id}", width="stretch"):
                     st.session_state.hist_delete_target = {"id": archived_log_id, "name": archived_report_name}
                     st.rerun()
 

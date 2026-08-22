@@ -42,7 +42,7 @@ def render_pricing_dialog():
     with promo_col1:
         promo_input = st.text_input("Promo code", key="pricing_promo_input", placeholder="Optional", label_visibility="collapsed")
     with promo_col2:
-        if st.button("Apply", key="pricing_promo_apply_btn", use_container_width=True):
+        if st.button("Apply", key="pricing_promo_apply_btn", width="stretch"):
             if promo_input.strip():
                 code_row, reason = db.validate_promo_code(promo_input.strip().upper())
                 if code_row:
@@ -95,7 +95,7 @@ def render_pricing_dialog():
             )
             st.markdown(card_html, unsafe_allow_html=True)
             st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
-            if st.button("Buy Now", key=f"buy_pkg_{tier_name}", use_container_width=True,
+            if st.button("Buy Now", key=f"buy_pkg_{tier_name}", width="stretch",
                          type="primary" if tier["highlight"] else "secondary"):
                 db.add_purchased_credits(st.session_state.user_id, tier["credits"])
                 db.update_user_plan(st.session_state.user_id, tier_name)

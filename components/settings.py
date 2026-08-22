@@ -291,7 +291,7 @@ def _render_account(settings):
             # No "before" value to diff against for password fields (never
             # pre-filled, for security) - disabled until there's actually
             # something to submit instead.
-            if st.button(":material/key: Update Password", use_container_width=True, key="settings_cpw_submit_btn",
+            if st.button(":material/key: Update Password", width="stretch", key="settings_cpw_submit_btn",
                           type="primary", disabled=not (new_pw_val and confirm_pw)):
                 if len(new_pw_val) < 6:
                     st.error("New password must be at least 6 characters.")
@@ -305,7 +305,7 @@ def _render_account(settings):
                 else:
                     st.error("Current password is incorrect.")
         with col2:
-            if st.button("Cancel", use_container_width=True, key="settings_cpw_cancel_btn"):
+            if st.button("Cancel", width="stretch", key="settings_cpw_cancel_btn"):
                 st.session_state.settings_show_change_password_form = False
                 st.rerun()
     else:

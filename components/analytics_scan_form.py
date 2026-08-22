@@ -135,7 +135,7 @@ def _render_scan_action_buttons(is_guest=False):
     # shares its row with the compact results strip instead of getting
     # the form's own full width.
     with st.container(key="run_scan_btn_glow"):
-        run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", use_container_width=True, key="run_scan_btn")
+        run_clicked = st.button(":material/travel_explore: Run Live Scan", type="primary", width="stretch", key="run_scan_btn")
     test_clicked = False
     # Staff-only (any of the 3 tiers - see roles.py): forces mock/sample
     # data regardless of role or credits, so staff can exercise the UI
@@ -144,10 +144,10 @@ def _render_scan_action_buttons(is_guest=False):
     # to hand-edit a test account's credits to 0, since being staff
     # always granted allow_live=True.
     if roles.is_staff(st.session_state.user_role):
-        test_clicked = st.button(":material/science: Run Test Scan", use_container_width=True, key="run_test_scan_btn",
+        test_clicked = st.button(":material/science: Run Test Scan", width="stretch", key="run_test_scan_btn",
                                   help="Uses mock/sample data - doesn't spend real RentCast quota.")
     if not is_guest and st.session_state.user_credits <= 0 and not roles.is_admin_or_above(st.session_state.user_role):
-        if st.button(":material/add_card: Buy Credits", use_container_width=True, key="buy_credits_trigger_btn"):
+        if st.button(":material/add_card: Buy Credits", width="stretch", key="buy_credits_trigger_btn"):
             pricing.render_pricing_dialog()
 
     return run_clicked, test_clicked

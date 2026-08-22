@@ -32,7 +32,7 @@ def _show_signups_dialog():
                 [{"Name": name or "-", "Email": email, "Plan": plan, "Joined": (created_at or "")[:10]}
                  for email, name, plan, created_at in recent]
             ),
-            use_container_width=True, hide_index=True, height=len(recent) * 35 + 38,
+            width="stretch", hide_index=True, height=len(recent) * 35 + 38,
         )
     st.caption("Full list with credits, scans, and spend is in the Users tab.")
 
@@ -64,7 +64,7 @@ def _show_revenue_dialog(revenue_stats):
                 [{"User": f"{name} ({email})" if name else email, "Package": pkg, "Amount": f"${amt:,.0f}", "Date": purchased_at}
                  for email, name, pkg, amt, credits, purchased_at in recent_tx]
             ),
-            use_container_width=True, hide_index=True, height=len(recent_tx) * 35 + 38,
+            width="stretch", hide_index=True, height=len(recent_tx) * 35 + 38,
         )
     st.caption("Full transaction ledger and plan breakdown is in the Revenue tab.")
 
@@ -81,7 +81,7 @@ def _show_credits_dialog():
                 [{"Name": name or "-", "Email": email, "Credits": credits, "Plan": plan}
                  for email, name, credits, plan in top_holders]
             ),
-            use_container_width=True, hide_index=True, height=len(top_holders) * 35 + 38,
+            width="stretch", hide_index=True, height=len(top_holders) * 35 + 38,
         )
     st.caption("Users at 0 credits (upsell targets) are listed below the stat cards on the main dashboard.")
 
@@ -175,7 +175,7 @@ def _manage_user_dialog(selected_row, current_role):
             new_last.strip() != _default_last or new_email.strip() != u_email or
             (can_edit_role and new_role != u_role) or new_plan != u_plan
         )
-        if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", use_container_width=True, disabled=not profile_has_changes):
+        if st.button(":material/save: Save Profile", key=f"user_profile_save_btn_{u_id}", width="stretch", disabled=not profile_has_changes):
             if not new_email.strip():
                 st.error("Email can't be empty.")
             elif db.update_user_profile_admin(u_id, new_first.strip(), new_middle.strip(), new_last.strip(), new_email.strip()):
@@ -210,7 +210,7 @@ def _manage_user_dialog(selected_row, current_role):
         new_cred = st.number_input("Credits", min_value=0, value=u_credits, key=f"user_cred_field_{u_id}_{u_credits}")
     with col_u3:
         st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-        if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", use_container_width=True, disabled=new_cred == u_credits):
+        if st.button(":material/save: Save", key=f"user_save_btn_{u_id}", width="stretch", disabled=new_cred == u_credits):
             db.update_user_credits_admin(u_id, new_cred)
             st.toast(f"Updated credits for {u_email}.", icon=":material/check_circle:")
             if u_id == st.session_state.user_id:
@@ -218,7 +218,7 @@ def _manage_user_dialog(selected_row, current_role):
             st.rerun()
     with col_u4:
         st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-        if st.button(":material/add_card: +5 Bonus", key=f"user_bonus_btn_{u_id}", use_container_width=True,
+        if st.button(":material/add_card: +5 Bonus", key=f"user_bonus_btn_{u_id}", width="stretch",
                      help="Grant 5 free credits (e.g. as a support goodwill gesture)"):
             db.add_purchased_credits(u_id, 5)
             st.toast(f"Added 5 bonus credits for {u_email}.")
@@ -229,7 +229,7 @@ def _manage_user_dialog(selected_row, current_role):
     with st.popover(":material/more_horiz: More actions", key=f"user_more_popover_{u_id}"):
         if not roles.is_staff(u_role):
             suspend_label = ":material/lock_open: Reactivate Account" if u_suspended else ":material/block: Suspend Account"
-            if st.button(suspend_label, key=f"user_suspend_btn_{u_id}", use_container_width=True):
+            if st.button(suspend_label, key=f"user_suspend_btn_{u_id}", width="stretch"):
                 db.set_user_suspended(u_id, not u_suspended)
                 st.toast(f"{'Reactivated' if u_suspended else 'Suspended'} {u_email}.")
                 st.rerun()
@@ -239,7 +239,7 @@ def _manage_user_dialog(selected_row, current_role):
         st.markdown("---")
         st.caption("Reset this user's password")
         reset_pw = st.text_input("New password", type="password", key=f"user_reset_pw_{u_id}", label_visibility="collapsed", placeholder="New password (6+ characters)")
-        if st.button(":material/key: Set New Password", key=f"user_reset_btn_{u_id}", use_container_width=True):
+        if st.button(":material/key: Set New Password", key=f"user_reset_btn_{u_id}", width="stretch"):
             if len(reset_pw) >= 6:
                 db.admin_reset_password(u_id, reset_pw)
                 if db.get_user_settings(u_id).get("notify_password_changed") and u_email:
@@ -249,7 +249,7 @@ def _manage_user_dialog(selected_row, current_role):
                 st.error("Password must be at least 6 characters.")
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-    if st.button("Close", use_container_width=True, key=f"user_manage_close_btn_{u_id}"):
+    if st.button("Close", width="stretch", key=f"user_manage_close_btn_{u_id}"):
         st.session_state.admin_selected_user_id = None
         st.rerun()
 
@@ -282,14 +282,14 @@ def _render_users_tab_body(current_role):
 
     users_nav1, users_nav2, users_nav3 = st.columns([1, 2, 1])
     with users_nav1:
-        if st.button(":material/chevron_left: Previous", disabled=users_current_page <= 1, use_container_width=True, key="admin_users_prev_page_btn"):
+        if st.button(":material/chevron_left: Previous", disabled=users_current_page <= 1, width="stretch", key="admin_users_prev_page_btn"):
             st.session_state.admin_users_current_page = users_current_page - 1
             st.session_state.admin_selected_user_id = None
             st.rerun()
     with users_nav2:
         st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {users_current_page} of {users_total_pages} · {users_total_rows} total users</div>", unsafe_allow_html=True)
     with users_nav3:
-        if st.button("Next :material/chevron_right:", disabled=users_current_page >= users_total_pages, use_container_width=True, key="admin_users_next_page_btn"):
+        if st.button("Next :material/chevron_right:", disabled=users_current_page >= users_total_pages, width="stretch", key="admin_users_next_page_btn"):
             st.session_state.admin_users_current_page = users_current_page + 1
             st.session_state.admin_selected_user_id = None
             st.rerun()
@@ -316,7 +316,7 @@ def _render_users_tab_body(current_role):
     # scrolling the user should need.
     users_table_height = len(users_table_df) * 35 + 38
     st.dataframe(
-        users_table_df, use_container_width=True, hide_index=True, key="admin_users_table",
+        users_table_df, width="stretch", hide_index=True, key="admin_users_table",
         height=users_table_height,
         column_config={
             "Credits": st.column_config.NumberColumn(format="%d"),
@@ -369,7 +369,7 @@ def _render_pricing_tab():
                     new_price != float(tier["price"]) or new_credits != int(tier["credits"]) or
                     new_pf != tier["portfolio_properties"] or new_sp != tier["saved_properties"] or new_ss != tier["saved_searches"]
                 )
-                if st.button(":material/save: Save", key=f"pkg_save_{tier_name}", type="primary", use_container_width=True, disabled=not pkg_has_changes):
+                if st.button(":material/save: Save", key=f"pkg_save_{tier_name}", type="primary", width="stretch", disabled=not pkg_has_changes):
                     db.update_credit_package(tier_name, new_price, new_credits, new_pf, new_sp, new_ss)
                     st.toast(f"Updated {tier_name} package.")
                     st.rerun()
@@ -390,7 +390,7 @@ def _render_pricing_tab():
         )
         verified_note = f"Last verified {rc_conf['verified_at']}" if rc_conf["verified_at"] else "Never verified - RentCast has no price-change API, so re-check their pricing page periodically and re-save here."
         st.caption(verified_note)
-        if st.form_submit_button(":material/save: Save RentCast Plan", type="primary", use_container_width=True):
+        if st.form_submit_button(":material/save: Save RentCast Plan", type="primary", width="stretch"):
             db.update_rentcast_config(rc_limit_input, rc_name_input, rc_cost_input, rc_threshold_input)
             st.toast("RentCast plan updated.")
             st.rerun()
@@ -406,7 +406,7 @@ def _render_pricing_tab():
             "from Google's side, so this number is a self-declared cap you set from what you know in Cloud Console."
         )
         places_limit_input = st.number_input("Self-declared monthly budget (calls)", min_value=1, value=int(places_conf["monthly_limit"]))
-        if st.form_submit_button(":material/save: Save Places Budget", type="primary", use_container_width=True):
+        if st.form_submit_button(":material/save: Save Places Budget", type="primary", width="stretch"):
             db.update_places_config(places_limit_input)
             st.toast("Places budget updated.")
             st.rerun()
@@ -418,7 +418,7 @@ def _render_pricing_tab():
         st.markdown("**Auto.dev (car listings)**")
         st.caption(f"{ad_used_conf} / {ad_conf['monthly_limit']} calls used this month - once this cap is hit, Cars searches fall back to simulated listing data instead of calling Auto.dev.")
         ad_limit_input = st.number_input("Monthly call limit", min_value=1, value=int(ad_conf["monthly_limit"]))
-        if st.form_submit_button(":material/save: Save Auto.dev Limit", type="primary", use_container_width=True):
+        if st.form_submit_button(":material/save: Save Auto.dev Limit", type="primary", width="stretch"):
             db.update_autodev_config(ad_limit_input)
             st.toast("Auto.dev monthly limit updated.")
             st.rerun()
@@ -430,7 +430,7 @@ def _render_pricing_tab():
         st.markdown("**OpenAI report generation**")
         st.caption(f"{oa_used} / {oa_conf['monthly_limit']} calls used this month - once this cap is hit, scans fall back to the free local report generator instead of calling OpenAI.")
         oa_limit_input = st.number_input("Monthly call limit", min_value=1, value=int(oa_conf["monthly_limit"]))
-        if st.form_submit_button(":material/save: Save OpenAI Limit", type="primary", use_container_width=True):
+        if st.form_submit_button(":material/save: Save OpenAI Limit", type="primary", width="stretch"):
             db.update_openai_config(oa_limit_input)
             st.toast("OpenAI monthly limit updated.")
             st.rerun()
@@ -451,7 +451,7 @@ def _render_pricing_tab():
             promo_value_input = st.number_input("Discount value", min_value=0.0, step=1.0)
             promo_max_uses_input = st.number_input("Max uses (0 = unlimited)", min_value=0, value=0)
             promo_expiry_input = st.date_input("Expires on") if promo_has_expiry else None
-            if st.form_submit_button(":material/add: Create Code", type="primary", use_container_width=True):
+            if st.form_submit_button(":material/add: Create Code", type="primary", width="stretch"):
                 if not promo_code_input:
                     st.error("Enter a code.")
                 else:
@@ -482,7 +482,7 @@ def _render_pricing_tab():
                     st.markdown(f"**{p_code}** &nbsp;·&nbsp; {discount_label} &nbsp;·&nbsp; {usage_label}{expiry_label}{status_label}")
                 with promo_row2:
                     toggle_label = ":material/lock_open: Reactivate" if not p_active else ":material/block: Deactivate"
-                    if st.button(toggle_label, key=f"promo_toggle_{p_id}", use_container_width=True):
+                    if st.button(toggle_label, key=f"promo_toggle_{p_id}", width="stretch"):
                         db.set_promo_code_active(p_id, not p_active)
                         st.rerun()
 
@@ -507,7 +507,7 @@ def _render_dashboard_tab(stats, signup_stats, scan_breakdown, revenue_stats, _r
         with stat_cols[i]:
             with st.container(key=f"admin_stat_card_{i}"):
                 if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"admin_stat_card_btn_{i}",
-                             use_container_width=True, help=sub):
+                             width="stretch", help=sub):
                     dialog_fn(*dialog_args)
 
     st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
@@ -571,7 +571,7 @@ def _render_api_usage_tab(scan_breakdown):
              "RentCast Calls": row["call_count"]}
             for row in usage_by_user
         ])
-        st.dataframe(usage_df, use_container_width=True, hide_index=True, height=len(usage_df) * 35 + 38)
+        st.dataframe(usage_df, width="stretch", hide_index=True, height=len(usage_df) * 35 + 38)
 
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
     st.markdown("### Auto.dev Calls by User (This Month)")
@@ -585,7 +585,7 @@ def _render_api_usage_tab(scan_breakdown):
              "Auto.dev Calls": row["call_count"]}
             for row in autodev_usage_by_user
         ])
-        st.dataframe(autodev_usage_df, use_container_width=True, hide_index=True, height=len(autodev_usage_df) * 35 + 38)
+        st.dataframe(autodev_usage_df, width="stretch", hide_index=True, height=len(autodev_usage_df) * 35 + 38)
 
 
 def _render_revenue_tab(revenue_stats):
@@ -634,7 +634,7 @@ def _render_revenue_tab(revenue_stats):
              "Amount": f"${amt:,.0f}", "Credits": credits, "Date": purchased_at}
             for email, name, pkg, amt, credits, purchased_at in recent_tx
         ])
-        st.dataframe(tx_df, use_container_width=True, hide_index=True, height=len(tx_df) * 35 + 38)
+        st.dataframe(tx_df, width="stretch", hide_index=True, height=len(tx_df) * 35 + 38)
 
 
 def _render_add_admins_tab(current_role):
@@ -667,7 +667,7 @@ def _render_add_admins_tab(current_role):
                 new_staff_role = st.selectbox("Grant role", roles.STAFF_ROLES,
                                                index=roles.STAFF_ROLES.index(picked_current_role) if picked_current_role in roles.STAFF_ROLES else 0,
                                                key="admin_promote_role_select")
-                if st.button(":material/verified_user: Grant Access", type="primary", use_container_width=True, key="admin_promote_btn"):
+                if st.button(":material/verified_user: Grant Access", type="primary", width="stretch", key="admin_promote_btn"):
                     if db.update_user_role_admin(picked_id, new_staff_role):
                         st.toast(f"{picked_email} is now {new_staff_role.upper()}.", icon=":material/check_circle:")
                         st.rerun()
@@ -678,7 +678,7 @@ def _render_add_admins_tab(current_role):
             new_admin_pass = st.text_input("Password", type="password")
             new_admin_role = st.selectbox("Role", roles.STAFF_ROLES, index=roles.STAFF_ROLES.index("admin"), key="admin_new_account_role")
 
-            if st.button(":material/verified_user: Create Account", type="primary", use_container_width=True, key="admin_create_account_btn"):
+            if st.button(":material/verified_user: Create Account", type="primary", width="stretch", key="admin_create_account_btn"):
                 if new_admin_email and len(new_admin_pass) >= 6:
                     if db.create_super_user_admin(new_admin_email, new_admin_pass, new_admin_role):
                         st.success(f"{new_admin_role.upper()} account created for {new_admin_email}.")
@@ -695,12 +695,12 @@ def _render_broadcast_tab():
     new_message = st.text_area("Message", value=current_message, placeholder="e.g., Scheduled maintenance tonight 10-11pm ET.")
     bc_col1, bc_col2 = st.columns([1, 1])
     with bc_col1:
-        if st.button(":material/campaign: Publish", type="primary", use_container_width=True):
+        if st.button(":material/campaign: Publish", type="primary", width="stretch"):
             db.set_broadcast_message(new_message)
             st.toast("Broadcast message published.")
             st.rerun()
     with bc_col2:
-        if st.button(":material/close: Clear", use_container_width=True, disabled=not current_message):
+        if st.button(":material/close: Clear", width="stretch", disabled=not current_message):
             db.set_broadcast_message("")
             st.toast("Broadcast message cleared.")
             st.rerun()
@@ -726,13 +726,13 @@ def _render_design_standards_tab():
 
     ds_col1, ds_col2 = st.columns([1, 1])
     with ds_col1:
-        if st.button(":material/save: Save", type="primary", use_container_width=True,
+        if st.button(":material/save: Save", type="primary", width="stretch",
                      disabled=(edited_content == current_content)):
             db.set_design_standards_override(edited_content)
             st.toast("Design standards updated.")
             st.rerun()
     with ds_col2:
-        if st.button(":material/restart_alt: Revert to repo file", use_container_width=True, disabled=not has_override):
+        if st.button(":material/restart_alt: Revert to repo file", width="stretch", disabled=not has_override):
             db.clear_design_standards_override()
             st.toast("Reverted to DESIGN_STANDARDS.md.")
             st.rerun()
@@ -771,7 +771,7 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
             placeholder="Leave blank for the built-in default...", label_visibility="collapsed",
         )
     with btn_col:
-        st.button(":material/visibility: Preview", key=f"brand_logo_preview_btn_{slot_key}", use_container_width=True)
+        st.button(":material/visibility: Preview", key=f"brand_logo_preview_btn_{slot_key}", width="stretch")
 
     st.caption("Preview")
     # flatten_html collapses the admin's pasted (naturally multi-line,
@@ -801,7 +801,7 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
                     unsafe_allow_html=True,
                 )
             with p_apply_col:
-                if st.button(":material/check: Apply", key=f"brand_logo_preset_apply_{slot_key}_{i}", use_container_width=True):
+                if st.button(":material/check: Apply", key=f"brand_logo_preset_apply_{slot_key}_{i}", width="stretch"):
                     new_settings = dict(db.get_brand_settings())
                     new_settings[f"logo_html_{slot_key}"] = preset["html"]
                     db.save_brand_settings(new_settings)
@@ -809,7 +809,7 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
                     st.toast(f"Applied '{preset['name']}'.")
                     st.rerun()
             with p_delete_col:
-                if st.button(":material/delete:", key=f"brand_logo_preset_delete_{slot_key}_{i}", use_container_width=True):
+                if st.button(":material/delete:", key=f"brand_logo_preset_delete_{slot_key}_{i}", width="stretch"):
                     new_settings = dict(db.get_brand_settings())
                     new_settings[f"logo_presets_{slot_key}"] = [p for j, p in enumerate(presets) if j != i]
                     db.save_brand_settings(new_settings)
@@ -831,7 +831,7 @@ def _render_logo_slot(slot_key, slot_title, help_text, default_html_fn, preview_
             label_visibility="collapsed",
         )
     with save_col:
-        if st.button(":material/save: Save as preset", key=f"brand_logo_preset_save_{slot_key}", use_container_width=True):
+        if st.button(":material/save: Save as preset", key=f"brand_logo_preset_save_{slot_key}", width="stretch"):
             if not preset_name.strip():
                 st.error("Give this preset a name first.")
             elif not current_html.strip():
@@ -958,7 +958,7 @@ def _render_brand_design_tab():
     st.markdown("---")
     save_col, reset_col = st.columns([1, 1])
     with save_col:
-        if st.button(":material/save: Save brand settings", type="primary", use_container_width=True):
+        if st.button(":material/save: Save brand settings", type="primary", width="stretch"):
             new_settings = dict(brand)
             new_settings["accent_color"] = accent_color
             new_settings["font_display"] = font_display
@@ -981,7 +981,7 @@ def _render_brand_design_tab():
             st.toast("Brand settings updated.")
             st.rerun()
     with reset_col:
-        if st.button(":material/restart_alt: Reset to defaults", use_container_width=True):
+        if st.button(":material/restart_alt: Reset to defaults", width="stretch"):
             # Presets are a saved library the admin builds up over time,
             # separate from what's currently ACTIVE - clear_brand_settings
             # would delete the whole settings row (presets included), so

@@ -268,11 +268,11 @@ def render_car_search_page(is_guest=False):
 
             btn_col1, btn_col2, _ = st.columns([1, 1.4, 2.6])
             with btn_col1:
-                search_clicked = st.button(":material/travel_explore: Search", type="primary", use_container_width=True, key="car_search_btn")
+                search_clicked = st.button(":material/travel_explore: Search", type="primary", width="stretch", key="car_search_btn")
             test_clicked = False
             if roles.is_staff(st.session_state.user_role):
                 with btn_col2:
-                    test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn", use_container_width=True,
+                    test_clicked = st.button(":material/science: Search with sample data", key="car_search_test_btn", width="stretch",
                                               help="Uses mock/sample data - doesn't spend real Auto.dev quota.")
 
         if search_clicked or test_clicked:
@@ -315,11 +315,11 @@ def render_car_search_page(is_guest=False):
         save_col, _ = st.columns([1, 1])
         with save_col:
             with st.container(key="car_search_save_popover"):
-                with st.popover(":material/bookmark: Save this search", use_container_width=True):
+                with st.popover(":material/bookmark: Save this search", width="stretch"):
                     st.caption("Get notified by email when a new match like these appears.")
                     save_name = st.text_input("Name this search", key="car_search_save_name", placeholder="e.g., Family SUV under $30k")
                     if guest_action_button(":material/save: Save", "save this search", key="car_search_save_confirm_btn",
-                                            type="primary", use_container_width=True):
+                                            type="primary", width="stretch"):
                         if save_name.strip():
                             db.save_report_config(
                                 st.session_state.user_id, save_name.strip(), zip_code or "Nationwide",
@@ -484,7 +484,7 @@ def _render_car_view_toolbar(results, key_prefix):
             price_label = ("Any Price" if current_price_range == (price_floor, price_ceiling)
                             else f"${current_price_range[0]:,} - ${current_price_range[1]:,}")
             if price_ceiling > price_floor:
-                with st.popover(f":material/attach_money: {price_label}", use_container_width=True):
+                with st.popover(f":material/attach_money: {price_label}", width="stretch"):
                     filter_min_price, filter_max_price = st.slider(
                         "Price range", min_value=price_floor, max_value=price_ceiling,
                         value=(price_floor, price_ceiling), key=price_range_key, format="$%d"
@@ -495,7 +495,7 @@ def _render_car_view_toolbar(results, key_prefix):
             mileage_label = ("Any Mileage" if current_mileage_range == (mileage_floor, mileage_ceiling)
                               else f"{current_mileage_range[0]:,} - {current_mileage_range[1]:,} mi")
             if mileage_ceiling > mileage_floor:
-                with st.popover(f":material/speed: {mileage_label}", use_container_width=True):
+                with st.popover(f":material/speed: {mileage_label}", width="stretch"):
                     filter_min_mileage, filter_max_mileage = st.slider(
                         "Mileage range", min_value=mileage_floor, max_value=mileage_ceiling,
                         value=(mileage_floor, mileage_ceiling), key=mileage_range_key, format="%d mi"
@@ -528,7 +528,7 @@ def _render_car_view_toolbar(results, key_prefix):
             sort_state_key = f"{key_prefix}_car_sort"
             if sort_state_key not in st.session_state:
                 st.session_state[sort_state_key] = "best_deal"
-            with st.popover(f":material/swap_vert: {sort_label_by_key[st.session_state[sort_state_key]]}", use_container_width=True):
+            with st.popover(f":material/swap_vert: {sort_label_by_key[st.session_state[sort_state_key]]}", width="stretch"):
                 picked_sort_label = st.radio(
                     "Sort by", [label for _, label in sort_options],
                     index=[key for key, _ in sort_options].index(st.session_state[sort_state_key]),
@@ -643,7 +643,7 @@ def _render_car_split_view(filtered, key_prefix):
             textposition="top center", textfont=dict(color="#0f172a", size=12, family="Arial Black"),
         )
         fig.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
-        st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_car_split_map", config={"displayModeBar": True, "scrollZoom": True})
+        st.plotly_chart(fig, width="stretch", key=f"{key_prefix}_car_split_map", config={"displayModeBar": True, "scrollZoom": True})
 
 
 def _render_car_clustered_map(filtered, key_prefix, height=650):
@@ -685,7 +685,7 @@ def _render_car_clustered_map(filtered, key_prefix, height=650):
     fig.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=height, showlegend=False)
 
     map_event = st.plotly_chart(
-        fig, use_container_width=True, key=f"{key_prefix}_car_full_map",
+        fig, width="stretch", key=f"{key_prefix}_car_full_map",
         on_select="rerun", selection_mode="points", config={"displayModeBar": True, "scrollZoom": True},
     )
     selected_points = map_event.get("selection", {}).get("points", []) if map_event else []
@@ -700,7 +700,7 @@ def _render_car_clustered_map(filtered, key_prefix, height=650):
                 member_rows = df.iloc[clicked["member_indices"]]
                 summary_df = member_rows[["title", "dealer_name", "price"]].copy()
                 summary_df["price"] = summary_df["price"].apply(lambda p: f"${p:,.0f}")
-                st.dataframe(summary_df, hide_index=True, use_container_width=True, height=len(summary_df) * 35 + 38)
+                st.dataframe(summary_df, hide_index=True, width="stretch", height=len(summary_df) * 35 + 38)
             else:
                 st.markdown("#### :material/location_on: Selected Listing")
                 sel_idx = clicked["member_indices"][0]
@@ -722,13 +722,13 @@ def _render_car_table_view(filtered, key_prefix):
 
     nav1, nav2, nav3 = st.columns([1, 2, 1])
     with nav1:
-        if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, use_container_width=True, key=f"{key_prefix}_car_table_prev"):
+        if st.button(":material/chevron_left: Previous", disabled=current_page <= 1, width="stretch", key=f"{key_prefix}_car_table_prev"):
             st.session_state[page_key] = current_page - 1
             st.rerun()
     with nav2:
         st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {current_page} of {total_pages} · {total_rows} total listings</div>", unsafe_allow_html=True)
     with nav3:
-        if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, use_container_width=True, key=f"{key_prefix}_car_table_next"):
+        if st.button("Next :material/chevron_right:", disabled=current_page >= total_pages, width="stretch", key=f"{key_prefix}_car_table_next"):
             st.session_state[page_key] = current_page + 1
             st.rerun()
 
@@ -760,7 +760,7 @@ def _render_car_table_view(filtered, key_prefix):
         })
     table_df = pd.DataFrame(rows)
     st.dataframe(
-        table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
+        table_df, width="stretch", hide_index=True, height=len(table_df) * 35 + 38,
         key=f"{key_prefix}_car_table_grid",
         column_config={
             "Price": st.column_config.NumberColumn(format="$%d"),
@@ -826,13 +826,13 @@ def _delete_saved_car_search_dialog():
     st.warning(f"Delete **{ctx['name']}**? This can't be undone.")
     confirm_col, cancel_col = st.columns(2)
     with confirm_col:
-        if st.button(":material/delete_forever: Confirm Delete", type="primary", use_container_width=True):
+        if st.button(":material/delete_forever: Confirm Delete", type="primary", width="stretch"):
             db.delete_report_config(st.session_state.user_id, ctx["name"])
             st.session_state.car_saved_delete_target = None
             st.toast("Search deleted.")
             st.rerun()
     with cancel_col:
-        if st.button("Cancel", use_container_width=True):
+        if st.button("Cancel", width="stretch"):
             st.session_state.car_saved_delete_target = None
             st.rerun()
 
@@ -889,7 +889,7 @@ def render_saved_car_searches_page(is_guest=False):
     df["Run"] = ":material/travel_explore:"
     df["Delete"] = ":material/delete:"
     st.dataframe(
-        df, use_container_width=True, hide_index=True, key="saved_car_searches_grid",
+        df, width="stretch", hide_index=True, key="saved_car_searches_grid",
         column_order=["Profile Name", "Criteria", "Run", "Delete"],
         height=len(df) * 35 + 38,
         column_config={

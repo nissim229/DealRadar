@@ -52,7 +52,7 @@ def _render_auth_topbar():
         with col_logo:
             render_guest_logo_html()
         with col_back:
-            if st.button("← Back to browsing", key="auth_back_to_browsing_btn", use_container_width=True):
+            if st.button("← Back to browsing", key="auth_back_to_browsing_btn", width="stretch"):
                 st.session_state.show_login_form = False
                 st.rerun()
 
@@ -159,7 +159,7 @@ def _render_no_account_found():
             <div style='color: var(--radar-text-muted); font-size: var(--radar-text-base); margin-top: 4px;'>Want to create one using this Google account?</div>
         </div>
     """, unsafe_allow_html=True)
-    if st.button("Create my account", type="primary", use_container_width=True, key="google_create_account_btn"):
+    if st.button("Create my account", type="primary", width="stretch", key="google_create_account_btn"):
         user_record = db.get_or_create_google_user(email, name)
         st.session_state.google_pending_signup = None
         if user_record.get("suspended"):
@@ -167,13 +167,13 @@ def _render_no_account_found():
         else:
             _apply_login_session(user_record, email)
             st.rerun()
-    if st.button("Register manually instead", use_container_width=True, key="google_manual_register_btn"):
+    if st.button("Register manually instead", width="stretch", key="google_manual_register_btn"):
         st.session_state.google_pending_signup = None
         st.session_state.show_login_form = True
         st.session_state.prefill_register_email = email
         st.session_state.auth_portal_mode_selector_final = "Register New Account"
         st.rerun()
-    if st.button("Back to Sign In", use_container_width=True, key="google_back_to_signin_btn"):
+    if st.button("Back to Sign In", width="stretch", key="google_back_to_signin_btn"):
         st.session_state.google_pending_signup = None
         st.session_state.show_login_form = True
         st.rerun()
@@ -231,7 +231,7 @@ def handle_google_oauth_callback(code):
                         _apply_login_session(user_record, info["email"])
                         st.rerun()
 
-            if st.button("Back to Sign In", type="primary", use_container_width=True):
+            if st.button("Back to Sign In", type="primary", width="stretch"):
                 st.session_state.show_login_form = True
                 st.rerun()
 
@@ -270,12 +270,12 @@ def render_auth_portal():
                 _, link_col = st.columns([2, 1])
                 with link_col:
                     st.markdown("<div style='text-align:right; margin-top:-8px;'>", unsafe_allow_html=True)
-                    if st.button("Forgot password?", key="forgot_pw_link", use_container_width=False, type="tertiary"):
+                    if st.button("Forgot password?", key="forgot_pw_link", width="content", type="tertiary"):
                         st.session_state.show_forgot_password_form = True
                         st.rerun()
                     st.markdown("</div>", unsafe_allow_html=True)
 
-                if st.button("Sign In", type="primary", use_container_width=True):
+                if st.button("Sign In", type="primary", width="stretch"):
                     user_record = db.authenticate_user(email, password)
                     if user_record and user_record.get("suspended"):
                         st.error("This account has been suspended. Contact support for help.")
@@ -303,7 +303,7 @@ def render_auth_portal():
                     target_type = st.selectbox("Property Type", ["Single Family Home", "Condo", "Multi-Family", "Townhouse"])
 
                 st.caption("New accounts start with 3 free scan credits.")
-                if st.button("Create Account", type="primary", use_container_width=True):
+                if st.button("Create Account", type="primary", width="stretch"):
                     if not email or len(password) < 6:
                         st.error("Password must be at least 6 characters.")
                     elif not first_name.strip() or not last_name.strip():
@@ -335,7 +335,7 @@ def _render_forgot_password_form():
 
     email = st.text_input("Email", placeholder="investor@firm.com", key="forgot_pw_email")
 
-    if st.button("Send Reset Link", type="primary", use_container_width=True):
+    if st.button("Send Reset Link", type="primary", width="stretch"):
         if not email:
             st.error("Enter your email address.")
         elif not email_utils.is_email_configured():
@@ -352,7 +352,7 @@ def _render_forgot_password_form():
                 email_utils.send_password_reset_email(email, reset_link)
             st.success("If that email is registered, a reset link is on its way. Check your inbox (and spam folder).")
 
-    if st.button("← Back to Sign In", use_container_width=True):
+    if st.button("← Back to Sign In", width="stretch"):
         st.session_state.show_forgot_password_form = False
         st.rerun()
 
@@ -375,7 +375,7 @@ def render_reset_password_view(token):
                         <div style='color: var(--radar-text-muted); font-size: var(--radar-text-base); margin-top: 4px;'>You can now sign in with your new password.</div>
                     </div>
                 """, unsafe_allow_html=True)
-                if st.button("Continue to Sign In", type="primary", use_container_width=True):
+                if st.button("Continue to Sign In", type="primary", width="stretch"):
                     st.query_params.clear()
                     st.session_state.password_reset_done = False
                     st.session_state.show_login_form = True
@@ -391,7 +391,7 @@ def render_reset_password_view(token):
                         <div style='color: var(--radar-text-muted); font-size: var(--radar-text-base); margin-top: 4px;'>Reset links are only valid for 1 hour and can only be used once. Request a new one below.</div>
                     </div>
                 """, unsafe_allow_html=True)
-                if st.button("Request a New Link", type="primary", use_container_width=True):
+                if st.button("Request a New Link", type="primary", width="stretch"):
                     st.query_params.clear()
                     st.session_state.show_login_form = True
                     st.session_state.show_forgot_password_form = True
@@ -408,7 +408,7 @@ def render_reset_password_view(token):
             new_password = st.text_input("New Password", type="password", placeholder="At least 6 characters", key="reset_new_pw")
             confirm_password = st.text_input("Confirm New Password", type="password", key="reset_confirm_pw")
 
-            if st.button("Reset Password", type="primary", use_container_width=True):
+            if st.button("Reset Password", type="primary", width="stretch"):
                 if len(new_password) < 6:
                     st.error("Password must be at least 6 characters.")
                 elif new_password != confirm_password:

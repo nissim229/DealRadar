@@ -91,12 +91,12 @@ def render_main_topbar(is_guest=False):
                 # [[feedback-popover-navigation]]), which is right for the
                 # account popover's in-place actions but wrong here, where
                 # every option click is a navigation.
-                with st.popover(trigger_label, use_container_width=True,
+                with st.popover(trigger_label, width="stretch",
                                  key=f"topbar_category_popover_trigger_{st.session_state.active_category}"):
                     for cat in CATEGORIES:
                         is_active = cat["value"] == st.session_state.active_category
                         if st.button(f"{cat['icon']} {cat['label']}", key=f"topbar_category_opt_{cat['value']}",
-                                     use_container_width=True, type="primary" if is_active else "secondary"):
+                                     width="stretch", type="primary" if is_active else "secondary"):
                             st.session_state.active_category = cat["value"]
                             if st.session_state.current_page not in CATEGORY_MENUS[cat["value"]]:
                                 st.session_state.current_page = CATEGORY_MENUS[cat["value"]][0]
@@ -110,7 +110,7 @@ def render_main_topbar(is_guest=False):
                     with nav_cols[i]:
                         wrapper_key = "scoutai_topbar_active" if is_active else f"scoutai_topbar_inactive_{i}"
                         with st.container(key=wrapper_key):
-                            if st.button(option, key=f"nav_btn_{option}", use_container_width=True):
+                            if st.button(option, key=f"nav_btn_{option}", width="stretch"):
                                 st.session_state.current_page = option
                                 st.rerun()
 
@@ -247,41 +247,41 @@ def render_main_topbar(is_guest=False):
                 # full page-navigation click like this one.
                 with st.container(key="topbar_account_popover_wrap"):
                     if is_guest:
-                        with st.popover(":material/person:", use_container_width=False,
+                        with st.popover(":material/person:", width="content",
                                          help="Browsing as Guest - sample data only",
                                          key=f"account_popover_guest_{st.session_state.current_page}"):
                             st.caption("Browsing as **Guest**")
                             st.caption("Sample data only - nothing here is saved.")
-                            if st.button(":material/login: Sign In / Register", use_container_width=True,
+                            if st.button(":material/login: Sign In / Register", width="stretch",
                                          type="primary", key="topbar_guest_signin_btn"):
                                 st.session_state.show_login_form = True
                                 st.rerun()
                             st.markdown("---")
-                            if st.button(":material/settings: Settings", use_container_width=True, key="topbar_guest_settings_btn"):
+                            if st.button(":material/settings: Settings", width="stretch", key="topbar_guest_settings_btn"):
                                 st.session_state.current_page = "Settings"
                                 st.rerun()
                     else:
                         user_initial = st.session_state.user_email[0].upper() if st.session_state.user_email else "?"
-                        with st.popover(user_initial, use_container_width=False,
+                        with st.popover(user_initial, width="content",
                                          help=f"{st.session_state.user_email}  ·  {st.session_state.user_role.upper()}",
                                          key=f"account_popover_{st.session_state.current_page}"):
                             st.caption(st.session_state.user_email)
                             st.caption(f"Role: **{st.session_state.user_role.upper()}**")
                             st.caption(f"Plan: **{st.session_state.user_plan}**")
                             st.caption(f"Credits: **{st.session_state.user_credits}**")
-                            if st.button(":material/upgrade: Upgrade Plan", use_container_width=True, key="topbar_upgrade_btn"):
+                            if st.button(":material/upgrade: Upgrade Plan", width="stretch", key="topbar_upgrade_btn"):
                                 render_pricing_dialog()
                             st.markdown("---")
-                            if st.button(":material/settings: Settings", use_container_width=True, key="topbar_settings_btn"):
+                            if st.button(":material/settings: Settings", width="stretch", key="topbar_settings_btn"):
                                 st.session_state.current_page = "Settings"
                                 st.rerun()
                             st.markdown("---")
 
                             if roles.is_staff(st.session_state.user_role):
-                                if st.button(":material/shield_person: Admin Controls", use_container_width=True, key="topbar_admin_btn"):
+                                if st.button(":material/shield_person: Admin Controls", width="stretch", key="topbar_admin_btn"):
                                     st.session_state.current_page = "Admin Controls"
                                     st.rerun()
-                            if st.button(":material/logout: Log Out", use_container_width=True, key="topbar_logout_btn"):
+                            if st.button(":material/logout: Log Out", width="stretch", key="topbar_logout_btn"):
                                 st.session_state.authenticated = False
                                 st.session_state.user_id = None
                                 st.session_state.user_role = "user"

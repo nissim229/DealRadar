@@ -122,7 +122,7 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
             ref_input = st.text_input("Address to measure distance from",
                                        key=f"{key_prefix}_distance_reference_input", placeholder="e.g., 1600 Pennsylvania Ave, Washington DC",
                                        label_visibility="collapsed")
-            if st.button("Set", key=f"{key_prefix}_set_distance_reference_btn", use_container_width=True):
+            if st.button("Set", key=f"{key_prefix}_set_distance_reference_btn", width="stretch"):
                 geo_result = engine.validate_and_geocode_location(ref_input)
                 if geo_result:
                     st.session_state.distance_reference_point = {
@@ -206,7 +206,7 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
                     baths_pill_label = "Any Baths" if current_min_baths <= min_baths_available else f"{current_min_baths}+ Baths"
 
                     if price_ceiling > price_floor:
-                        with st.popover(f":material/attach_money: {price_pill_label}", use_container_width=True):
+                        with st.popover(f":material/attach_money: {price_pill_label}", width="stretch"):
                             filter_min_price, filter_max_price = st.slider(
                                 "Price range", min_value=price_floor, max_value=price_ceiling,
                                 value=(price_floor, price_ceiling), key=price_range_key,
@@ -214,7 +214,7 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
                             )
                     else:
                         filter_min_price, filter_max_price = price_floor, price_ceiling
-                    with st.popover(f":material/bed: {beds_pill_label}", use_container_width=True):
+                    with st.popover(f":material/bed: {beds_pill_label}", width="stretch"):
                         if max_beds_available > min_beds_available:
                             filter_min_beds = st.selectbox(
                                 "Min beds", options=list(range(min_beds_available, max_beds_available + 1)),
@@ -224,7 +224,7 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
                         else:
                             st.caption(f"Every result in this scan has exactly {min_beds_available} bed(s) - nothing to filter.")
                             filter_min_beds = min_beds_available
-                    with st.popover(f":material/bathtub: {baths_pill_label}", use_container_width=True):
+                    with st.popover(f":material/bathtub: {baths_pill_label}", width="stretch"):
                         if max_baths_available > min_baths_available:
                             filter_min_baths = st.selectbox(
                                 "Min baths", options=list(range(min_baths_available, max_baths_available + 1)),
@@ -461,7 +461,7 @@ def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_pr
                     textposition="top center", textfont=dict(color="#0f172a", size=12, family="Arial Black"),
                 )
                 fig_map.update_layout(mapbox_style="open-street-map", margin={"r": 0, "t": 0, "l": 0, "b": 0}, height=800)
-                st.plotly_chart(fig_map, use_container_width=True, key=f"{key_prefix}_scatter_map", config={"displayModeBar": True, "scrollZoom": True})
+                st.plotly_chart(fig_map, width="stretch", key=f"{key_prefix}_scatter_map", config={"displayModeBar": True, "scrollZoom": True})
         except Exception as e:
             print(f"[Analytics] Map Only view render failed: {e}")
             st.caption("Unable to load the map for this scan.")
@@ -525,14 +525,14 @@ def _render_table_view(coords_json, filter_min_price, filter_max_price, filter_m
 
                 table_nav1, table_nav2, table_nav3 = st.columns([1, 2, 1])
                 with table_nav1:
-                    if st.button(":material/chevron_left: Previous", disabled=table_current_page <= 1, use_container_width=True, key=f"{key_prefix}_table_prev_page_btn"):
+                    if st.button(":material/chevron_left: Previous", disabled=table_current_page <= 1, width="stretch", key=f"{key_prefix}_table_prev_page_btn"):
                         st.session_state[f"{key_prefix}_table_current_page"] = table_current_page - 1
                         st.session_state[f"{key_prefix}_table_selected_idx"] = None
                         st.rerun()
                 with table_nav2:
                     st.markdown(f"<div style='text-align:center; padding-top:8px; color:var(--radar-text-muted); font-size:13px;'>Page {table_current_page} of {table_total_pages} · {table_total_rows} total properties</div>", unsafe_allow_html=True)
                 with table_nav3:
-                    if st.button("Next :material/chevron_right:", disabled=table_current_page >= table_total_pages, use_container_width=True, key=f"{key_prefix}_table_next_page_btn"):
+                    if st.button("Next :material/chevron_right:", disabled=table_current_page >= table_total_pages, width="stretch", key=f"{key_prefix}_table_next_page_btn"):
                         st.session_state[f"{key_prefix}_table_current_page"] = table_current_page + 1
                         st.session_state[f"{key_prefix}_table_selected_idx"] = None
                         st.rerun()
@@ -570,7 +570,7 @@ def _render_table_view(coords_json, filter_min_price, filter_max_price, filter_m
                 table_df = pd.DataFrame(table_rows)
 
                 st.dataframe(
-                    table_df, use_container_width=True, hide_index=True, height=len(table_df) * 35 + 38,
+                    table_df, width="stretch", hide_index=True, height=len(table_df) * 35 + 38,
                     key=f"{key_prefix}_table_view_grid",
                     column_config={
                         "Price": st.column_config.NumberColumn(format="$%d"),

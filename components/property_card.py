@@ -82,7 +82,7 @@ def render_grade_explanation(metrics, calc_target_yield):
         rows.append(("🛑 Vs. your target", "N/A", "Cash flow is negative - the mortgage costs more than the property brings in"))
 
     breakdown_df = pd.DataFrame(rows, columns=["Metric", "Value", "What it means"])
-    st.dataframe(breakdown_df, hide_index=True, use_container_width=True, height=len(breakdown_df) * 35 + 38)
+    st.dataframe(breakdown_df, hide_index=True, width="stretch", height=len(breakdown_df) * 35 + 38)
 
     st.caption(
         "**Quick glossary** — "
@@ -141,9 +141,9 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             st.caption(photos_hint)
             zillow_col, redfin_col = st.columns(2)
             with zillow_col:
-                st.link_button(":material/open_in_new: Search Zillow", engine.build_zillow_search_url(address, mls_number), use_container_width=True)
+                st.link_button(":material/open_in_new: Search Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch")
             with redfin_col:
-                st.link_button(":material/open_in_new: Search Redfin", engine.build_redfin_search_url(address, mls_number), use_container_width=True)
+                st.link_button(":material/open_in_new: Search Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch")
 
     def _render_details():
         # Everything RentCast returns for this listing that isn't already
@@ -191,7 +191,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         if detail_rows:
             st.markdown("##### :material/info: Property Details")
             details_df = pd.DataFrame(detail_rows, columns=["Field", "Value"])
-            st.dataframe(details_df, hide_index=True, use_container_width=True, height=len(details_df) * 35 + 38)
+            st.dataframe(details_df, hide_index=True, width="stretch", height=len(details_df) * 35 + 38)
         else:
             st.caption("No additional property details available for this listing.")
 
@@ -317,7 +317,7 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
                 st.caption(":material/history: Price not manually checked yet")
         with check_cols[1]:
             clicked = st.button(
-                "Check Now", key=f"{key_prefix}_price_check_{idx}", use_container_width=True,
+                "Check Now", key=f"{key_prefix}_price_check_{idx}", width="stretch",
                 disabled=not can_check,
                 help=None if can_check else "Out of credits - buy more or upgrade your plan to check for price drops.",
             )
@@ -540,7 +540,7 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
         info_col, action_col = st.columns([4, 1])
         with info_col:
             with st.container(key=f"{card_key}_clicktarget"):
-                if st.button(f":material/center_focus_strong: {address}", key=f"{key_prefix}_{idx}", use_container_width=True,
+                if st.button(f":material/center_focus_strong: {address}", key=f"{key_prefix}_{idx}", width="stretch",
                              help="Focus this property on the map"):
                     focus_clicked = True
             info_parts = [f"{row_item.get('beds', '-')} bd", f"{row_item.get('baths', '-')} ba"]
@@ -589,7 +589,7 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
         # Opens as a true modal layer on top of the page (native Streamlit
         # dialog), instead of expanding inline - closer to how Zillow's
         # click-through detail view behaves.
-        if st.button(":material/search: View Full Details", key=f"{key_prefix}_viewdetails_{idx}", use_container_width=True):
+        if st.button(":material/search: View Full Details", key=f"{key_prefix}_viewdetails_{idx}", width="stretch"):
             st.session_state.property_dialog_ctx = {
                 "row_item": row_item, "metrics": metrics, "address": address,
                 "user_id": user_id, "reference_point": reference_point,
@@ -606,10 +606,10 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
                             "Opens a Redfin-scoped search for this address - not a guaranteed direct link, since we have no MLS# for this property and no Redfin listing ID either")
             zillow_col, redfin_col = st.columns(2)
             with zillow_col:
-                st.link_button("Search Zillow", engine.build_zillow_search_url(address, mls_number), use_container_width=True,
+                st.link_button("Search Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch",
                                 help=zillow_help)
             with redfin_col:
-                st.link_button("Search Redfin", engine.build_redfin_search_url(address, mls_number), use_container_width=True,
+                st.link_button("Search Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch",
                                 help=redfin_help)
 
     return focus_clicked

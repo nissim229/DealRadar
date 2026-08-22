@@ -75,7 +75,7 @@ def render_compact_location_fields(key_prefix):
         else:
             trigger_label = ":material/public: Any city"
         st.markdown('<div class="dealradar-navstyle-label">City</div>', unsafe_allow_html=True)
-        with st.popover(trigger_label, use_container_width=True):
+        with st.popover(trigger_label, width="stretch"):
             city_mode = st.radio(
                 "City selection", ["Any city", "Choose specific cities"], key=mode_key,
                 horizontal=True, label_visibility="collapsed",
@@ -144,7 +144,7 @@ def render_city_picker_map(state, selected_cities, key_prefix, height=380):
                 line=dict(color="#2563eb", width=2), showlegend=False, hoverinfo="skip",
             )
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), legend=dict(title=None))
-    map_event = st.plotly_chart(fig, use_container_width=True, on_select="rerun",
+    map_event = st.plotly_chart(fig, width="stretch", on_select="rerun",
                                  selection_mode="points", key=f"{key_prefix}_map")
     clicked_points = (map_event or {}).get("selection", {}).get("points", [])
     # curve_number 0 is the base city-marker trace; the circle overlays

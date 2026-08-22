@@ -93,13 +93,13 @@ def render_analytics_dashboard(is_guest=False):
                 mode_col1, mode_col2 = st.columns(2)
                 with mode_col1:
                     with st.container(key="sidebar_mode_simple"):
-                        if st.button("Simple", key="sidebar_mode_btn_simple", use_container_width=True,
+                        if st.button("Simple", key="sidebar_mode_btn_simple", width="stretch",
                                      type="primary" if _sidebar_mode == "Simple" else "secondary"):
                             st.session_state.analytics_view_mode_toggle = "Simple"
                             st.rerun()
                 with mode_col2:
                     with st.container(key="sidebar_mode_pro"):
-                        if st.button("Pro", key="sidebar_mode_btn_pro", use_container_width=True,
+                        if st.button("Pro", key="sidebar_mode_btn_pro", width="stretch",
                                      type="primary" if _sidebar_mode == "Pro" else "secondary"):
                             st.session_state.analytics_view_mode_toggle = "Pro"
                             st.rerun()

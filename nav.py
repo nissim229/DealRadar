@@ -124,7 +124,7 @@ def render_side_nav(items, key_prefix, default=None, state_key=None):
                 st.markdown(f"""<style>div.st-key-{key_prefix}_item_{i} {{
                     border-left: 3px solid {accent}; }}</style>""", unsafe_allow_html=True)
             button_label = f"{icon} {label}".strip() if icon else label
-            if st.button(button_label, key=f"{key_prefix}_btn_{i}", use_container_width=True,
+            if st.button(button_label, key=f"{key_prefix}_btn_{i}", width="stretch",
                          type="primary" if is_active else "secondary"):
                 st.session_state[state_key] = value
                 st.rerun()

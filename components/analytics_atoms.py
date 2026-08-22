@@ -75,7 +75,7 @@ def render_empty_state(icon_name, title, description, cta_label=None, cta_page=N
         st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
         _, btn_col, _ = st.columns([1, 1.4, 1])
         with btn_col:
-            if st.button(cta_label, key=f"empty_state_cta_{cta_page}_{title}", type="primary", use_container_width=True):
+            if st.button(cta_label, key=f"empty_state_cta_{cta_page}_{title}", type="primary", width="stretch"):
                 st.session_state.current_page = cta_page
                 st.rerun()
 
@@ -99,6 +99,6 @@ def _render_clickable_hero_card(card_id, icon_shortcode, value, label, on_click)
     card, since a plain HTML div can't open an st.dialog on click."""
     with st.container(key=f"dashboard_hero_card_{card_id}"):
         if st.button(f"{icon_shortcode} **{value}**\n{label}", key=f"dashboard_hero_card_btn_{card_id}",
-                     use_container_width=True):
+                     width="stretch"):
             on_click()
 

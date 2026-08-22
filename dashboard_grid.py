@@ -80,7 +80,7 @@ def render_dashboard_grid(dashboard_type, cards, default_grid_columns=4, card_he
         toggle_col1, toggle_col2 = st.columns([3, 1])
         with toggle_col2:
             if st.button(":material/tune: Customize Layout" if not customizing else ":material/check: Done Customizing",
-                         key=f"{customize_key}_btn", use_container_width=True):
+                         key=f"{customize_key}_btn", width="stretch"):
                 st.session_state[customize_key] = not customizing
                 st.rerun()
 

@@ -133,7 +133,7 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False,
             """, unsafe_allow_html=True)
             with st.container(key=f"{card_key}_focusbtn"):
                 if st.button(f":material/center_focus_strong: {heading}", key=f"{key_prefix}_focus_{idx}",
-                             use_container_width=True, help="Focus this listing's dealer on the map"):
+                             width="stretch", help="Focus this listing's dealer on the map"):
                     focus_clicked = True
         else:
             st.markdown(f"**{heading}**")
@@ -176,22 +176,22 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False,
                 st.caption(" · ".join(history_bits))
 
         if listing.get("listing_url"):
-            st.link_button(":material/open_in_new: View Listing", listing["listing_url"], use_container_width=True)
+            st.link_button(":material/open_in_new: View Listing", listing["listing_url"], width="stretch")
             if listing.get("carfax_url"):
-                st.link_button(":material/fact_check: Carfax Report", listing["carfax_url"], use_container_width=True)
+                st.link_button(":material/fact_check: Carfax Report", listing["carfax_url"], width="stretch")
         else:
             link_col1, link_col2 = st.columns(2)
             with link_col1:
                 st.link_button(
                     ":material/open_in_new: AutoTrader",
                     build_autotrader_search_url(listing["year"], listing["make"], listing["model"]),
-                    use_container_width=True,
+                    width="stretch",
                 )
             with link_col2:
                 st.link_button(
                     ":material/open_in_new: Cars.com",
                     build_carsdotcom_search_url(listing["year"], listing["make"], listing["model"]),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
     return focus_clicked
