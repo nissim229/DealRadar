@@ -111,11 +111,13 @@ a one-off hex, and never Streamlit's native `:red[...]`/`:green[...]`
 markdown color shortcodes (that's a fixed palette outside the app's own
 token system).
 
-**Known gap**: `underwriting.py`'s `GRADE_STYLES` (the single source every
-deal badge — property AND car — renders from) hardcodes its own hex per
-grade instead of referencing the tokens, even though the values were
-clearly copied from `design_tokens.py` originally. Fix this once, centrally,
-and every badge in the app inherits it.
+**Fixed**: `underwriting.py`'s `GRADE_STYLES` and `car_engine.py`'s
+`CAR_GRADE_STYLES` (the single source every deal badge — property AND
+car — renders from) now reference `var(--radar-success/-warning/
+-danger-bg/-fg/-border)` instead of hardcoded hex. Added the missing
+`-fg`/`-border` token members to `design_tokens.py` to make this
+possible (`-fg` is the dark, high-contrast text shade used on top of
+`-bg` — distinct from the brighter base tone used standalone).
 **Known gap**: `components/admin_controls.py`'s suspended-user indicator
 uses `:red[SUSPENDED]` instead of a custom span like everywhere else.
 
@@ -130,11 +132,16 @@ uses `:red[SUSPENDED]` instead of a custom span like everywhere else.
   does **not** render there, it shows as literal text.
 - **No raw emoji in UI-facing strings.** `icons.py` exists specifically so
   nothing needs to fall back to an emoji.
-  **Known gap (extensive)**: deal-grade badge labels, the grade-explanation
-  table, favorite-star toggles, loading-spinner icon, and several more all
-  still use raw emoji — see the audit list. Not urgent to fix everything
-  at once, but new code should never add another one, and grade badges
-  (the most-seen instance) are the highest-value fix.
+  **Fixed**: deal-grade badge labels (`underwriting.py`'s
+  `render_grade_badge`, used by both property and car badges) - the
+  highest-value instance, now render an `icons.py` icon
+  (`check-circle` for excellent, `alert` for average/critical - shape
+  stays the same for both non-excellent grades, severity is carried by
+  the badge's own color) instead of an emoji.
+  **Known gap (remaining)**: the grade-explanation table, favorite-star
+  toggles, loading-spinner icon, and the Table View's `grade_emojis`
+  column prefix still use raw emoji — see the audit list. Not urgent to
+  fix everything at once, but new code should never add another one.
 
 ## 9. Empty states
 

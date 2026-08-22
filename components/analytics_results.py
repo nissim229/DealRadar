@@ -714,9 +714,9 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
     if best_deal_coc is not None and best_deal_coc > 0:
         st.markdown(f"""
             <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:8px;'>
-                <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
-                <span style='font-weight:700; color:#065f46;'>Best deal in this scan:</span>
-                <span style='color:#065f46;'>{best_deal_coc:.1f}% cash-on-cash return at {best_deal_address}</span>
+                <span style='color:var(--radar-success-fg);'>{svg_icon("trophy", size=16, color="var(--radar-success-fg)")}</span>
+                <span style='font-weight:700; color:var(--radar-success-fg);'>Best deal in this scan:</span>
+                <span style='color:var(--radar-success-fg);'>{best_deal_coc:.1f}% cash-on-cash return at {best_deal_address}</span>
             </div>
         """, unsafe_allow_html=True)
 

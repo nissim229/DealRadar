@@ -127,14 +127,25 @@ def _build_tokens_css():
     --radar-navy: #0f172a;
     --radar-navy-light: #1e293b;
 
-    /* Grade / status colors */
+    /* Grade / status colors. -fg is the dark, high-contrast text shade
+    used ON TOP of -bg (distinct from the brighter base success/warning/
+    danger tones, which are used as standalone accents/icons elsewhere) -
+    tokenizing values that were already consistently hardcoded across
+    underwriting.py/car_engine.py's grade badges and the "best deal"
+    banners in analytics_results.py/car_search.py (design-review pass),
+    not introducing new colors. */
     --radar-success: #10b981;
     --radar-success-bg: #d1fae5;
     --radar-success-border: #6ee7b7;
+    --radar-success-fg: #065f46;
     --radar-warning: #f59e0b;
     --radar-warning-bg: #fef3c7;
+    --radar-warning-border: #fcd34d;
+    --radar-warning-fg: #92400e;
     --radar-danger: #ef4444;
     --radar-danger-bg: #fee2e2;
+    --radar-danger-border: #fca5a5;
+    --radar-danger-fg: #991b1b;
 
     /* Text */
     --radar-text: #1e293b;

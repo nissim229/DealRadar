@@ -347,9 +347,9 @@ def render_car_search_page(is_guest=False):
         best = max(gradeable, key=lambda c: c["pct_below_market"])
         st.markdown(f"""
             <div style='background:var(--radar-success-bg); border:1px solid var(--radar-success-border); border-radius:var(--radar-radius-md); padding:12px 16px; margin:12px 0 16px 0; display:flex; align-items:center; gap:8px;'>
-                <span style='color:#065f46;'>{svg_icon("trophy", size=16, color="#065f46")}</span>
-                <span style='font-weight:700; color:#065f46;'>Best deal in this search:</span>
-                <span style='color:#065f46;'>{best['pct_below_market']:.0f}% below market on the {best['year']} {best['make']} {best['model']}</span>
+                <span style='color:var(--radar-success-fg);'>{svg_icon("trophy", size=16, color="var(--radar-success-fg)")}</span>
+                <span style='font-weight:700; color:var(--radar-success-fg);'>Best deal in this search:</span>
+                <span style='color:var(--radar-success-fg);'>{best['pct_below_market']:.0f}% below market on the {best['year']} {best['make']} {best['model']}</span>
             </div>
         """, unsafe_allow_html=True)
     else:

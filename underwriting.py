@@ -2,7 +2,10 @@
 underwriting.py
 Pure underwriting math and grade styling - no Streamlit UI calls, so this
 module has zero dependency on the app framework and is easy to unit test.
+icons.py is a plain SVG-string module with no framework dependency of its
+own either, so importing it here doesn't compromise that.
 """
+from icons import icon
 
 
 def monthly_payment_factor(annual_rate_pct, n_periods):
@@ -156,20 +159,34 @@ def compute_deal_metrics(price, calc_rent, calc_vacancy_pct, calc_tax_rate, calc
 
 GRADE_STYLES = {
     "critical": {
-        "label": "🔴 Negative Cash Flow",
+        "label": "Negative Cash Flow",
         "simple_verdict": "This one loses money every month at these terms - probably skip it.",
-        "bg": "#fee2e2", "fg": "#991b1b", "border": "#fca5a5",
+        "bg": "var(--radar-danger-bg)", "fg": "var(--radar-danger-fg)", "border": "var(--radar-danger-border)",
     },
     "excellent": {
-        "label": "🟢 Outstanding Deal",
+        "label": "Outstanding Deal",
         "simple_verdict": "This one clears your target return with room to spare.",
-        "bg": "#d1fae5", "fg": "#065f46", "border": "#6ee7b7",
+        "bg": "var(--radar-success-bg)", "fg": "var(--radar-success-fg)", "border": "var(--radar-success-border)",
     },
     "average": {
-        "label": "🟡 Average Deal",
+        "label": "Average Deal",
         "simple_verdict": "This one pencils out, but only just - worth a closer look before committing.",
-        "bg": "#fef3c7", "fg": "#92400e", "border": "#fcd34d",
+        "bg": "var(--radar-warning-bg)", "fg": "var(--radar-warning-fg)", "border": "var(--radar-warning-border)",
     },
+}
+
+# Which icons.py icon backs each grade badge - shared by GRADE_STYLES above
+# and car_engine.py's CAR_GRADE_STYLES, since both render through the same
+# render_grade_badge() below. "alert" (a triangle) is deliberately reused
+# for both average and critical - severity is read from the badge's own
+# color (amber vs red), the same "one shape, color carries severity"
+# pattern Material/most icon sets use, rather than inventing a second
+# "worse" glyph icons.py doesn't have.
+GRADE_BADGE_ICONS = {
+    "critical": "alert",
+    "critical_condition": "alert",
+    "average": "alert",
+    "excellent": "check-circle",
 }
 
 
@@ -178,10 +195,12 @@ def render_grade_badge(grade, styles_dict):
     using GRADE_STYLES below) and render_car_deal_badge (car_engine.py,
     using its own CAR_GRADE_STYLES) - only the style dict differs."""
     style = styles_dict[grade]
+    icon_svg = icon(GRADE_BADGE_ICONS.get(grade, "alert"), size=13, color=style["fg"])
     return (
         f"<span style='background-color:{style['bg']}; color:{style['fg']}; "
         f"padding:6px 12px; border-radius:6px; font-weight:700; font-size:13px; "
-        f"border:1px solid {style['border']}; white-space:nowrap;'>{style['label']}</span>"
+        f"border:1px solid {style['border']}; white-space:nowrap; display:inline-flex; "
+        f"align-items:center; gap:5px;'>{icon_svg}{style['label']}</span>"
     )
 
 

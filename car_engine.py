@@ -337,7 +337,7 @@ def generate_mock_car_listings(make=None, model=None, trim=None, min_year=None, 
 # in the app), just car-appropriate copy - confirmed live that showing
 # "Negative Cash Flow" on a used Jeep read as nonsensical.
 CAR_GRADE_STYLES = {
-    "critical": {"label": "🔴 Above Market", "bg": "#fee2e2", "fg": "#991b1b", "border": "#fca5a5"},
+    "critical": {"label": "Above Market", "bg": "var(--radar-danger-bg)", "fg": "var(--radar-danger-fg)", "border": "var(--radar-danger-border)"},
     # Same red as "critical" - still a real, visible warning - but a
     # different label. "critical" gets reached two genuinely different
     # ways for a real listing (see _grade_real_listings): priced above
@@ -350,9 +350,9 @@ CAR_GRADE_STYLES = {
     # market value") - a real, confirmed contradiction a user hit live.
     # This second style exists so the badge only ever claims "Above
     # Market" when that's actually true.
-    "critical_condition": {"label": "🔴 Condition Concerns", "bg": "#fee2e2", "fg": "#991b1b", "border": "#fca5a5"},
-    "excellent": {"label": "🟢 Great Deal", "bg": "#d1fae5", "fg": "#065f46", "border": "#6ee7b7"},
-    "average": {"label": "🟡 Fair Deal", "bg": "#fef3c7", "fg": "#92400e", "border": "#fcd34d"},
+    "critical_condition": {"label": "Condition Concerns", "bg": "var(--radar-danger-bg)", "fg": "var(--radar-danger-fg)", "border": "var(--radar-danger-border)"},
+    "excellent": {"label": "Great Deal", "bg": "var(--radar-success-bg)", "fg": "var(--radar-success-fg)", "border": "var(--radar-success-border)"},
+    "average": {"label": "Fair Deal", "bg": "var(--radar-warning-bg)", "fg": "var(--radar-warning-fg)", "border": "var(--radar-warning-border)"},
 }
 
 
