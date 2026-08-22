@@ -57,6 +57,10 @@ DEFAULT_USER_SETTINGS = {
     "notify_deal_found": False,
     "notify_low_credits": True,
     "notify_password_changed": True,
+    # Same "opt-in feature notification" bucket as notify_deal_found above -
+    # a price drop on a saved property is closer to a nice-to-have alert
+    # than an account-status one.
+    "notify_price_drop": False,
 }
 
 

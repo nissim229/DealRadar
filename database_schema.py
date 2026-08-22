@@ -648,6 +648,20 @@ def _create_saved_properties_table(cursor):
             UNIQUE(user_id, address)
         )
     """)
+    # Migration: add last_price_checked_at for the "Check Now" manual
+    # price-drop check (a signed-in user spends 1 credit, same cost as a
+    # scan, to re-fetch this property's current live price). NULL means
+    # "never manually re-checked since saving" - every pre-existing saved
+    # property correctly starts there. No separate "last known price"
+    # column: `price` itself IS the last-known price (save_property()
+    # already treats it as mutable, not an immutable purchase-time
+    # snapshot - see its ON CONFLICT DO UPDATE), so a check simply
+    # overwrites `price` with the fresh read and only alerts when that
+    # fresh read is LOWER than what was there before.
+    try:
+        cursor.execute("ALTER TABLE saved_properties ADD COLUMN last_price_checked_at TIMESTAMP")
+    except sqlite3.OperationalError:
+        pass
 
 
 def _run_role_migration(cursor):

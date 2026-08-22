@@ -326,6 +326,33 @@ def _fetch_rentcast_listings(center_lat, center_lon, property_type, max_p, min_b
         return None
 
 
+def check_saved_property_price(latitude, longitude, address, user_id=None):
+    """Manual 'Check Now' price re-check for one saved property - re-runs a
+    real RentCast search centered on the property's OWN coordinates (not the
+    original scan's search center, which this function has no way to know)
+    and looks for an exact address match among current active listings.
+
+    Radius matches a normal scan's own default (25mi) purely so this has a
+    chance of landing a cache hit against an already-cached area (see
+    _fetch_rentcast_listings's cache-aside layer) - property_type=None
+    means "any type", which is its own distinct cache key from any specific-
+    type scan that happened to cover the same coordinates, so a real API
+    call is the common case here, not the exception. This is exactly why
+    the caller (components/analytics_saved.py) gates this behind spending
+    1 credit, same cost as a live scan - "usually free" would be dishonest.
+
+    Returns the fresh price if the address is still actively listed, else
+    None - which just as often means "sold/delisted" as "check failed",
+    so callers should treat it as an honest no-data result, not an error."""
+    listings = _fetch_rentcast_listings(latitude, longitude, None, max_p=10**12, min_b=0, radius=25, user_id=user_id)
+    if not listings:
+        return None
+    for listing in listings:
+        if listing["address"] == address:
+            return listing["price"]
+    return None
+
+
 def fetch_live_listings(location, property_type, max_price, min_beds, allow_live=True, radius=25, override_coords=None, user_id=None):
     """
     Dynamically routes coordinates and simulates property matches

@@ -97,6 +97,23 @@ def send_deal_found_email(to_email, profile_name, match_count, best_coc):
     return _send_plain(to_email, f"DealRadar: outstanding deal found in \"{profile_name}\"", body)
 
 
+def send_price_drop_email(to_email, address, old_price, new_price):
+    """Sent when a manual 'Check Now' price check on a saved property finds
+    a lower live price than what was on file, if the user has opted in via
+    Settings. Unlike send_deal_found_email (a full live scan, run
+    automatically), this only fires from a user-initiated, credit-spending
+    check - see check_saved_property_price() in agent_engine.py."""
+    drop = old_price - new_price
+    pct = (drop / old_price) * 100 if old_price else 0
+    body = (
+        f"{address} just dropped from ${old_price:,.0f} to ${new_price:,.0f} "
+        f"(down ${drop:,.0f}, {pct:.1f}%).\n\n"
+        f"Log in to DealRadar to see the updated numbers on this property.\n\n"
+        f"You're getting this because price-drop alerts are turned on in your Settings - you can turn them off there anytime."
+    )
+    return _send_plain(to_email, f"DealRadar: price drop on {address}", body)
+
+
 def send_low_credits_email(to_email):
     """Sent once when a user's credit balance reaches exactly 0 (not on
     every subsequent 0-credit scan), if opted in via Settings."""

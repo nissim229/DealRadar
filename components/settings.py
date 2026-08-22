@@ -194,10 +194,13 @@ def _render_notifications(settings):
     new_deal = st.checkbox("Email me when a live scan finds an outstanding deal", value=settings["notify_deal_found"], key="settings_notify_deal")
     new_credits = st.checkbox("Email me when my credits run out", value=settings["notify_low_credits"], key="settings_notify_credits")
     new_pw = st.checkbox("Email me when my password changes", value=settings["notify_password_changed"], key="settings_notify_pw")
-    if new_deal != settings["notify_deal_found"] or new_credits != settings["notify_low_credits"] or new_pw != settings["notify_password_changed"]:
+    new_drop = st.checkbox("Email me when a saved property's price drops", value=settings["notify_price_drop"], key="settings_notify_price_drop")
+    if (new_deal != settings["notify_deal_found"] or new_credits != settings["notify_low_credits"]
+            or new_pw != settings["notify_password_changed"] or new_drop != settings["notify_price_drop"]):
         settings["notify_deal_found"] = new_deal
         settings["notify_low_credits"] = new_credits
         settings["notify_password_changed"] = new_pw
+        settings["notify_price_drop"] = new_drop
         _save(settings)
         st.toast("Notification preferences updated.")
 

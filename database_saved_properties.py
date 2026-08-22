@@ -73,10 +73,34 @@ def get_saved_properties(user_id):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT address, title, price, beds, baths, latitude, longitude, notes, saved_at
+            SELECT address, title, price, beds, baths, latitude, longitude, notes, saved_at, last_price_checked_at
             FROM saved_properties WHERE user_id=? ORDER BY saved_at DESC
         """, (int(user_id),))
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+def record_price_check(user_id, address, new_price):
+    """Records the result of a manual 'Check Now' price check: always
+    overwrites `price` with the fresh read (see the last_price_checked_at
+    migration's comment in database_schema.py for why there's no separate
+    'last known price' column) and stamps last_price_checked_at. Returns
+    the PRIOR price so the caller can tell whether this was actually a
+    drop worth alerting on, without a second round-trip."""
+    conn = sqlite3.connect(database.DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT price FROM saved_properties WHERE user_id=? AND address=?", (int(user_id), address))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        old_price = row[0]
+        cursor.execute(
+            "UPDATE saved_properties SET price=?, last_price_checked_at=CURRENT_TIMESTAMP WHERE user_id=? AND address=?",
+            (int(new_price), int(user_id), address)
+        )
+        conn.commit()
+        return old_price
     finally:
         conn.close()
 
