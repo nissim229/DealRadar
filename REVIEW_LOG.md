@@ -1208,3 +1208,98 @@ check against a temp DB confirmed a valid token still validates and an
 already-expired one is still correctly rejected, so the fix didn't
 silently change the real expiry comparison logic. CI green on the real
 GitHub Actions run for `1c5056c`.
+
+## Entry 13 — Focused security pass + rehab costs in the deal formula (2026-08-22)
+
+**Status**: Both done, verified locally + live in browser. Not yet
+reviewed by HG.
+
+Commits: `03d9640` (security pass), `3cd870f` (rehab costs).
+
+### Security pass (`03d9640`)
+
+Owner asked what else the app could use; scoped this to 3 concrete,
+checkable categories matched to recently-changed code rather than an
+unbounded audit: IDOR, SQL injection, XSS.
+
+- **XSS**: `components/property_card.py` and
+  `components/analytics_results.py` both build a PDF-export `<a
+  download="...">` attribute via an f-string inside
+  `unsafe_allow_html=True`, interpolating a user-controlled title/
+  profile name with no escaping - a `"` in that string breaks out of
+  the attribute. Fixed with `html.escape(..., quote=True)` on the
+  filename in both files. Distinguished from a non-issue considered
+  and rejected: Brand & Design's logo-preset name is admin-only and
+  that panel already grants admins raw-HTML injection by design, so
+  it's not a real trust-boundary crossing.
+- **IDOR (defense-in-depth, not a live exploit)**: `add_tenant` and
+  `add_document` in `database_portfolio.py` inserted rows scoped to a
+  `property_id` without first checking that property actually belongs
+  to `user_id` - every sibling function in the same file (get/update/
+  delete for tenants, documents, properties) already does this check;
+  these two inserts were the only exception. Traced the actual call
+  path before fixing: not reachable through today's UI, since
+  Streamlit's `session_state` isn't client-manipulable the way a REST
+  API's parameters would be. Fixed anyway as correct hygiene matching
+  every other function in the file, not because of a live exploit.
+- **SQL injection**: reviewed, found no new issues - the file already
+  parameterizes every query.
+
+Verified: `py_compile` clean on both edited files; full suite (57
+tests) still green (no test exercised these code paths, so nothing
+was expected to change); live-checked both PDF exports (property card
+and scan results) still download correctly with the escaped filename
+rendering as plain text, not breaking the attribute.
+
+### Rehab costs in the deal formula (`3cd870f`)
+
+The reviewer's original deal-math audit (Entry 8) flagged rehab budget
+as a real-world cost line missing from BOTH `compute_deal_metrics()`
+and the What-If sandbox - the one gap left after mgmt/maintenance/
+closing were fixed. Added `calc_rehab_cost` to `compute_deal_metrics()`
+in `underwriting.py`, treated identically to `calc_closing_costs` in
+every formula (one-time cash that never touches NOI/cashflow, only
+shifts `total_cash_needed`/CoC denominator and MAO's numerator scaled
+by `target_yield`) - same derivation, not a new one. Added the
+matching input to `whatif_calculator.py`'s JS sandbox (3rd field in
+the "At Purchase" row, using the pre-existing but previously-unused
+`wi-field-grid-3` CSS class) and a conditional "🛠️ Rehab budget" row
+to `property_card.py`'s "Why This Grade" breakdown, generalizing the
+CoC help text to list whichever upfront-cost lines are actually
+present.
+
+Verified independently via a standalone script before touching any
+UI: cashflow unchanged, `total_cash_needed` shifts by exactly the
+rehab delta, MAO shifts by exactly `target_yield * rehab / denom` to
+the penny. Confirmed live in the browser: typing $25,000 into Rehab
+Budget on a real scanned property left Monthly Cash Flow at $1,246
+unchanged, moved Cash Needed from $73,788 to exactly $98,788, dropped
+CoC ROI 20.26% -> 15.14%, and dropped Suggested Max Offer $392,577 ->
+$371,046 - all matching the formula. Added 2 new tests
+(`test_rehab_cost_leaves_cashflow_unchanged_but_shifts_coc_and_mao`,
+`test_closing_costs_and_rehab_cost_combine_additively_in_mao`). Full
+suite: 59 passed (57 prior + 2 new).
+
+Confirmed, before writing this entry: no current call site of
+`compute_deal_metrics()` passes `calc_rehab_cost` (or, checked at the
+same time, `calc_closing_costs`) as a nonzero value - both are opt-in
+parameters with display code ready on the card, but neither has a
+dedicated per-property input outside the What-If sandbox yet. The new
+rehab breakdown row is therefore currently unreachable in production,
+same as the pre-existing closing-costs row - a consistent, pre-
+existing pattern, not a new gap.
+
+### What to check
+
+- The IDOR fix's ownership-check queries (`SELECT 1 FROM
+  portfolio_properties WHERE id=? AND user_id=?`) - do they match the
+  exact pattern every other scoped function in `database_portfolio.py`
+  uses, or did this introduce any subtle difference?
+- The rehab-cost MAO/CoC algebra - independently re-derive it against
+  `underwriting.py`'s own docstring rather than trusting the "matches
+  closing costs" claim at face value.
+- Whether `calc_rehab_cost`/`calc_closing_costs` being unreachable from
+  any current UI call site (noted above) is worth its own FIXLIST item
+  - a future "add rehab/closing-cost inputs to the property card
+    itself" task - or whether that's out of scope until a real user
+  need shows up.
