@@ -141,9 +141,9 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             st.caption(photos_hint)
             zillow_col, redfin_col = st.columns(2)
             with zillow_col:
-                st.link_button(":material/open_in_new: Search Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch")
+                st.link_button(":material/open_in_new: Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch")
             with redfin_col:
-                st.link_button(":material/open_in_new: Search Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch")
+                st.link_button(":material/open_in_new: Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch")
 
     def _render_details():
         # Everything RentCast returns for this listing that isn't already
@@ -606,10 +606,10 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
                             "Opens a Redfin-scoped search for this address - not a guaranteed direct link, since we have no MLS# for this property and no Redfin listing ID either")
             zillow_col, redfin_col = st.columns(2)
             with zillow_col:
-                st.link_button("Search Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch",
+                st.link_button(":material/open_in_new: Zillow", engine.build_zillow_search_url(address, mls_number), width="stretch",
                                 help=zillow_help)
             with redfin_col:
-                st.link_button("Search Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch",
+                st.link_button(":material/open_in_new: Redfin", engine.build_redfin_search_url(address, mls_number), width="stretch",
                                 help=redfin_help)
 
     return focus_clicked
