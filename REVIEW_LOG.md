@@ -1699,3 +1699,84 @@ Verified live: 5/row now shows exactly 2 well-formed cards in
 Properties + Map with the explanatory caption; Properties Only at
 5/row still correctly shows all 5, full width, no wrapping issue.
 Full suite: 59 passed. No server errors.
+
+## Entry 18 — Design-review pass, items 1-3 (2026-08-22)
+
+**Status**: Done, verified live. Not yet reviewed by HG.
+
+Commits: `06deaa2` (use_container_width migration), `6ce655e` (topbar
+density), `b627630` (grade-badge tokens/icons).
+
+A second reviewer (Codex) sent a design-review handoff
+(`CLAUDE_DESIGN_HANDOFF.md`) via the owner. Read it plus
+`DESIGN_STANDARDS.md`, independently verified the specific claims
+against the actual code before trusting them (confirmed:
+`use_container_width` at 149 real call sites across 19 files;
+`topbar_logo.py`/`topbar_styles.py` exist as named; the grade-badge
+emoji/hex gap was real and already self-documented), gave the owner a
+candid assessment (agreed with 3 of 5 points, pushed back on 2 -
+"first-run scan simplicity" is already solved by the existing Simple/
+Pro toggle; "competing visual emphasis" was too vague to act on
+without a named page) plus my own prioritized list, and got approval
+to proceed on items 1-4.
+
+### Item 1 (`06deaa2`): use_container_width -> width= migration
+
+Repo-wide, mechanical, behaviorally identical - 149 call sites across
+19 files. Verified every one of the 7 affected widget types
+(`st.button`/`dataframe`/`plotly_chart`/`popover`/`link_button`/
+`form_submit_button`/`download_button`) accepts `width=` in the
+installed Streamlit version (1.61.1) via `inspect.signature()` before
+running the substitution, and confirmed no `use_container_width=
+<variable>` call sites existed (only literal True/False) - a plain
+string substitution was safe. Deprecation warning (previously on
+nearly every server rerun all session) is completely gone from logs.
+
+### Item 2 (`6ce655e`): topbar density
+
+The icons column carried 3 always-visible admin-only usage pills
+(RentCast/Auto.dev/Places) on top of the category picker, 4 nav links
+(up from 3 as of Entry 15), Help, Alerts, and the account avatar.
+Collapsed to one compact icon (colored by the single worst status
+among the 3 sources) that opens all 3 numbers in one popover -
+`usage_warnings` (feeding the alerts bell) unchanged, it already just
+reads the same list regardless of rendering. Checked at tablet width
+(768px): the row now wraps cleanly instead of crowding.
+
+### Item 3 (`b627630`): grade badges - tokens + real icons
+
+`underwriting.py`'s `GRADE_STYLES`/`car_engine.py`'s
+`CAR_GRADE_STYLES` (both render through the same shared
+`render_grade_badge`) now reference `var(--radar-success/-warning/
+-danger-bg/-fg/-border)` instead of hardcoded hex, and labels dropped
+the emoji prefix for a real `icons.py` icon (`check-circle`/`alert`,
+severity carried by color not a second glyph). Added the missing
+`-fg`/`-border` token members to `design_tokens.py` - confirmed via
+grep these exact hex values were already used consistently as
+hardcoded literals across 4 files before adding, so this tokenizes an
+existing de facto standard, not new colors. Also tokenized the
+identical `#065f46` in both "Best deal" banners while touching the
+same color.
+
+### Verified (all 3 items)
+
+Live on a freshly restarted server after each item: Run Property
+Scans/Table View/Admin Controls (heaviest use_container_width file, 35
+of 149 occurrences) unaffected visually; usage-summary icon opens
+correctly with all 3 sources' numbers, guest view still shows nothing;
+property AND car grade badges render their new icon+label correctly
+with correct colors on both category pages. `py_compile` clean after
+each item. Full suite: 59 passed throughout, no regressions. No server
+errors at any point.
+
+### What to check
+
+- Item 2's single combined usage icon: is losing the at-a-glance
+  "which source, exact number" visibility (now behind one click) an
+  acceptable trade for a quieter row, or did it remove information an
+  admin actually scanned for regularly?
+- Item 3's icon choice: reusing `alert` for both `average` and
+  `critical` (color-only differentiation) - does this read clearly
+  enough, or does it need a second glyph `icons.py` doesn't have yet?
+- Item 4 (naming pass - "Run Property Scans" relabel) is still
+  pending the owner's preferred wording before implementation.
