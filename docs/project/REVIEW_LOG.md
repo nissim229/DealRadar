@@ -1879,3 +1879,67 @@ implemented - logged as backlog, not yet requested by the owner.
   My Portfolio) are a judgment call, not pulled from an existing
   precedent the way `star`/`directions_car` were - worth a second
   opinion on whether they read clearly.
+
+## Entry 21 — Coordination-file reorg + new HG handoff (2026-08-22)
+
+**Status**: Done. Not yet reviewed.
+
+Commit: `621b5af`. Note: this file itself moved as part of this entry -
+it now lives at `docs/project/REVIEW_LOG.md`, not the repo root.
+
+Codex proposed a docs reorg (written directly into
+`REVIEWER_FEEDBACK.md`, independently reviewed by HG per that file's
+own notes before the owner brought it to me). Verified the proposal's
+own citations before acting - confirmed `CLAUDE_DESIGN_HANDOFF.md`
+genuinely now has a full "Documentation protocol/Review roles/
+Coordination rule" charter section (added by Codex since this file's
+own Entry 18 first read it), not a fabricated reference to something
+that didn't exist.
+
+### What moved
+
+- `docs/project/REVIEW_LOG.md`, `docs/project/CLAUDE_HANDOFF_TO_CODEX.md`
+  - Claude's own tracked outputs, moved via real `git mv` renames.
+- `docs/project/CLAUDE_DESIGN_HANDOFF.md`,
+  `docs/project/REVIEWER_FEEDBACK.md` - Codex's and HG's own living
+  scratch files (fully overwritten each round, never git-tracked, per
+  this session's established convention), moved on the filesystem
+  only, still untracked at the new path.
+- `FIXLIST.md`/`DESIGN_STANDARDS.md` stay at the repo root - dev-facing,
+  per the proposal's own reasoning, not coordination/process docs.
+
+### What's new
+
+`docs/project/CLAUDE_HANDOFF_TO_HUGGING_FACE.md` - same structure as
+the existing Codex handoff, giving HG the same "current round" context
+file Codex already had instead of re-reading the full (now 20-entry)
+`REVIEW_LOG.md` every round. Populated with the 2 rounds HG's last
+recorded context (Round 9, HEAD `80e3124`) hadn't seen: item 4 (nav
+rename + icons, Entry 20) and Codex's `FIXLIST.md` Section 9 addition.
+
+Updated `CLAUDE_DESIGN_HANDOFF.md`'s own protocol/roles/coordination
+sections to reference the new paths and add the HG handoff file
+alongside the Codex one.
+
+### Verified
+
+Checked for other references to these 4 filenames across the repo -
+found only historical prose comments ("see REVIEW_LOG.md Entry N") in
+`database.py`, `database_crypto.py`, `tests/test_underwriting.py`,
+`topbar_styles.py`, and `FIXLIST.md` - left as bare filename mentions
+since the files are still uniquely named and findable; not worth
+rewriting dozens of historical comments for a folder move. Confirmed
+via grep that no Python code actually opens any of these files
+programmatically - genuinely docs-only. Full suite: 59 passed
+(unaffected, as expected).
+
+### What to check
+
+- **Action needed from HG specifically**: write your next round's
+  findings to `docs/project/REVIEWER_FEEDBACK.md` - the old root-level
+  file no longer exists after this commit. Flagged explicitly in the
+  new HG handoff file too, since this is exactly the kind of untracked-
+  file path change that could silently break if missed.
+- Whether the new `docs/project/` layout actually reduces friction in
+  practice (the stated goal) or just moves the same files - worth
+  revisiting after a few more rounds.
