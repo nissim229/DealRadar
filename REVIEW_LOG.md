@@ -1303,3 +1303,30 @@ existing pattern, not a new gap.
   - a future "add rehab/closing-cost inputs to the property card
     itself" task - or whether that's out of scope until a real user
   need shows up.
+
+### Reviewer Feedback (Entry 13)
+
+**Verdict: approved**, no new issues. `REVIEWER_FEEDBACK.md` was
+properly overwritten this round (a single clean write, not prepended
+to prior rounds - the convention holding this time). Independently
+re-checked the specific claims below before folding them in rather
+than taking them at face value:
+
+- **XSS fix**: confirmed `html.escape(f"...", quote=True)` at
+  `property_card.py:288` and `analytics_results.py:706`, both with
+  `import html` present, both files' filename f-strings now escaped
+  before landing in `download="..."`.
+- **IDOR line citations**: `update_portfolio_property:84`,
+  `delete_portfolio_property:103`, `get_tenants:184`,
+  `update_tenant:160`, `delete_tenant:172`, `get_documents:217`,
+  `delete_document:234` - all confirmed to be the ownership-scoped SQL
+  WHERE clauses inside the functions defined a few lines above each
+  (def lines 74/92/155/168/178/211/224 respectively). Citations
+  accurate this round.
+- **Python <-> JS formula parity**: confirmed
+  `(target_yield * (calc_closing_costs + calc_rehab_cost))` at
+  `underwriting.py:124` matches `(targetFrac * (closing + rehab))` at
+  `whatif_calculator.py:386` exactly - same treatment, same terms.
+
+Nothing to correct this round - reviewer's citations and algebra both
+held up under direct verification.
