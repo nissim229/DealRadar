@@ -1,14 +1,6 @@
-import sqlite3
-import hashlib
-import hmac
-import base64
-import json
 import os
-import secrets
 import bcrypt
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from plan_limits import PLAN_ORDER
 
 # Anchor the database file AND the .env file to this script's own directory,
 # not the terminal's current working directory. Using a bare relative
@@ -165,7 +157,7 @@ from database_profile import (
 
 
 # --- GOOGLE SIGN-IN (Google is the sole authenticator - no local password) ---
-from database_oauth import _user_record_by_id, get_or_create_google_user, get_google_login_only
+from database_oauth import get_or_create_google_user, get_google_login_only
 
 from database_reports import save_report_config, get_all_reports, delete_report_config
 from database_geocache import (
@@ -206,7 +198,6 @@ from database_portfolio import (
     PORTFOLIO_FIELDS,
     RENTAL_STATUSES,
     PORTFOLIO_UPLOADS_DIR,
-    _sync_is_rented,
     add_portfolio_property,
     update_portfolio_property,
     delete_portfolio_property,
