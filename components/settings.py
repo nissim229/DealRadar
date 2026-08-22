@@ -162,16 +162,22 @@ def _render_underwriting(settings):
 
 def _render_view_mode(settings):
     st.markdown("##### Default Scan View & Mode")
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
         new_view = st.selectbox("Default results view", RESULTS_VIEW_OPTIONS,
                                  index=RESULTS_VIEW_OPTIONS.index(settings["default_results_view"]), key="settings_default_view")
     with col2:
         new_mode = st.selectbox("Default sidebar mode", UNDERWRITER_MODE_OPTIONS,
                                  index=UNDERWRITER_MODE_OPTIONS.index(settings["default_underwriter_mode"]), key="settings_default_mode")
-    if new_view != settings["default_results_view"] or new_mode != settings["default_underwriter_mode"]:
+    with col3:
+        new_cards_per_row = st.selectbox("Cards per row", [2, 3, 4, 5],
+                                          index=[2, 3, 4, 5].index(settings["default_cards_per_row"]), key="settings_default_cards_per_row",
+                                          help="How many property/car cards show side by side in the grid views - more per row means smaller cards.")
+    if (new_view != settings["default_results_view"] or new_mode != settings["default_underwriter_mode"]
+            or new_cards_per_row != settings["default_cards_per_row"]):
         settings["default_results_view"] = new_view
         settings["default_underwriter_mode"] = new_mode
+        settings["default_cards_per_row"] = new_cards_per_row
         _save(settings)
         st.toast("Default view/mode updated.")
 

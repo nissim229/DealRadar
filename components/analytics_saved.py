@@ -118,7 +118,7 @@ def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_ta
         enriched_rows = sorted(enriched_rows, key=lambda r: r["_saved_at"] or "")
 
     coords_json = json.dumps(enriched_rows)
-    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades = (
+    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades, cards_per_row = (
         _render_quick_filter_toolbar(key_prefix, coords_json)
     )
 
@@ -130,12 +130,12 @@ def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_ta
         _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                       filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                       calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                      calc_target_yield, view_mode, key_prefix, focused_key)
+                                      calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row)
     elif view_toggle == ":material/splitscreen: Properties + Map":
         _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                          filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                          calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                         calc_target_yield, view_mode, key_prefix, focused_key)
+                                         calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row)
     elif view_toggle == ":material/map: Map Only":
         _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate,
                                calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,

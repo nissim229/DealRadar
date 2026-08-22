@@ -47,6 +47,7 @@ DEFAULT_USER_SETTINGS = {
     "default_insurance_rate": 0.4,
     "default_target_yield": 8.0,
     "default_results_view": "Properties + Map",
+    "default_cards_per_row": 3,
     "default_underwriter_mode": "Simple",
     "default_reference_address": "",
     # Security/status notifications default on (a user generally wants to

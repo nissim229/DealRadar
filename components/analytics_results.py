@@ -137,6 +137,28 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
                     st.session_state.distance_reference_point = None
                     st.rerun()
 
+        # Cards-per-row control - real feedback was "i dont see how i can
+        # control if in card + map, or just cards the option to change how
+        # many cards i can see in each line". Seeded from the user's saved
+        # default (Settings), same pattern as the view-mode toggle above -
+        # a click here only changes THIS session, it doesn't write back to
+        # Settings (matching view-mode's own behavior). Card width shrinks
+        # automatically (Streamlit sizes each column to 1/N of the row), so
+        # the only other thing that needs to actively respond is the photo
+        # height - see CARDS_PER_ROW_PHOTO_HEIGHT below.
+        cards_per_row_key = f"{key_prefix}_cards_per_row"
+        if cards_per_row_key not in st.session_state:
+            st.session_state[cards_per_row_key] = st.session_state.user_settings.get("default_cards_per_row", 3)
+        with st.popover(f":material/grid_view: {st.session_state[cards_per_row_key]}/row"):
+            picked_cards_per_row = st.select_slider(
+                "Cards per row", options=[2, 3, 4, 5], value=st.session_state[cards_per_row_key],
+                key=f"{key_prefix}_cards_per_row_slider",
+                help="More per row = smaller cards, so you can compare more at once.",
+            )
+            if picked_cards_per_row != st.session_state[cards_per_row_key]:
+                st.session_state[cards_per_row_key] = picked_cards_per_row
+                st.rerun()
+
         # Price / Beds / Baths / Deal-grade filters share this same
         # toolbar row (moved out of their own separate row + caption
         # line below) - filter the CURRENT scan's results instantly, no
@@ -235,13 +257,23 @@ def _render_quick_filter_toolbar(key_prefix, coords_json):
                 print(f"[Analytics] Quick-filter toolbar failed to render: {e}")
 
     view_toggle = st.session_state[view_mode_state_key]
-    return view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades
+    cards_per_row = st.session_state[cards_per_row_key]
+    return view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades, cards_per_row
+
+
+# Photo carousel height per cards-per-row setting - a fixed 250px photo
+# (this app's long-standing default, sized for a 3-per-row grid) looks
+# disproportionately tall/squat once the card itself is much narrower at
+# 4-5 per row, or has room to be bigger at 2 per row. Shared by both
+# _render_properties_only_view and _render_properties_and_map_view so the
+# same cards-per-row choice looks consistent in either.
+CARDS_PER_ROW_PHOTO_HEIGHT = {2: 300, 3: 250, 4: 200, 5: 165}
 
 
 def _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                    filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                    calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                   calc_target_yield, view_mode, key_prefix, focused_key):
+                                   calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row=3):
     """Full-width property grid, no map alongside - lets the cards use the
     whole page width (3 per row instead of 2) for someone who just wants to
     compare listings without the map competing for space. Extracted out of
@@ -276,10 +308,11 @@ def _render_properties_only_view(coords_json, filter_min_price, filter_max_price
             if df_listings_grid.empty:
                 st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
             else:
+                photo_height = CARDS_PER_ROW_PHOTO_HEIGHT.get(cards_per_row, 250)
                 row_indices = list(df_listings_grid.index)
-                for pair_start in range(0, len(row_indices), 3):
-                    pair_indices = row_indices[pair_start:pair_start + 3]
-                    grid_cols = st.columns(3)
+                for pair_start in range(0, len(row_indices), cards_per_row):
+                    pair_indices = row_indices[pair_start:pair_start + cards_per_row]
+                    grid_cols = st.columns(cards_per_row)
                     for slot, idx in enumerate(pair_indices):
                         row_item = df_listings_grid.loc[idx]
                         with grid_cols[slot]:
@@ -293,7 +326,8 @@ def _render_properties_only_view(coords_json, filter_min_price, filter_max_price
                                                      st.session_state.user_id, st.session_state.get("distance_reference_point"),
                                                      calc_target_yield,
                                                      {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                      "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
+                                                      "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
+                                                     photo_height=photo_height):
                                 st.session_state[focused_key] = None if is_focused else idx
                                 st.rerun()
         except Exception as e:
@@ -304,7 +338,7 @@ def _render_properties_only_view(coords_json, filter_min_price, filter_max_price
 def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                       filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                       calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                      calc_target_yield, view_mode, key_prefix, focused_key):
+                                      calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row=2):
     """Cards in a fixed-height scrollable left column (position:sticky was
     tested and failed in this Streamlit layout, so a scroll box is used
     instead) beside a map that re-centers/zooms on whichever card was
@@ -356,10 +390,17 @@ def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_pr
                     st.info("No properties match your current filters. Try widening the price range or lowering the min beds.")
                 st.caption("Click **Focus** on any card to zoom the map to that property. Scroll within the list below to see more.")
                 with st.container(key=scroll_box_key):
+                    # This column is narrower than the full-width Properties
+                    # Only grid (it shares the row with the map), so the same
+                    # cards-per-row choice looks noticeably tighter here -
+                    # shrink the photo one size class further, capped at the
+                    # smallest defined size, rather than adding a second,
+                    # separate control just for this view.
+                    photo_height = CARDS_PER_ROW_PHOTO_HEIGHT.get(min(cards_per_row + 1, 5), 200)
                     row_indices = list(df_listings_grid.index)
-                    for pair_start in range(0, len(row_indices), 2):
-                        pair_indices = row_indices[pair_start:pair_start + 2]
-                        grid_cols = st.columns(2)
+                    for pair_start in range(0, len(row_indices), cards_per_row):
+                        pair_indices = row_indices[pair_start:pair_start + cards_per_row]
+                        grid_cols = st.columns(cards_per_row)
                         for slot, idx in enumerate(pair_indices):
                             row_item = df_listings_grid.loc[idx]
                             with grid_cols[slot]:
@@ -373,7 +414,8 @@ def _render_properties_and_map_view(coords_json, filter_min_price, filter_max_pr
                                                          st.session_state.user_id, st.session_state.get("distance_reference_point"),
                                                          calc_target_yield,
                                                          {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                                          "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate}):
+                                                          "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate},
+                                                         photo_height=photo_height):
                                     st.session_state[focused_key] = None if is_focused else idx
                                     st.rerun()
 
@@ -665,7 +707,7 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
             </div>
         """, unsafe_allow_html=True)
 
-    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades = (
+    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades, cards_per_row = (
         _render_quick_filter_toolbar(key_prefix, coords_json)
     )
 
@@ -677,13 +719,13 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
         _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                       filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                       calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                      calc_target_yield, view_mode, key_prefix, focused_key)
+                                      calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row)
 
     elif view_toggle == ":material/splitscreen: Properties + Map":
         _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
                                          filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
                                          calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
-                                         calc_target_yield, view_mode, key_prefix, focused_key)
+                                         calc_target_yield, view_mode, key_prefix, focused_key, cards_per_row)
 
     elif view_toggle == ":material/map: Map Only":  # full-width map, click a pin to see that property's details
         _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate,

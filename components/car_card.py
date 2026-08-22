@@ -21,7 +21,7 @@ _GRADE_ACCENT = {
 }
 
 
-def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False):
+def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False, photo_height=150):
     """One car listing (real or mock) rendered as a card. Grade, market
     value, and grade_adjustments are precomputed on the listing itself by
     car_engine.py (compute_car_deal_metrics for mock, _grade_real_listings
@@ -39,6 +39,24 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False)
     grade = listing.get("grade")
     photo_url = listing.get("primary_image")
     focus_clicked = False
+
+    # Same equal-height + pinned-bottom-links fix as property_card.py's
+    # render_property_card - a mock listing (no vehicle history fields, no
+    # listing_url) renders noticeably shorter than a real Auto.dev listing
+    # with full history + Carfax link, so without this, neighboring cards
+    # in the same row would show their link buttons at different heights.
+    st.markdown(f"""
+        <style>
+        div.st-key-{card_key} {{
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100% !important;
+        }}
+        div.st-key-{card_key} > div:last-child {{
+            margin-top: auto !important;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
 
     with st.container(border=True, key=card_key):
         if photo_url:
@@ -84,7 +102,7 @@ def render_car_card(idx, listing, key_prefix, is_focused=False, focusable=False)
                 f"display:flex; align-items:center; gap:4px;'>{fuel_emoji} {fuel_label}</div>"
             )
         st.markdown(f"""
-            <div style='position:relative; height:150px; border-radius:var(--radar-radius-md);
+            <div style='position:relative; height:{photo_height}px; border-radius:var(--radar-radius-md);
                         {photo_html}
                         display:flex; align-items:center; justify-content:center; margin-bottom:10px;'>{icon_html}
                 <div style='position:absolute; top:10px; left:10px; background:rgba(15,23,42,0.75); color:white;

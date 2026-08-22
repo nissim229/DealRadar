@@ -26,6 +26,12 @@ from icons import icon as svg_icon
 from scan_loading import render_scan_loading_radar
 from guest_mode import guest_action_button, render_guest_banner
 
+# Car cards' photo block is a plain 150px div (not an iframe like property
+# cards' carousel), sized for a 3-per-row grid - shrinks/grows with the
+# cards-per-row control the same way analytics_results.py's
+# CARDS_PER_ROW_PHOTO_HEIGHT does for properties.
+CAR_CARDS_PER_ROW_PHOTO_HEIGHT = {2: 190, 3: 150, 4: 120, 5: 100}
+
 
 def _car_price_short(price):
     """Same idea as analytics.py's _format_price_short, kept as its own
@@ -437,6 +443,10 @@ def _render_car_view_toolbar(results, key_prefix):
     filter_min_price = filter_max_price = filter_min_mileage = filter_max_mileage = None
     filter_grades = ["excellent", "average", "critical"]
 
+    cards_per_row_key = f"{key_prefix}_car_cards_per_row"
+    if cards_per_row_key not in st.session_state:
+        st.session_state[cards_per_row_key] = st.session_state.user_settings.get("default_cards_per_row", 3)
+
     with st.container(key=toolbar_key):
         for i, (icon, mode_val, label) in enumerate(view_options):
             with st.container(key=f"{toolbar_key}_viewbtn_{i}"):
@@ -445,6 +455,21 @@ def _render_car_view_toolbar(results, key_prefix):
                              type="primary" if is_active else "secondary"):
                     st.session_state[view_mode_key] = mode_val
                     st.rerun()
+
+        # Same cards-per-row control as the property side
+        # (analytics_results.py's _render_quick_filter_toolbar) - not
+        # literally shared (see this function's own docstring on why cars
+        # keep a dedicated toolbar), but the same user-facing control and
+        # session-state/Settings-default pattern.
+        with st.popover(f":material/grid_view: {st.session_state[cards_per_row_key]}/row"):
+            picked_cards_per_row = st.select_slider(
+                "Cards per row", options=[2, 3, 4, 5], value=st.session_state[cards_per_row_key],
+                key=f"{key_prefix}_car_cards_per_row_slider",
+                help="More per row = smaller cards, so you can compare more at once.",
+            )
+            if picked_cards_per_row != st.session_state[cards_per_row_key]:
+                st.session_state[cards_per_row_key] = picked_cards_per_row
+                st.rerun()
 
         if results:
             prices = [r["price"] for r in results]
@@ -523,7 +548,7 @@ def _render_car_view_toolbar(results, key_prefix):
                     st.rerun()
 
     if not results:
-        return st.session_state[view_mode_key], []
+        return st.session_state[view_mode_key], [], st.session_state[cards_per_row_key]
 
     def _passes_grade_filter(listing):
         # A listing with no reliable grade (too few comps) never claimed
@@ -562,7 +587,7 @@ def _render_car_view_toolbar(results, key_prefix):
     elif sort_choice == "year_asc":
         filtered = sorted(filtered, key=lambda r: r["year"])
 
-    return st.session_state[view_mode_key], filtered
+    return st.session_state[view_mode_key], filtered, st.session_state[cards_per_row_key]
 
 
 def _render_car_split_view(filtered, key_prefix):
@@ -759,18 +784,19 @@ def _render_car_results_view(results, key_prefix):
     render_car_search_page (guest and authenticated alike, since both
     already go through that one function), so this parity applies to both
     automatically rather than needing to be built twice."""
-    view_mode, filtered = _render_car_view_toolbar(results, key_prefix)
+    view_mode, filtered, cards_per_row = _render_car_view_toolbar(results, key_prefix)
     if not filtered:
         st.info("No listings match your current filters. Try widening the price or mileage range, or including more deal grades.", icon=":material/search_off:")
         return
 
     if view_mode == "grid":
-        for row_start in range(0, len(filtered), 3):
-            row = filtered[row_start:row_start + 3]
-            cols = st.columns(3)
+        photo_height = CAR_CARDS_PER_ROW_PHOTO_HEIGHT.get(cards_per_row, 150)
+        for row_start in range(0, len(filtered), cards_per_row):
+            row = filtered[row_start:row_start + cards_per_row]
+            cols = st.columns(cards_per_row)
             for slot, listing in enumerate(row):
                 with cols[slot]:
-                    render_car_card(row_start + slot, listing, key_prefix)
+                    render_car_card(row_start + slot, listing, key_prefix, photo_height=photo_height)
     elif view_mode == "split":
         _render_car_split_view(filtered, key_prefix)
     elif view_mode == "map":

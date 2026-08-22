@@ -398,9 +398,14 @@ def render_property_detail_dialog():
 
 
 def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focused, user_id, reference_point=None,
-                          calc_target_yield=8.0, current_assumptions=None):
+                          calc_target_yield=8.0, current_assumptions=None, photo_height=250):
     """One property rendered as a photo-forward visual card. Returns True if
-    this card was clicked this run (used by the caller to toggle focus on/off)."""
+    this card was clicked this run (used by the caller to toggle focus on/off).
+
+    photo_height: lets a caller with a cards-per-row control (see
+    CARDS_PER_ROW_PHOTO_HEIGHT in analytics_results.py) shrink the photo to
+    match a narrower card at a higher per-row count - defaults to this
+    app's original fixed 250px for any caller that doesn't have one."""
     focus_clicked = False
     address = row_item.get('address', '')
     card_key = f"{key_prefix}_card_{idx}"
@@ -420,6 +425,22 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
             animation: cardFadeInUp 0.45s ease-out forwards;
             animation-delay: {entrance_delay}s;
             opacity: 0;
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100% !important;
+        }}
+        /* Cards in the same row already stretch to match the tallest
+        sibling (Streamlit's own column layout does this natively), but a
+        card with less content (no HOA line, no MLS# line, a one-line vs.
+        two-line address) would otherwise leave its "View Full Details"/
+        Zillow/Redfin row floating right after its own shorter content,
+        misaligned against a taller neighbor's buttons. Pinning the LAST
+        direct child (whichever block that is - the link row, or the
+        button if address is blank) to the bottom via margin-top:auto
+        keeps every card's buttons on the same line regardless of how
+        much conditional content came before them. */
+        div.st-key-{card_key} > div:last-child {{
+            margin-top: auto !important;
         }}
         div.st-key-{card_key}_clicktarget button {{
             background: transparent !important;
@@ -497,8 +518,8 @@ def render_property_card(idx, row_item, metrics, view_mode, key_prefix, is_focus
         # Photo, price, badge, and dot navigation all render inside one
         # self-contained HTML/JS component - see photo_carousel.py for why.
         with st.container(key=f"{card_key}_photowrap"):
-            carousel_html = render_photo_carousel_html(gallery_urls, f"${row_item['price']:,.0f}", render_deal_badge(metrics["grade"]))
-            components.html(carousel_html, height=250)
+            carousel_html = render_photo_carousel_html(gallery_urls, f"${row_item['price']:,.0f}", render_deal_badge(metrics["grade"]), height=photo_height)
+            components.html(carousel_html, height=photo_height)
 
             # A real Streamlit button positioned in the photo's corner - not
             # a click handler on the image itself, since the carousel lives
