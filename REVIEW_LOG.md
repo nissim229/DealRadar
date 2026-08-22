@@ -1469,3 +1469,55 @@ re-export, then re-verified live end to end on a freshly restarted
 server: "Check Now" now correctly flips the caption from "Price not
 manually checked yet" to "Price checked just now," confirmed directly
 against the DB. Full suite: 59 passed.
+
+## Entry 15 — Saved Properties promoted to its own top-nav tab (2026-08-22)
+
+**Status**: Done, verified live. Not yet reviewed by HG.
+
+Commit: `bdf0e4a`.
+
+Owner's complaint: Saved Properties rendered inline at the bottom of
+Run Property Scans, below the search form, hero stat cards, results
+grid, and map - too long a scroll to reach after running a scan.
+History got this exact complaint earlier in the project and was
+promoted to its own navbar item; Saved Properties was left behind in
+the old layout at the time this app's nav was simplified.
+
+Added `render_saved_properties_page()` to `components/analytics_saved.py`,
+copying `render_history_page()`'s shape exactly: its own hero banner,
+the identical guest-gate copy that used to live inline in
+`analytics_dashboard.py`, and - since there's no interactive Pro
+sidebar up here to source `calc_*` from - the user's saved default
+assumptions instead of live slider values. Same tradeoff History
+already made and shipped with; nothing new invented.
+
+Wired in via the same plumbing every other nav item already uses:
+`CATEGORY_MENUS` in `topbar.py` (plus the Help popover's numbered
+list), `main.py`'s page router, `components/analytics.py`'s facade
+re-export. Removed the dead inline block and 3 now-unused imports
+(`render_guest_banner`, `render_empty_state`,
+`_render_saved_properties_tab`) from `analytics_dashboard.py`.
+
+### Verified
+
+Live in the browser on a freshly restarted server: Saved Properties
+now shows as its own topbar tab between Run Property Scans and
+History; guest view renders the same gate copy as before, now with a
+proper page hero; signed in as admin, saved properties + the Check Now
+button (Entry 14) render correctly with zero scrolling required; Run
+Property Scans itself now ends right after the map/export button, with
+no Saved Properties section left at the bottom. `py_compile` clean on
+all 5 touched files. Full suite: 59 passed, no regressions. No server
+errors in the logs.
+
+### What to check
+
+- Whether the 4-tab navbar (`Run Property Scans`, `Saved Properties`,
+  `History`, `My Portfolio`) still fits comfortably at narrower
+  viewport widths - `nav_cols = st.columns(len(menu_options))` sizes
+  itself to whatever's in `CATEGORY_MENUS`, so it's mechanically
+  correct, but a 4th tab makes each one narrower than 3 did.
+- Tab placement: Saved Properties was put 2nd (right after Run
+  Property Scans, before History/My Portfolio) as the closest fit to
+  the natural workflow (scan -> save -> come back later) - worth a
+  second opinion on whether that ordering is actually right.
