@@ -759,7 +759,8 @@ from the reviewer's sweep content already on file.
 
 ## Entry 8 — FIXLIST.md Section 8, deal-math audit (2026-08-21)
 
-**Status**: Bug 1 and Gaps 2-3 done; awaiting reviewer verification.
+**Status**: Reviewer feedback folded in below - approved. Follow-up MAO
+polish item (commit `85baa3e`) also done.
 
 Commits: `cbcbc07` (Bug 1), `089b498` (Gaps 2-3).
 
@@ -863,3 +864,50 @@ tests in `tests/test_auth.py` pass throughout.
 - Is defaulting `calc_maint_pct` to 5.0 (a real, non-zero behavior change
   applied to every existing caller with no code change) the right call,
   or should it have required each caller to opt in explicitly instead?
+
+### Reviewer Feedback (Entry 8)
+
+**Verdict: approved**, all three open questions closed definitively.
+Independently reran the reviewer's core claim myself before folding it
+in - a 3,000-case randomized differential test (Python `compute_deal_
+metrics()` vs. a line-by-line port of the JS), not just the single
+hand-picked case from the original fix: 0 grade mismatches, worst
+relative deviation ~1e-10 (same order as the reviewer's own ~1e-12 -
+different random seeds/ranges naturally land at slightly different but
+equally-negligible float noise). Also independently confirmed the
+"not achievable" edge case is real (not a hypothetical): Python's MAO
+formula had no `numerator<=0` guard at all before this round, while
+`whatif_calculator.py`'s JS already had one.
+
+- **Q1 (MAO term-by-term match)**: confirmed via two independent
+  methods - symbolic term comparison (including the non-obvious detail
+  that both models compute management fee AND maintenance as % of
+  *effective gross* income, post-vacancy, not gross rent, so the two
+  can't diverge on vacancy changes either) and the randomized
+  differential test. Two non-algebra differences remain and are
+  documented, not bugs: fixed 30y loan term outside the What-If sandbox
+  (pre-existing), and the MAO-not-achievable case (now fixed below).
+- **Q2 (other display surfaces)**: confirmed safe via a repo-wide grep
+  for every itemized metric key - `property_card.py`'s breakdown table
+  was the only consumer needing the update it already got;
+  `pdf_export.py` only shows aggregates, nothing to go inconsistent.
+- **Q3 (calc_maint_pct=5.0 default)**: confirmed correct given the
+  owner's explicit decision to have grades stop disagreeing app-wide -
+  an opt-in-per-caller design would have preserved exactly the
+  divergence the owner chose to eliminate. Portfolio math (a separate
+  domain, operates on stored actuals) is unaffected.
+
+**Follow-up fix from this round** (commit `85baa3e`): the MAO-not-
+achievable case now returns `mao=None`/`mao_delta=None` instead of a
+negative dollar figure, matching `whatif_calculator.py`'s own
+`denom>0 && numerator>0` guard exactly (previously Python's denom<=0
+fallback was `price`, a Python-only inconsistency with the JS, which
+always showed "Not achievable" for both denom<=0 and numerator<=0).
+Both consumers (`pdf_export.py`, the Table View's MAO column) updated
+to handle `None`/`NaN` without crashing or showing a misleading number.
+
+Also reconfirmed as part of this fold-in: the "no REVIEW_LOG entry for
+`cbcbc07`" note in the reviewer's earlier pass was stale by the time it
+was read - this same Entry 8 already covered `cbcbc07` (see its opening
+line), committed in `ff92f06` before that note was written. No action
+needed beyond noting the timing.

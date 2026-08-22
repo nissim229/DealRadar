@@ -163,6 +163,19 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
       so one formula powers every surface. Verified bit-for-bit identical
       to the JS on a constructed test case; live-checked a property's card
       and What-If tab now show the same NOI/CoC.
+- [x] **MAO polish: "Not achievable" instead of a negative dollar figure.**
+      When the MAO numerator (or denom) goes non-positive - expenses/
+      financing terms too high to hit the target return at any price -
+      Python returned a negative dollar figure (e.g. "$-45,000") where
+      What-If's JS already showed an honest "Not achievable" for the same
+      condition. Fixed: `compute_deal_metrics()` returns `mao=None` in this
+      case, matching the JS's guard exactly; `pdf_export.py` shows a text
+      placeholder, the Table View's MAO column uses NaN so its `$`
+      formatting still applies to every other row. Independently reran the
+      reviewer's 3,000-case randomized differential test before trusting
+      the "matches to ~1e-12" claim - confirmed 0 grade mismatches, ~1e-10
+      worst deviation, and that the not-achievable branch is real (hit in
+      a non-trivial fraction of randomized inputs, not purely theoretical).
 - Car engine grading: reviewer confirmed correct as-is, no changes needed
   (median-based comps, mileage adjustment direction, no-comp honesty all
   verified).
