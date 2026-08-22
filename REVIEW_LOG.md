@@ -1813,3 +1813,69 @@ usual citation-backed feedback) - this is recorded as a plain approval
 signal, not folded in as a technical claim. Item 4 (naming pass) is
 still unstarted, pending the owner's preferred wording - not part of
 what Codex reviewed.
+
+## Entry 20 — Item 4: nav rename + icons on every nav item (2026-08-22)
+
+**Status**: Done, verified live at two widths. Not yet reviewed by
+HG/Codex.
+
+Commit: `b075913`.
+
+Owner picked "Find Properties" (of 3 options offered) for the last
+item of the design-review plan, then separately raised a wider
+principle: every button should be icon + 1-2 words, and asked whether
+buttons need more color to signal function.
+
+Audited every button label in the app via script before assuming a
+problem existed - found the app already follows icon+1-2-words nearly
+everywhere. The one real gap: the top nav links had no icons at all,
+plain text only. Renamed "Run Property Scans" -> "Find Properties"
+everywhere it's used as a routing key or user-facing copy, and added a
+`NAV_ICONS` lookup (`topbar.py`) keyed by the same page-name strings
+rather than restructuring `CATEGORY_MENUS` itself (those strings are
+routing keys compared throughout the app - keeping them a flat string
+list means routing is untouched, only rendering changed).
+
+On color: recommended against adding new button colors - the app
+already has a meaningful primary/secondary signal used consistently,
+and more colors risks diluting that plus cluttering the restrained
+visual language. Icons (already the established differentiator) do
+the "recognize function at a glance" job instead.
+
+**Real regression caught before calling this done**: adding icons to
+all 4 real-estate nav items widened the row ~230px past the nav
+column's old 365px min-width floor (sized for 3 plain-text items) -
+confirmed live via `getBoundingClientRect` at 1169px width that "My
+Portfolio" was genuinely clipped, not just visually tight. Fixed by
+tightening nav button padding and bumping the floor to 580px (measured
+real content need). Reverified at both 1169px (now wraps cleanly onto
+its own row) and 1440px (fits on one row) via live DOM measurement,
+not just a screenshot glance - the first "fix," relying on a
+screenshot read at 1440px alone, would have missed that 1169px was
+still broken.
+
+Verified live: Cars' own nav (Find a Car/Saved Searches, also newly
+iconed) unaffected at both widths. Full suite: 59 passed. No server
+errors.
+
+### Also this round: Codex's FIXLIST.md Section 9 (commit `8945834`)
+
+Codex added 3 UX findings directly to `FIXLIST.md` during its review -
+map scroll-capture (`scrollZoom:True` blocks page scroll when hovering
+a map), map-focus targets on cards being too narrow, and the
+mini-results chips beside Run Live Scan duplicating the results area
+below. Spot-verified `scrollZoom:True`'s presence in the 3 named
+`.py` files, and confirmed the 4th (`location_picker.py`) has no
+`config=` at all - meaning it's correctly in scope for achieving
+consistent behavior even without an existing `True` to flip. Not
+implemented - logged as backlog, not yet requested by the owner.
+
+### What to check
+
+- The 580px nav-column floor is calibrated for real-estate's 4-item
+  set (the longest). If a nav item's label or icon set changes again,
+  this floor needs re-measuring, not just eyeballing.
+- Icon choices (`search` for Find Properties, `account_balance` for
+  My Portfolio) are a judgment call, not pulled from an existing
+  precedent the way `star`/`directions_car` were - worth a second
+  opinion on whether they read clearly.
