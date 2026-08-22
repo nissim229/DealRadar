@@ -15,7 +15,7 @@ no fixtures, no temp DB, and never touch agent_config.db.
 import pytest
 
 from underwriting import compute_deal_metrics, monthly_payment_factor
-from car_engine import _grade_tier, _median, _drop_price_outliers, _grade_real_listings
+from car_engine import _grade_tier, _median, _drop_price_outliers, _grade_real_listings, classify_fuel_type, compute_car_deal_metrics
 
 
 # ---------------------------------------------------------------------------
@@ -285,3 +285,50 @@ def test_mileage_adjustment_sign_is_economically_correct():
     assert low_target["market_value"] == pytest.approx(21600.0)
     assert high_target["market_value"] == pytest.approx(19600.0)
     assert low_target["market_value"] > high_target["market_value"]
+
+
+def test_classify_fuel_type_reconciles_mislabeled_hybrid():
+    """The exact case this function's own docstring exists to fix: a real
+    Prius listing came back from Auto.dev with fuel='Gasoline' but
+    'Hybrid' only in the free-text engine description - this must still
+    classify as hybrid, not gas, by checking both signals."""
+    assert classify_fuel_type("Gasoline", "1.8L Hybrid I4 134hp") == "hybrid"
+
+
+def test_classify_fuel_type_straightforward_cases():
+    assert classify_fuel_type("Plug-in Hybrid") == "phev"
+    assert classify_fuel_type("Electric") == "ev"
+    assert classify_fuel_type("Hybrid") == "hybrid"
+    assert classify_fuel_type("Gasoline") == "gas"
+
+
+def test_classify_fuel_type_none_when_no_data():
+    """No fuel data at all returns None (an honest "unknown"), never a
+    guessed default like "gas" - a listing with genuinely missing fuel
+    data shouldn't display a possibly-wrong chip."""
+    assert classify_fuel_type(None) is None
+    assert classify_fuel_type("") is None
+
+
+def test_compute_car_deal_metrics_grade_boundary_and_direction():
+    """End-to-end check tying compute_car_deal_metrics to the same 12%/0%
+    _grade_tier boundary tested above: a price exactly 12% under market
+    grades excellent; a price above market grades critical with a
+    negative dollars_below_market."""
+    at_boundary = compute_car_deal_metrics(price=17600, market_value=20000)
+    assert at_boundary["pct_below_market"] == pytest.approx(12.0)
+    assert at_boundary["grade"] == "excellent"
+
+    above_market = compute_car_deal_metrics(price=22000, market_value=20000)
+    assert above_market["pct_below_market"] == pytest.approx(-10.0)
+    assert above_market["dollars_below_market"] == pytest.approx(-2000.0)
+    assert above_market["grade"] == "critical"
+
+
+def test_compute_car_deal_metrics_zero_market_value_guard():
+    """market_value<=0 is a data-completeness guard, not a real 0%-below
+    result - pct_below_market floors at 0.0 rather than dividing by zero
+    or producing a misleadingly large/negative percentage."""
+    m = compute_car_deal_metrics(price=15000, market_value=0)
+    assert m["pct_below_market"] == 0.0
+    assert m["grade"] == _grade_tier(0.0)
