@@ -184,6 +184,35 @@ Note: `with sqlite3.connect(...)` alone only manages transactions, NOT closing
   hardcoded 30y outside the What-If sandbox (fine, just not user-facing
   elsewhere).
 
+## 9. Current UX backlog
+
+- [ ] **Fix map wheel scrolling across the app.** Plotly map views explicitly
+      use `scrollZoom=True`, causing the map to capture mouse-wheel input and
+      prevent normal page scrolling when hovered. Set `scrollZoom=False` for
+      map views only, retaining the Plotly toolbar for deliberate zooming and
+      preserving map pan/point-selection behavior. Scope:
+      `components/analytics_results.py`, `components/analytics_map.py`,
+      `components/car_search.py`, and `location_picker.py`.
+
+- [ ] **Make map-focus targets on result cards more generous.** Do not wrap
+      the entire card: it already contains independent save, detail, photo,
+      and outbound-link controls. Instead, make the main information surface
+      (for example, the photo/price/grade/header region) a clear, accessible
+      focus-on-map target while preserving all existing independent actions.
+      Apply the same interaction pattern to property and car cards where map
+      focus is available. Validate keyboard access and avoid intercepting
+      links/actions.
+
+- [ ] **Replace the stacked mini-results chips beside the scan button.**
+      `components/analytics_scan_form.py` renders up to five individually
+      clickable property chips beside the scan action. In a constrained
+      column they stack vertically, consume significant height, and duplicate
+      the full map/results area immediately below. Replace them with one
+      compact summary (for example, result count + best deal/return) and a
+      single, clear “View full results” action. Keep detail-opening available
+      from the full result cards; do not force the pills to remain in a row
+      through brittle CSS.
+
 ---
 
 ## Pre-launch checklist (NOT now — owner's explicit decision)
