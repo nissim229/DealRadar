@@ -1,6 +1,6 @@
 """
 components/analytics_dashboard.py
-render_analytics_dashboard, the top-level Run Property Scans page
+render_analytics_dashboard, the top-level Find Properties page
 orchestrator - split out of components/analytics.py as the final step of
 its Section 5 monolith-split. Widest fan-in of any piece of this split:
 the underwriter sidebar console, the 3 hero stat cards (with drill-down
@@ -324,13 +324,13 @@ def render_analytics_dashboard(is_guest=False):
         # Shrunk from a large centered icon+title+subtitle block to one
         # slim line - real feedback was that it "takes too much space" for
         # what's mostly restating the navbar item already highlighted
-        # right above it ("Run Property Scans"), not information that
+        # right above it ("Find Properties"), not information that
         # helps search or view results.
         st.markdown(f"""
             <div style='display:flex; align-items:center; gap:8px; margin-bottom:12px;'>
                 {svg_icon("radar", size=16, color="var(--radar-accent)")}
                 <span style='font-family:var(--radar-font-mono); font-size:11.5px; font-weight:700;
-                             letter-spacing:0.08em; text-transform:uppercase; color:var(--radar-text-on-dark-muted);'>Run Property Scans</span>
+                             letter-spacing:0.08em; text-transform:uppercase; color:var(--radar-text-on-dark-muted);'>Find Properties</span>
             </div>
         """, unsafe_allow_html=True)
 

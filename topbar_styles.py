@@ -163,6 +163,16 @@ TOPBAR_CSS = """
                 width: auto !important;
                 flex: 0 0 auto !important;
             }
+            /* Tighter horizontal padding than the 9px every other topbar
+            button gets - real_estate went from 3 plain-text nav items to
+            4 icon+text ones (design-review pass adding icons per-item),
+            and the extra glyph width per button needed some of this
+            padding back to keep 4 items fitting at ordinary laptop
+            widths (confirmed live: 1169px was clipping "My Portfolio"
+            before this). */
+            div.st-key-scoutai_nav_row button {
+                padding: 8px 6px !important;
+            }
             div.st-key-scoutai_topbar button p,
             div.st-key-scoutai_topbar button span {
                 color: #cbd5e1 !important;
@@ -232,10 +242,15 @@ TOPBAR_CSS = """
             :has() lets the floor target the actual stColumn box (the
             thing that needs to not shrink) using the same key classes
             already applied to their contents - nav's floor covers the
-            longest real category's button set (real-estate's 3), icons'
-            floor covers the fixed 3-circle cluster (34*3 + 10*2 gaps). */
+            longest real category's button set (real-estate's 4, each now
+            icon+text instead of plain text - measured live via
+            getBoundingClientRect at 1169px width before this bump: 4
+            buttons + 3 gaps totalled ~580px and "My Portfolio" was
+            genuinely clipped past the column's old 365px floor, not just
+            visually cramped), icons' floor covers the fixed circle
+            cluster (34px each + 10px gaps). */
             div[data-testid="stColumn"]:has(div.st-key-scoutai_nav_row) {
-                min-width: 365px !important;
+                min-width: 580px !important;
             }
             div[data-testid="stColumn"]:has(div.st-key-topbar_icons_row) {
                 min-width: 126px !important;

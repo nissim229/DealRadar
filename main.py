@@ -38,7 +38,7 @@ if "user_plan" not in st.session_state:
 if "user_settings" not in st.session_state:
     st.session_state.user_settings = db.DEFAULT_USER_SETTINGS
 if "current_page" not in st.session_state:
-    st.session_state.current_page = "Run Property Scans"
+    st.session_state.current_page = "Find Properties"
 if "active_category" not in st.session_state:
     # "real_estate" or "cars" - the single source of truth for which deal
     # type the app is currently scanning for, driving both the top nav's
@@ -98,9 +98,9 @@ else:
     # current_page) - fall back to the default page rather than let a
     # guest session reach staff-only content.
     if is_guest and st.session_state.current_page == "Admin Controls":
-        st.session_state.current_page = "Run Property Scans"
+        st.session_state.current_page = "Find Properties"
 
-    if st.session_state.current_page == "Run Property Scans":
+    if st.session_state.current_page == "Find Properties":
         render_analytics_dashboard(is_guest=is_guest)
     elif st.session_state.current_page == "History":
         render_history_page(is_guest=is_guest)

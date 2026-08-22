@@ -152,7 +152,7 @@ def render_saved_properties_page(is_guest=False):
     Property Scans into its own navbar item, same move and same reasoning
     as History's own promotion (see render_history_page): the owner found
     the scan page too long to scroll past just to reach it, and a page you
-    have to already be on Run Property Scans to notice is a worse place for
+    have to already be on Find Properties to notice is a worse place for
     it than the main navbar. Content itself (_render_saved_properties_tab)
     is unchanged - just given a real page shell and, since there's no
     longer an interactive Pro sidebar up here to source calc_* from, the

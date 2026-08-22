@@ -45,8 +45,25 @@ CATEGORIES = [
     {"value": "cars", "label": "Cars", "icon": ":material/directions_car:"},
 ]
 CATEGORY_MENUS = {
-    "real_estate": ["Run Property Scans", "Saved Properties", "History", "My Portfolio"],
+    "real_estate": ["Find Properties", "Saved Properties", "History", "My Portfolio"],
     "cars": ["Find a Car", "Saved Searches"],
+}
+# Icon per nav item, keyed by the exact page-name strings above - kept as a
+# separate lookup rather than turning CATEGORY_MENUS into (icon, label)
+# tuples, since those strings are also used as routing keys (compared
+# directly against st.session_state.current_page throughout main.py and
+# elsewhere) - this way nothing about routing changes, only what's
+# rendered. Reuses icons already established elsewhere in the app for the
+# same concept (star = saved, matching the Saved Properties page's own
+# hero icon; directions_car matches the category switcher's own Cars
+# icon) rather than picking new ones ad hoc.
+NAV_ICONS = {
+    "Find Properties": ":material/search:",
+    "Saved Properties": ":material/star:",
+    "History": ":material/history:",
+    "My Portfolio": ":material/account_balance:",
+    "Find a Car": ":material/directions_car:",
+    "Saved Searches": ":material/star:",
 }
 
 
@@ -110,7 +127,7 @@ def render_main_topbar(is_guest=False):
                     with nav_cols[i]:
                         wrapper_key = "scoutai_topbar_active" if is_active else f"scoutai_topbar_inactive_{i}"
                         with st.container(key=wrapper_key):
-                            if st.button(option, key=f"nav_btn_{option}", width="stretch"):
+                            if st.button(f"{NAV_ICONS.get(option, '')} {option}", key=f"nav_btn_{option}", width="stretch"):
                                 st.session_state.current_page = option
                                 st.rerun()
 
@@ -163,7 +180,7 @@ def render_main_topbar(is_guest=False):
                                      key=f"topbar_help_popover_{st.session_state.active_category}"):
                         st.markdown(f"**How {active_category['label']} scanning works**")
                         if st.session_state.active_category == "real_estate":
-                            st.caption("1. **Run Property Scans** - set your criteria and scan for deals, no setup needed.")
+                            st.caption("1. **Find Properties** - set your criteria and scan for deals, no setup needed.")
                             st.caption("2. **Saved Properties** - properties you've starred, in one place.")
                             st.caption("3. **History** - every past scan, free to revisit anytime.")
                             st.caption("4. **My Portfolio** - track properties you already own.")
@@ -304,7 +321,7 @@ def render_main_topbar(is_guest=False):
                                 st.session_state.user_email = None
                                 st.session_state.user_name = ""
                                 st.session_state.user_plan = "Free"
-                                st.session_state.current_page = "Run Property Scans"
+                                st.session_state.current_page = "Find Properties"
                                 st.session_state.active_category = "real_estate"
                                 st.session_state.show_login_form = False
                                 st.session_state.settings_show_change_password_form = False

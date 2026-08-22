@@ -344,7 +344,7 @@ def render_settings_page(is_guest=False):
     """, unsafe_allow_html=True)
 
     if st.button("← Back to Dashboard", key="settings_back_btn"):
-        st.session_state.current_page = "Find a Car" if st.session_state.get("active_category") == "cars" else "Run Property Scans"
+        st.session_state.current_page = "Find a Car" if st.session_state.get("active_category") == "cars" else "Find Properties"
         st.rerun()
 
     with st.container(key="settings_hero"):

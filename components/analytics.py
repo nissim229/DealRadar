@@ -1,6 +1,6 @@
 """
 components/analytics.py
-Facade for the Run Property Scans / History / Saved Properties feature
+Facade for the Find Properties / History / Saved Properties feature
 group (Section 5 monolith-split plan). The actual code now lives in
 sibling modules - analytics_atoms, analytics_dialogs, analytics_map,
 analytics_scan_form, analytics_scan_engine, analytics_results,
