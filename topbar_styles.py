@@ -279,7 +279,7 @@ TOPBAR_CSS = """
             div.st-key-topbar_icons_row .st-key-topbar_help_popover_wrap,
             div.st-key-topbar_icons_row .st-key-topbar_alerts_popover_wrap,
             div.st-key-topbar_icons_row .st-key-topbar_account_popover_wrap,
-            div.st-key-topbar_icons_row [class*="st-key-topbar_usage_badge_"] {
+            div.st-key-topbar_icons_row [class*="st-key-topbar_usage_summary_"] {
                 flex: none !important; width: fit-content !important;
             }
             /* The wraps above are GRANDchildren of topbar_icons_row - the
@@ -379,41 +379,31 @@ TOPBAR_CSS = """
                 background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
             }
 
-            /* Admin-only API-usage pills - rounded rectangles (hold text
-            like "29/50", so a same-size circle wouldn't fit) rather than
-            more identical nav icons. One shared rule set covers all three
-            sources (RentCast/Auto.dev/Places, see _usage_badge below) -
-            each container's key encodes BOTH which source it is and its
-            live-computed color (e.g. "topbar_usage_badge_rentcast_green"),
-            matched here with two class-substring selectors (source-
-            agnostic shape/sizing, then a color-only selector for the
-            background) instead of one rule per source. Colors are baked
-            into the key as static classes, never injected via a fresh
-            <style> tag on every render - that was tried first and broke
-            alignment: the injected tag became an extra sibling inside the
-            wrap's own default column layout, pushing the button down and
-            sideways out of the row. */
-            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] {
+            /* Admin-only API-usage summary - ONE compact icon (not a
+            per-source pill) that opens all 3 sources' numbers in a single
+            popover; see topbar.py's own comment on why this replaced 3
+            separate always-visible pills (design-review density pass).
+            Colored by the single worst status among the 3 sources - the
+            color is baked into the container's key as a static class
+            (e.g. "topbar_usage_summary_green"), never injected via a
+            fresh <style> tag on every render, since that was tried first
+            and broke alignment (the injected tag became an extra sibling
+            inside the wrap's own default column layout, pushing the
+            button down and sideways out of the row). */
+            div[class*="st-key-topbar_usage_summary_"] [data-testid="stPopoverButton"] {
                 color: white !important; border: none !important;
-                height: 34px !important; min-height: 0 !important; width: auto !important;
-                border-radius: 17px !important; padding: 0 14px !important; flex: none !important;
+                height: 34px !important; min-height: 0 !important; width: 34px !important;
+                border-radius: 50% !important; padding: 0 !important; flex: none !important;
                 display: flex !important; align-items: center !important; justify-content: center !important;
                 font-weight: 700 !important;
             }
-            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] p {
-                color: white !important; margin: 0 !important; font-size: 13px !important;
-                font-variant-numeric: tabular-nums !important;
-            }
-            div[class*="st-key-topbar_usage_badge_"] [data-testid="stPopoverButton"] div[aria-hidden="true"] {
-                display: none !important;
-            }
-            div[class*="st-key-topbar_usage_badge_"][class*="_green"] [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_summary_"][class*="_green"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #22c55e, #16a34a) !important;
             }
-            div[class*="st-key-topbar_usage_badge_"][class*="_amber"] [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_summary_"][class*="_amber"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #f59e0b, #d97706) !important;
             }
-            div[class*="st-key-topbar_usage_badge_"][class*="_red"] [data-testid="stPopoverButton"] {
+            div[class*="st-key-topbar_usage_summary_"][class*="_red"] [data-testid="stPopoverButton"] {
                 background: linear-gradient(135deg, #ef4444, #dc2626) !important;
             }
 

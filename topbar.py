@@ -174,12 +174,28 @@ def render_main_topbar(is_guest=False):
                         st.caption("A **deal grade** compares a listing to real market comps - "
                                     "if there isn't enough comparable data, we say so rather than guess.")
 
-                for badge in usage_badges:
-                    with st.container(key=f"topbar_usage_badge_{badge['source']}_{badge['color']}"):
-                        with st.popover(badge["text"], help=badge["help"],
-                                         key=f"topbar_usage_badge_popover_{badge['source']}_{st.session_state.current_page}"):
-                            st.caption(badge["line1"])
-                            st.caption(badge["line2"])
+                # Design-review pass (Codex handoff + independent review):
+                # this row was crowded with a separate always-visible pill
+                # per API source (RentCast/Auto.dev/Places) on top of the
+                # category picker, 4 nav links, Help, Alerts, and the
+                # account avatar - all admin-only info, competing with
+                # nav links every other user actually needs. Collapsed to
+                # ONE compact icon that opens all 3 lines in a single
+                # popover instead of 3 separate always-visible widgets -
+                # same one-click-away detail, a third of the row space.
+                # Colored by the single worst status among the 3 sources
+                # (red > amber > green) so an at-risk source still catches
+                # the eye without needing 3 pills to do it.
+                if usage_badges:
+                    worst_color = "red" if any(b["color"] == "red" for b in usage_badges) else (
+                        "amber" if any(b["color"] == "amber" for b in usage_badges) else "green"
+                    )
+                    with st.container(key=f"topbar_usage_summary_{worst_color}"):
+                        with st.popover(":material/monitoring:", help="API usage this month",
+                                         key=f"topbar_usage_summary_popover_{st.session_state.current_page}"):
+                            st.caption("**API usage this month**")
+                            for badge in usage_badges:
+                                st.caption(f"{badge['line1']} {badge['line2']}")
 
                 if is_guest:
                     recent_activity = []
