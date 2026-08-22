@@ -14,7 +14,7 @@ inject_design_tokens()
 
 # 2. Modular Component Imports from the new Components Folder
 from components.auth_portal import render_auth_portal, render_reset_password_view, handle_google_oauth_callback
-from components.analytics import render_analytics_dashboard, render_history_page
+from components.analytics import render_analytics_dashboard, render_history_page, render_saved_properties_page
 from components.admin_controls import render_admin_control_panel
 from components.portfolio import render_portfolio_page
 from components.settings import render_settings_page, maybe_autodetect_timezone
@@ -104,6 +104,8 @@ else:
         render_analytics_dashboard(is_guest=is_guest)
     elif st.session_state.current_page == "History":
         render_history_page(is_guest=is_guest)
+    elif st.session_state.current_page == "Saved Properties":
+        render_saved_properties_page(is_guest=is_guest)
     elif st.session_state.current_page == "Find a Car":
         render_car_search_page(is_guest=is_guest)
     elif st.session_state.current_page == "Saved Searches":

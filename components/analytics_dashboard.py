@@ -4,9 +4,13 @@ render_analytics_dashboard, the top-level Run Property Scans page
 orchestrator - split out of components/analytics.py as the final step of
 its Section 5 monolith-split. Widest fan-in of any piece of this split:
 the underwriter sidebar console, the 3 hero stat cards (with drill-down
-dialogs), the search form + scan buttons + quick-access chips, the shared
-hero map/results area, and the Saved Properties tab all get assembled
-here from the sibling modules the rest of the split produced.
+dialogs), the search form + scan buttons + quick-access chips, and the
+shared hero map/results area all get assembled here from the sibling
+modules the rest of the split produced. Saved Properties used to render
+inline at the bottom of this same page but was promoted to its own
+navbar item (render_saved_properties_page in analytics_saved.py) for the
+same reason History was: the page was too long to scroll past just to
+reach it.
 """
 import streamlit as st
 import database as db
@@ -15,10 +19,9 @@ import json
 from underwriting import compute_deal_metrics
 from icons import icon as svg_icon
 from dashboard_grid import render_dashboard_grid
-from guest_mode import render_guest_banner
 from location_picker import location_display_label
 
-from components.analytics_atoms import _safe_hoa, render_empty_state, _render_clickable_hero_card
+from components.analytics_atoms import _safe_hoa, _render_clickable_hero_card
 from components.analytics_dialogs import (
     _show_best_deal_dialog,
     _show_deals_meeting_target_dialog,
@@ -32,7 +35,6 @@ from components.analytics_scan_form import (
 )
 from components.analytics_scan_engine import _load_saved_criteria, _run_guest_demo_scan, _execute_scan
 from components.analytics_results import _render_hero_map_and_results
-from components.analytics_saved import _render_saved_properties_tab
 
 
 def render_analytics_dashboard(is_guest=False):
@@ -463,16 +465,3 @@ def render_analytics_dashboard(is_guest=False):
             # [[hero_redesign_compact_results]].
             _render_hero_map_and_results(criteria, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
                                           calc_down_pct, calc_interest, calc_target_yield, is_guest=is_guest)
-
-    st.markdown("<div style='height:32px;'></div>", unsafe_allow_html=True)
-
-    st.markdown("##### :material/star: Saved Properties")
-    if is_guest:
-        render_guest_banner("saved properties aren't kept in a demo session")
-        render_empty_state(
-            "star-outline", "Sign in to save properties",
-            "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
-            accent="var(--radar-warning)",
-        )
-    else:
-        _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield)
