@@ -1,66 +1,65 @@
 """
 components/analytics_saved.py
 The Saved Properties tab, split out of components/analytics.py (Section 5
-monolith-split plan): properties starred from any scan, shown in the same
-2-column card grid the scan results use, each with its own saved-at
-timestamp.
+monolith-split plan): properties starred from any scan. Reuses the exact
+same view-mode toolbar and 4 view-mode render functions (Properties Only/
+Properties + Map/Map Only/Table View) that scan results and History
+already share (components/analytics_results.py) - see [[saved-properties-
+view-and-sort]] - plus its own Sort control (ported from the car search
+page's pattern, ported into properties since scan results never had one
+either), since a growing saved list is exactly the place ordering matters
+most.
 """
+import json
 import streamlit as st
 import database as db
-import roles
-import agent_engine
-import email_utils
 from underwriting import compute_deal_metrics
 from icons import icon as svg_icon
 from guest_mode import render_guest_banner
-from components.property_card import render_property_card
-from data_utils import relative_time
 
-from components.analytics_atoms import _safe_hoa, _format_relative_time, render_empty_state
+from components.analytics_atoms import _safe_hoa, render_empty_state
+from components.analytics_results import (
+    _render_quick_filter_toolbar,
+    _render_properties_only_view,
+    _render_properties_and_map_view,
+    _render_map_only_view,
+    _render_table_view,
+)
+
+SORT_OPTIONS = [
+    ("best_deal", "Best Deal First"),
+    ("price_asc", "Price: Low to High"),
+    ("price_desc", "Price: High to Low"),
+    ("newest_saved", "Newest Saved"),
+    ("oldest_saved", "Oldest Saved"),
+]
 
 
-def _render_check_now(user_id, address, price, latitude, longitude, last_price_checked_at, is_admin, has_credits):
-    """The manual price-drop 'Check Now' button for one saved property.
-    Visible to every signed-in user regardless of plan (Saved Properties
-    itself is already gated behind sign-in - see analytics_dashboard.py's
-    is_guest branch - so there's no guest case to handle here); whether it
-    actually WORKS depends on the same credits every plan already has
-    (Free/Starter/Pro/Enterprise all include some), same cost as a live
-    scan, or staff status - not a separate feature flag. Owner's own
-    framing: this reuses the existing 'what goes to package' answer
-    (credits) instead of inventing a new one."""
-    can_check = is_admin or has_credits
-    cols = st.columns([3, 2])
-    with cols[0]:
-        if last_price_checked_at:
-            st.caption(f":material/history: Price checked {relative_time(last_price_checked_at)}")
-        else:
-            st.caption(":material/history: Price not manually checked yet")
-    with cols[1]:
-        clicked = st.button(
-            "Check Now", key=f"check_now_{address}", use_container_width=True,
-            disabled=not can_check,
-            help=None if can_check else "Out of credits - buy more or upgrade your plan to check for price drops.",
+def _render_sort_control(key_prefix):
+    """Sort control for Saved Properties - ported from car search's own
+    Sort by popover (components/car_search.py), since scan results never
+    had one to reuse (only cars did) and a saved list, unlike a single
+    scan's results, keeps growing over days/weeks, where ordering matters
+    more. 'Best Deal First' sorts by cash-on-cash return directly (no
+    'too few comps to grade' case to special-case here the way cars'
+    version has to - compute_deal_metrics always returns a real grade/coc
+    for a property, given a price)."""
+    sort_label_by_key = dict(SORT_OPTIONS)
+    sort_key_by_label = {label: key for key, label in SORT_OPTIONS}
+    sort_state_key = f"{key_prefix}_sort"
+    if sort_state_key not in st.session_state:
+        st.session_state[sort_state_key] = "best_deal"
+    with st.popover(f":material/swap_vert: {sort_label_by_key[st.session_state[sort_state_key]]}"):
+        picked_label = st.radio(
+            "Sort by", [label for _, label in SORT_OPTIONS],
+            index=[key for key, _ in SORT_OPTIONS].index(st.session_state[sort_state_key]),
+            key=f"{key_prefix}_sort_radio",
         )
-    if not clicked:
-        return
-    with st.spinner("Checking current price..."):
-        fresh_price = agent_engine.check_saved_property_price(latitude, longitude, address, user_id=user_id)
-    if not is_admin:
-        db.deduct_credit(user_id)
-        st.session_state.user_credits = max(0, st.session_state.user_credits - 1)
-    if fresh_price is None:
-        db.record_price_check_not_found(user_id, address)
-        st.toast(f"{address}: not currently found among active listings - no fresh price data available.", icon=":material/info:")
-        st.rerun()
-    old_price = db.record_price_check(user_id, address, fresh_price)
-    if old_price is not None and fresh_price < old_price:
-        st.toast(f"Price dropped: {address} is now ${fresh_price:,.0f} (was ${old_price:,.0f}).", icon=":material/trending_down:")
-        if st.session_state.user_settings.get("notify_price_drop"):
-            email_utils.send_price_drop_email(st.session_state.user_email, address, old_price, fresh_price)
-    else:
-        st.toast(f"{address}: no price drop - still ${fresh_price:,.0f}.", icon=":material/check_circle:")
-    st.rerun()
+        new_key = sort_key_by_label[picked_label]
+        if new_key != st.session_state[sort_state_key]:
+            st.session_state[sort_state_key] = new_key
+            st.rerun()
+    return st.session_state[sort_state_key]
 
 
 def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield):
@@ -73,52 +72,79 @@ def _render_saved_properties_tab(view_mode, calc_rent, calc_vacancy_pct, calc_ta
     st.caption("Properties you've starred from any scan, with your personal notes attached. Note: since DealRadar currently uses simulated listing data, there's no live 'still active' status to verify here - that would require a licensed MLS/IDX data feed.")
 
     saved_rows = db.get_saved_properties(st.session_state.user_id)
-    is_admin = roles.is_admin_or_above(st.session_state.user_role)
-    has_credits = st.session_state.user_credits > 0
-    if saved_rows:
-        # Same 2-column grid the main scan results use, instead of one
-        # full-width card per row - the photo carousel is a fixed
-        # height, so at full page width it read as a stretched-out
-        # banner. This matches it back to the same proportions as
-        # everywhere else in the app.
-        for pair_start in range(0, len(saved_rows), 2):
-            pair_rows = saved_rows[pair_start:pair_start + 2]
-            grid_cols = st.columns(2)
-            for slot, s_row in enumerate(pair_rows):
-                s_idx = pair_start + slot
-                address, title, price, beds, baths, latitude, longitude, notes, saved_at, last_price_checked_at = s_row
-                row_item = {
-                    "title": title, "address": address, "price": price,
-                    "beds": beds, "baths": baths, "latitude": latitude, "longitude": longitude,
-                }
-                metrics = compute_deal_metrics(
-                    float(price), calc_rent, calc_vacancy_pct, calc_tax_rate,
-                    calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
-                    # Saved-property rows don't carry HOA yet - the
-                    # saved_properties table predates this field and
-                    # only stores address/title/price/beds/baths/lat/lon
-                    # (see database.py's save_property). Safe no-op via
-                    # _safe_hoa (returns 0, matching prior behavior)
-                    # rather than a schema migration, which is a bigger
-                    # change than this pass covers - see [[deferred-
-                    # rentcast-raw-data-and-hoa]] for the follow-up.
-                    hoa_monthly=_safe_hoa(row_item)
-                )
-                with grid_cols[slot]:
-                    st.caption(_format_relative_time(saved_at))
-                    render_property_card(s_idx, row_item, metrics, view_mode, "saved_card", False,
-                                          st.session_state.user_id, st.session_state.get("distance_reference_point"),
-                                          calc_target_yield,
-                                          {"down_pct": calc_down_pct, "interest": calc_interest, "rent": calc_rent,
-                                           "vacancy": calc_vacancy_pct, "tax_rate": calc_tax_rate, "ins_rate": calc_ins_rate})
-                    _render_check_now(st.session_state.user_id, address, price, latitude, longitude,
-                                       last_price_checked_at, is_admin, has_credits)
-    else:
+    if not saved_rows:
         render_empty_state(
             "star-outline", "No saved properties yet",
             "Star (☆) any property from a scan to keep track of it here, along with your own notes.",
             accent="var(--radar-warning)",
         )
+        return
+
+    key_prefix = "saved"
+    # Precompute each row's metrics once, up front, rather than inside
+    # each of the 4 view functions separately - needed for the Best Deal
+    # sort (by coc) and cheap to carry along as extra keys in the same
+    # dict the JSON-based view functions already expect.
+    enriched_rows = []
+    for address, title, price, beds, baths, latitude, longitude, notes, saved_at, last_price_checked_at in saved_rows:
+        row_item = {
+            "title": title, "address": address, "price": price,
+            "beds": beds, "baths": baths, "latitude": latitude, "longitude": longitude,
+        }
+        metrics = compute_deal_metrics(
+            float(price), calc_rent, calc_vacancy_pct, calc_tax_rate,
+            calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+            # Saved-property rows don't carry HOA yet - see
+            # [[deferred-rentcast-raw-data-and-hoa]].
+            hoa_monthly=_safe_hoa(row_item)
+        )
+        row_item["_coc"] = metrics["coc"]
+        row_item["_saved_at"] = saved_at
+        enriched_rows.append(row_item)
+
+    sort_cols = st.columns([1, 4])
+    with sort_cols[0]:
+        sort_choice = _render_sort_control(key_prefix)
+
+    if sort_choice == "best_deal":
+        enriched_rows = sorted(enriched_rows, key=lambda r: r["_coc"], reverse=True)
+    elif sort_choice == "price_asc":
+        enriched_rows = sorted(enriched_rows, key=lambda r: r["price"])
+    elif sort_choice == "price_desc":
+        enriched_rows = sorted(enriched_rows, key=lambda r: r["price"], reverse=True)
+    elif sort_choice == "newest_saved":
+        enriched_rows = sorted(enriched_rows, key=lambda r: r["_saved_at"] or "", reverse=True)
+    elif sort_choice == "oldest_saved":
+        enriched_rows = sorted(enriched_rows, key=lambda r: r["_saved_at"] or "")
+
+    coords_json = json.dumps(enriched_rows)
+    view_toggle, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths, filter_grades = (
+        _render_quick_filter_toolbar(key_prefix, coords_json)
+    )
+
+    focused_key = f"{key_prefix}_focused_card_index"
+    if focused_key not in st.session_state:
+        st.session_state[focused_key] = None
+
+    if view_toggle == ":material/grid_view: Properties Only":
+        _render_properties_only_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                      filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                      calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                      calc_target_yield, view_mode, key_prefix, focused_key)
+    elif view_toggle == ":material/splitscreen: Properties + Map":
+        _render_properties_and_map_view(coords_json, filter_min_price, filter_max_price, filter_min_beds,
+                                         filter_min_baths, filter_grades, calc_rent, calc_vacancy_pct,
+                                         calc_tax_rate, calc_ins_rate, calc_down_pct, calc_interest,
+                                         calc_target_yield, view_mode, key_prefix, focused_key)
+    elif view_toggle == ":material/map: Map Only":
+        _render_map_only_view(coords_json, key_prefix, view_mode, calc_rent, calc_vacancy_pct, calc_tax_rate,
+                               calc_ins_rate, calc_down_pct, calc_interest, calc_target_yield,
+                               filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                               filter_grades)
+    else:
+        _render_table_view(coords_json, filter_min_price, filter_max_price, filter_min_beds, filter_min_baths,
+                            filter_grades, calc_rent, calc_vacancy_pct, calc_tax_rate, calc_ins_rate,
+                            calc_down_pct, calc_interest, calc_target_yield, key_prefix, is_guest=False)
 
 
 def render_saved_properties_page(is_guest=False):

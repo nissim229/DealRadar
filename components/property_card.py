@@ -11,13 +11,15 @@ import database as db
 import agent_engine as engine
 import pandas as pd
 import plan_limits
+import roles
+import email_utils
 from underwriting import GRADE_STYLES, render_deal_badge
 from pdf_export import generate_single_property_pdf_link
 from whatif_calculator import render_whatif_calculator_html
 from photo_carousel import render_photo_carousel_html
 from components import pricing
 from icons import icon as svg_icon
-from data_utils import clean_value
+from data_utils import clean_value, relative_time
 from guest_mode import guest_action_button
 
 
@@ -294,6 +296,53 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
             </a>
         """, unsafe_allow_html=True)
 
+    def _render_price_check():
+        # Only ever added to tab_defs below when this exact property is
+        # currently saved (db.is_property_saved), so user_id is never a
+        # guest's None here - saving already requires sign-in.
+        check_info = db.get_saved_property_check_info(user_id, address)
+        if not check_info:
+            st.caption("This property isn't in your saved list.")
+            return
+        current_price, last_price_checked_at = check_info
+        is_admin = roles.is_admin_or_above(st.session_state.user_role)
+        has_credits = st.session_state.user_credits > 0
+        can_check = is_admin or has_credits
+        st.caption("Spend 1 credit (same cost as a live scan, free for staff) to re-fetch this property's current live price from RentCast and see if it's dropped since you last checked.")
+        check_cols = st.columns([3, 2])
+        with check_cols[0]:
+            if last_price_checked_at:
+                st.caption(f":material/history: Price checked {relative_time(last_price_checked_at)}")
+            else:
+                st.caption(":material/history: Price not manually checked yet")
+        with check_cols[1]:
+            clicked = st.button(
+                "Check Now", key=f"{key_prefix}_price_check_{idx}", use_container_width=True,
+                disabled=not can_check,
+                help=None if can_check else "Out of credits - buy more or upgrade your plan to check for price drops.",
+            )
+        if not clicked:
+            return
+        with st.spinner("Checking current price..."):
+            fresh_price = engine.check_saved_property_price(
+                row_item.get("latitude"), row_item.get("longitude"), address, user_id=user_id
+            )
+        if not is_admin:
+            db.deduct_credit(user_id)
+            st.session_state.user_credits = max(0, st.session_state.user_credits - 1)
+        if fresh_price is None:
+            db.record_price_check_not_found(user_id, address)
+            st.toast(f"{address}: not currently found among active listings - no fresh price data available.", icon=":material/info:")
+            st.rerun()
+        old_price = db.record_price_check(user_id, address, fresh_price)
+        if old_price is not None and fresh_price < old_price:
+            st.toast(f"Price dropped: now ${fresh_price:,.0f} (was ${old_price:,.0f}).", icon=":material/trending_down:")
+            if st.session_state.user_settings.get("notify_price_drop"):
+                email_utils.send_price_drop_email(st.session_state.user_email, address, old_price, fresh_price)
+        else:
+            st.toast(f"No price drop - still ${fresh_price:,.0f}.", icon=":material/check_circle:")
+        st.rerun()
+
     tab_defs = [
         ("why", ":material/menu_book: Why This Grade", _render_why),
         ("details", ":material/info: Property Details", _render_details),
@@ -301,6 +350,14 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
         ("photos", ":material/photo_camera: Photos", _render_photos),
         ("notes", ":material/edit_note: Notes & Neighborhood", _render_notes),
     ]
+    # Price Check only ever shows for a property that's actually saved -
+    # moved here from its old spot inline under every card on the Saved
+    # Properties grid (Entry 14) so it stays reachable from every view
+    # mode (Properties Only/+Map/Map Only/Table View) once that page
+    # started reusing the same shared view-mode functions scan results
+    # already had, instead of its own one-off 2-column loop.
+    if user_id and db.is_property_saved(user_id, address):
+        tab_defs.append(("price_check", ":material/trending_down: Price Check", _render_price_check))
     if open_tab == "photos":
         tab_defs.sort(key=lambda t: t[0] != "photos")
 

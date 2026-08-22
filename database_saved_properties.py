@@ -80,6 +80,21 @@ def get_saved_properties(user_id):
     finally:
         conn.close()
 
+def get_saved_property_check_info(user_id, address):
+    """Returns (price, last_price_checked_at) for one saved property, or
+    None if this address isn't currently saved by this user - used by the
+    property detail dialog's Price Check tab (added when Check Now moved
+    there from its old inline spot on the Saved Properties grid) to show
+    freshness without needing the caller to already have the full saved
+    list in hand."""
+    conn = sqlite3.connect(database.DB_NAME)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT price, last_price_checked_at FROM saved_properties WHERE user_id=? AND address=?", (int(user_id), address))
+        return cursor.fetchone()
+    finally:
+        conn.close()
+
 def record_price_check(user_id, address, new_price):
     """Records the result of a manual 'Check Now' price check: always
     overwrites `price` with the fresh read (see the last_price_checked_at
