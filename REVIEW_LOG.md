@@ -976,3 +976,109 @@ recurring expenses, so asserting unchanged cashflow is the right
 behavior - the original task wording's "closing costs shift cashflow"
 phrasing was the misreading, not the test. Suite confirmed 29 green, CI
 confirmed green on the real GitHub Actions run for this commit.
+
+---
+
+## Entry 10 — GitHub Actions CI (2026-08-22)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commit: `27f7a5e`.
+
+### What was added
+
+`.github/workflows/ci.yml`, triggering on `push` and `pull_request`:
+checks out the repo, sets up Python 3.13 (matching `.python-version`),
+installs `requirements.txt` + `requirements-dev.txt`, compile-checks
+every tracked `.py` file (`python -m compileall -q .`), then runs the
+full `pytest` suite. No written spec first - standard boilerplate, not a
+design decision.
+
+### Verification
+
+Before trusting it, verified in a genuinely clean environment, not just
+locally: cloned the repo into an isolated temp directory (no `.env`, no
+`agent_config.db` - the real production DB, gitignored, was never
+touched), built a fresh venv from `requirements.txt`, and confirmed both
+`compileall` and the full suite pass - including that
+`database.py`'s `PASSWORD_PEPPER` self-provisioning correctly creates a
+fresh `.env` on first run rather than crashing. Then confirmed the real
+GitHub Actions run itself (not just the local simulation): polled
+`api.github.com/repos/nissim229/DealRadar/actions/runs` until the run
+tied to `27f7a5e` completed - **status: completed, conclusion: success**,
+all 9 steps green.
+
+### Reviewer Feedback (Entry 10)
+
+**Verdict: approved.** Independently re-verified before folding in: the
+workflow file's steps and versions read back correctly (Python 3.13
+matching local dev exactly, `compileall` stronger than a per-file
+`py_compile` sweep), `requirements-dev.txt` confirmed tracked and pinned,
+and the same live run (`.../actions/runs/32543338369`) independently
+re-checked as **Success**, all steps green.
+
+One informational-only note (no action required): the run logs a
+warning that `actions/checkout@v4`/`actions/setup-python@v5` are running
+on a Node.js version GitHub is deprecating for actions - harmless today,
+just something to bump when GitHub starts enforcing it.
+
+Also noted: the reviewer's priority list flagged item 4 ("owner sets a
+real Gmail app password so password-reset emails actually send") as the
+next remaining item - this was independently resolved in this same
+session (the owner generated a real 16-character Google App Password
+and it was live-tested via a real SMTP login, confirmed successful)
+before this entry was written, so item 4 is already closed too. Only
+the deliberately-deferred pre-launch admin password rotation remains
+open.
+
+---
+
+## Entry 11 — My Portfolio gated behind sign-in for guests (2026-08-22)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commit: `9835459`.
+
+### The fix
+
+My Portfolio previously showed guests 2 fake sample properties (a
+"guest preview," consistent with the rest of the app's read-only demo
+mode at the time). Real feedback: a portfolio is something a customer
+builds, not something a guest should preview any version of - it should
+gate like History does instead. `render_portfolio_page(is_guest=True)`
+now renders the guest banner + an empty-state sign-in gate and returns
+immediately, before fetching or rendering any property data - identical
+shape to `render_history_page`'s own guest gate
+(`analytics_history.py:245-247`).
+
+Removed the guest-mode plumbing this made dead: `_guest_demo_portfolio()`
+(the fake-property generator), the `is_guest` guard clauses in
+`_save_property_fields`/`_render_tenants_subtab`/
+`_render_documents_subtab` (unreachable now), and the `is_guest`
+conditionals in the Add-a-Property tab (guests never reach it either).
+`guest_action_button`'s call site in the delete-property flow was left
+alone - a generic, still-functional helper for real users, not orphaned
+code.
+
+### Verification
+
+Live-checked: guest My Portfolio shows only the sign-in gate (no stat
+cards, no tabs, no sample data); signing in as the real test account
+(`testclient@dealradar.local`) shows the real (empty) portfolio, the Add
+a Property form renders correctly (the plan-limit check, now un-gated
+from `is_guest`, still passes cleanly for a real user), and the Summary
+tab's own empty state is unaffected. All 29 tests pass.
+
+### Reviewer Feedback (Entry 11)
+
+**Verdict: approved.** Independently re-verified before folding in: a
+repo-wide grep confirms zero remaining references to
+`_guest_demo_portfolio` anywhere (the only other similarly-named hit,
+`_run_guest_demo_scan`, is the unrelated property-scan demo feature, not
+missed cleanup); `main.py:112` still calls
+`render_portfolio_page(is_guest=is_guest)` with the same signature, so
+no caller needed updating. Confirmed the removed guest guards
+(save-property toast, tenants/documents captions, add-property toast,
+the `not is_guest and ...` plan-limit exemption) all sat strictly
+downstream of the new early return, making their removal safe rather
+than a behavior change for real users. Full suite: 29 passed.
