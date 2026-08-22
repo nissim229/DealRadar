@@ -131,9 +131,18 @@ def get_portfolio_properties(user_id):
 # --- TENANTS (a property can have more than one, e.g. roommates) ---
 
 def add_tenant(property_id, user_id, name, phone, email, lease_start, lease_end, notes=""):
+    """Defense-in-depth: verifies property_id actually belongs to user_id
+    before inserting, rather than trusting the caller (today's UI always
+    sources property_id from that same user's own get_portfolio_properties()
+    result, so this isn't reachable through normal navigation - but every
+    other tenant/document function here is scoped by user_id at the SQL
+    level, and this insert path was the one exception)."""
     conn = sqlite3.connect(database.DB_NAME)
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM portfolio_properties WHERE id=? AND user_id=?", (int(property_id), int(user_id)))
+        if not cursor.fetchone():
+            return None
         cursor.execute(
             "INSERT INTO portfolio_tenants (property_id, user_id, name, phone, email, lease_start, lease_end, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (int(property_id), int(user_id), name, phone, email, lease_start, lease_end, notes)
@@ -182,9 +191,14 @@ def get_tenants(property_id, user_id):
 # --- DOCUMENTS (uploaded lease/contract files, one property can have several) ---
 
 def add_document(property_id, user_id, original_filename, stored_filename):
+    """Same defense-in-depth ownership check as add_tenant - see its
+    docstring for why this insert path specifically needed one."""
     conn = sqlite3.connect(database.DB_NAME)
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM portfolio_properties WHERE id=? AND user_id=?", (int(property_id), int(user_id)))
+        if not cursor.fetchone():
+            return None
         cursor.execute(
             "INSERT INTO portfolio_documents (property_id, user_id, original_filename, stored_filename) VALUES (?, ?, ?, ?)",
             (int(property_id), int(user_id), original_filename, stored_filename)

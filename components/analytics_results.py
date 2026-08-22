@@ -11,6 +11,7 @@ re-export except _render_scan_results/_render_hero_map_and_results
 themselves - both still consumed by components/analytics.py's
 _render_history_tab and render_analytics_dashboard.
 """
+import html
 import streamlit as st
 import database as db
 import agent_engine as engine
@@ -697,8 +698,14 @@ def _render_scan_results(report_body, profile_name, coords_json, key_prefix, vie
 
     st.markdown("<br>", unsafe_allow_html=True)
     pdf_data_uri = generate_pdf_download_link(profile_name, report_body)
+    # html.escape() before this lands inside a quoted HTML attribute -
+    # profile_name traces back to a scan's location/search-profile label,
+    # not something this function can assume is quote-free, so an
+    # unescaped `"` in it would otherwise break out of the download="..."
+    # attribute inside this unsafe_allow_html block.
+    safe_filename = html.escape(f"{pdf_filename_prefix}_{profile_name.replace(' ', '_')}.html", quote=True)
     st.markdown(f"""
-        <a href="{pdf_data_uri}" download="{pdf_filename_prefix}_{profile_name.replace(' ', '_')}.html" style="text-decoration: none;">
+        <a href="{pdf_data_uri}" download="{safe_filename}" style="text-decoration: none;">
             <div style="background-color: var(--radar-primary); color: white; text-align: center; padding: 12px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; margin-top: 15px; margin-bottom: 20px; display:flex; align-items:center; justify-content:center; gap:6px;">
                 {svg_icon("download", size=15, color="white")} {pdf_button_label}
             </div>

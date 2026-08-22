@@ -4,6 +4,7 @@ The property card component - photo, badge, price, and the tabbed detail
 expander (Why This Grade / What-If Calculator / Photos / Notes & Neighborhood).
 """
 
+import html
 import streamlit as st
 import streamlit.components.v1 as components
 import database as db
@@ -268,8 +269,16 @@ def _render_property_detail_tabs(row_item, metrics, calc_target_yield, current_a
 
         st.markdown("---")
         pdf_uri = generate_single_property_pdf_link(row_item, metrics, note_text)
+        # html.escape() on the filename before it lands inside a quoted HTML
+        # attribute - row_item['title'] can originate from RentCast's own
+        # listing data (an external source, not something this app
+        # controls the contents of), so a title containing a literal `"`
+        # would otherwise break out of the download="..." attribute and
+        # inject arbitrary markup/attributes into this unsafe_allow_html
+        # block.
+        safe_filename = html.escape(f"DealRadar_{row_item['title'].replace(' ', '_')}.html", quote=True)
         st.markdown(f"""
-            <a href="{pdf_uri}" download="DealRadar_{row_item['title'].replace(' ', '_')}.html" style="text-decoration: none;">
+            <a href="{pdf_uri}" download="{safe_filename}" style="text-decoration: none;">
                 <div style="background-color: var(--radar-neutral); color: white; text-align: center; padding: 8px; border-radius: var(--radar-radius-sm); font-weight: 500; cursor: pointer; font-size: 13px; display:flex; align-items:center; justify-content:center; gap:6px;">
                     {svg_icon("download", size=14, color="white")} Export This Property to PDF / Print
                 </div>
