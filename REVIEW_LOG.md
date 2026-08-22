@@ -1082,3 +1082,90 @@ no caller needed updating. Confirmed the removed guest guards
 the `not is_guest and ...` plan-limit exemption) all sat strictly
 downstream of the new early return, making their removal safe rather
 than a behavior change for real users. Full suite: 29 passed.
+
+---
+
+## Entry 12 — Reviewer scan: dead code cleanup, deployment blocker, test coverage (2026-08-22)
+
+**Status**: Done, pending reviewer verification.
+
+Commits: `9f6fff1` (dead code), `c6b681d` (deployment blocker),
+`543b7ed` (test coverage).
+
+### Dead code cleanup (`9f6fff1`)
+
+Reviewer-flagged, left over from the monolith split: `database.py`
+(now a facade) still imported 8 names it never used itself (`sqlite3`,
+`hashlib`, `hmac`, `base64`, `json`, `secrets`, `datetime`/`timedelta`,
+`plan_limits.PLAN_ORDER` - each now owned by a sibling module), and
+re-exported 2 private helpers (`_user_record_by_id`,
+`_sync_is_rented`) that are only ever called inside the sibling module
+that defines them, never as `db._name(...)` from anywhere else.
+Verified each claim by grep (zero real usages beyond the import line
+itself; zero repo-wide `db.X`/`database.X` reliance on the two
+re-exports) before removing anything.
+
+### Deployment blocker: hardcoded base URL (`c6b681d`)
+
+Reviewer-flagged: `google_oauth.py:27`'s `REDIRECT_URI` was hardcoded to
+`http://localhost:8501` with no way to change it - would break Google
+sign-in on any real deployment, since Google rejects any redirect-URI
+mismatch against what's configured on the OAuth client. Found the
+identical hardcoded value in `components/auth_portal.py`'s
+`APP_BASE_URL` (password-reset email links) while fixing this - both
+needed the same fix, not just the one flagged. Both now read
+`os.getenv("APP_BASE_URL", "http://localhost:8501")` - same env var,
+same default, so local dev is completely unaffected until it's
+actually set. Added to `.env.example` with a note that the Google
+Cloud OAuth client's Authorized redirect URI must be updated to match
+whenever this changes.
+
+### Test coverage: pure helpers + security-critical paths (`543b7ed`)
+
+Reviewer-flagged coverage gap, the biggest item in this round: 28 new
+tests (29 -> 57 total). `tests/conftest.py` extracts the `temp_db`
+fixture (and `_insert_user`/`_get_hash`) out of `test_auth.py`, which
+had the only copy, so new test files don't duplicate the setup;
+`test_auth.py` refactored to import from it, unchanged behavior.
+`tests/test_pure_helpers.py` (11 tests, no DB): `agent_engine.py`'s
+`build_zillow_search_url`/`build_redfin_search_url`/
+`calculate_distance_miles`, and `google_oauth.py`'s/`email_utils.py`'s
+`is_google_oauth_configured`/`is_email_configured`.
+`tests/test_security_paths.py` (12 tests, uses `temp_db`):
+`change_own_password`, the full password-reset-token lifecycle in one
+flow (issue -> validate -> reset -> re-validate confirms single-use
+enforcement), `generate_state`/`verify_state` (round-trip, tamper
+rejection, expiry via monkeypatching the max-age constant rather than
+sleeping), and `deduct_credit` (normal decrement + zero-floor guard).
+`tests/test_underwriting.py` gained 5 tests for `car_engine.py`'s
+`classify_fuel_type` (including the exact mislabeled-hybrid case its
+own docstring exists to fix) and `compute_car_deal_metrics`.
+
+### Verification
+
+Every one of the 13 functions named in the reviewer's list was checked
+to actually exist with the claimed signature before a test was written
+against it. Sanity-checked the highest-value new test by deliberately
+breaking single-use token enforcement in `reset_password_with_token`
+(commented out the `used=1` update) - exactly the one test guarding
+that property failed, the other 11 in the same file still passed;
+reverted, confirmed clean. Live-checked the deployment-blocker fix:
+the password-reset-link flow (`?reset_token=` query param) renders
+identically with no `.env` override, same as before the change. Full
+suite: 57 passed, both locally and on the real GitHub Actions run for
+`543b7ed` (confirmed via the GitHub API, not just assumed from a local
+pass).
+
+### What to check
+
+- Are there other places in the codebase with the same hardcoded-
+  localhost pattern that neither the reviewer's scan nor this fix
+  caught? (Checked before writing this entry: a repo-wide grep for
+  `localhost:8501` now finds only the two intentional
+  `os.getenv("APP_BASE_URL", "http://localhost:8501")` default
+  expressions themselves - nothing else hardcoded. Reviewer: please
+  double-check this rather than take it at face value.)
+- Do the new security-path tests actually exercise the real code paths
+  a browser-driven flow would hit, or do any of them call the
+  underlying `database_profile.py`/`google_oauth.py` functions in a way
+  that skips something a real request would go through?
