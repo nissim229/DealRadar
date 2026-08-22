@@ -911,3 +911,68 @@ Also reconfirmed as part of this fold-in: the "no REVIEW_LOG entry for
 was read - this same Entry 8 already covered `cbcbc07` (see its opening
 line), committed in `ff92f06` before that note was written. No action
 needed beyond noting the timing.
+
+---
+
+## Entry 9 — tests/test_underwriting.py, locking in the Section 8 deal-math (2026-08-22)
+
+**Status**: Reviewer feedback folded in below - approved.
+
+Commit: `ba409be`.
+
+### What was added
+
+15 new tests (14 -> 29 total in `tests/`), covering everything FIXLIST
+Section 8 changed, so none of it can silently regress:
+
+- **Golden-value worked example** - the exact $400k/$3,500-rent/5% vac/
+  1.2% tax/0.4% ins/25% down/6.5%/8% target case the reviewer hand-
+  computed in the original audit, asserted across all 13 metrics, plus a
+  from-scratch amortization-formula cross-check on debt service
+  independent of `monthly_payment_factor` itself (guards against a
+  regression that breaks both the app's formula and a golden-value test
+  identically).
+- **Regression**: an all-cash loser returns negative NOI/cashflow and
+  grades "critical" (the exact Bug 1 case), plus a separate test that
+  cap-rate display still floors at 0% even though NOI stays a true
+  negative underneath it.
+- **MAO None guard**, both halves: numerator non-positive and denom
+  non-positive, matching the exact condition added in the MAO polish
+  (commit `85baa3e`).
+- **HOA/management%/maintenance%/closing-costs** each shift cashflow and
+  MAO by an independently hand-derived exact amount - closing costs
+  specifically asserted to leave cashflow **unchanged** (a one-time cost,
+  not an ongoing expense), a real nuance the original task wording
+  glossed over but the actual formula requires.
+- **Car engine**: `_grade_tier`'s exact 12%/0% boundaries, `_median`
+  (odd/even length), `_drop_price_outliers` (drops sub-half-group-median
+  prices, leaves groups under 3 untouched), and the mileage-adjustment
+  sign via `_grade_real_listings`.
+
+### Verification
+
+Every golden value was independently hand-derived before being locked in
+(not copied from the function's own output). Sanity-checked the two
+highest-value tests by deliberately reintroducing the original bugs:
+reverting the NOI-clamp fix correctly failed exactly the 2 tests guarding
+it; reverting the MAO-not-achievable guard correctly failed exactly the 2
+tests guarding it - both reverted afterward, `git diff` confirmed clean.
+Full suite: 29 passed.
+
+### What to check
+
+- Is the closing-costs-leaves-cashflow-unchanged assertion actually
+  correct, or does it misread the formula the same way the original task
+  wording did?
+- Do the golden values in the worked-example test actually match what the
+  reviewer independently hand-computed in the original audit, or only
+  what the code currently outputs?
+
+### Reviewer Feedback (Entry 9)
+
+**Verdict: approved.** Confirmed the closing-costs deviation is correct,
+not a misreading: closing costs are one-time transaction costs, not
+recurring expenses, so asserting unchanged cashflow is the right
+behavior - the original task wording's "closing costs shift cashflow"
+phrasing was the misreading, not the test. Suite confirmed 29 green, CI
+confirmed green on the real GitHub Actions run for this commit.
